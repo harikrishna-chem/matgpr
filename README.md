@@ -1,37 +1,41 @@
 # genmatics-gpr
 
-Small Python utilities for cleaning materials datasets, preprocessing features,
-training Gaussian Process Regression models, analyzing model quality, and
-making reusable plots.
+General Python utilities for cleaning materials datasets, preprocessing
+features, training Gaussian Process Regression models, analyzing model quality,
+and making reusable plots.
+
+The importable package is `genmatics_gpr`.
 
 ## Suggested Workflow
 
 1. Clean the dataframe with `normalize_column_names`,
    `replace_missing_placeholders`, `drop_duplicate_rows`, and optional
    `filter_iqr_outliers`.
-2. Split the target from features with `split_features_target`, then create
+2. Separate the target from features with `separate_features_target`, then make
    train/test sets with `split_train_test`.
-3. Infer column types with `infer_feature_columns` and build a transformer with
-   `build_preprocessor`.
-4. Train a model with either `build_sklearn_gpr` or `train_gpytorch_gpr`.
-5. Evaluate predictions with `calculate_regression_metrics` or
-   `calculate_train_test_metrics`.
+3. Identify column types with `identify_feature_types` and build a transformer
+   with `build_preprocessor`.
+4. Train a model with either `build_sklearn_gpr_model` or
+   `train_gpytorch_gpr`.
+5. Evaluate predictions with `regression_metrics` or
+   `train_test_regression_metrics`.
 6. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
-## Function Map
+## Module Map
 
 | Module | Main functions/classes | Purpose |
 | --- | --- | --- |
-| `cleaning.py` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
-| `splitting.py` | `split_features_target`, `split_train_test` | Target and train/test splitting |
-| `scaling.py` | `make_scaler` | Standard, min-max, robust, or passthrough scaling |
-| `pipeline.py` | `infer_feature_columns`, `build_preprocessor`, `save_artifact`, `load_artifact`, `append_experiment_result` | Reusable preprocessing and experiment persistence |
-| `gpr_sklearn.py` | `make_sklearn_gpr_kernel`, `build_sklearn_gpr`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
-| `gpr_gpytorch.py` | `EquationMeanFunction`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
-| `analysis.py` | `calculate_regression_metrics`, `calculate_train_test_metrics` | Model quality metrics |
-| `decomposition.py` | `fit_pca`, `summarize_pca`, `transform_pca`, `plot_pca_scree`, `plot_pca_scores` | PCA analysis |
-| `plot.py` | `plot_parity`, `plot_distribution`, `plot_correlation_matrix`, `plot_learning_curve` | Common model and data plots |
+| `genmatics_gpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
+| `genmatics_gpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
+| `genmatics_gpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
+| `genmatics_gpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
+| `genmatics_gpr.gpytorch_gpr` | `EquationMeanFunction`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
+| `genmatics_gpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
+| `genmatics_gpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
+| `genmatics_gpr.visualization` | `plot_parity`, `plot_distribution`, `plot_correlation_matrix`, `plot_learning_curve`, `plot_pca_scree`, `plot_pca_scores` | Common model and data plots |
+| `genmatics_gpr.reporting` | `summarize_missingness`, `summarize_numeric_columns` | Quick dataframe reports |
+| `genmatics_gpr.io_utils` | `save_artifact`, `load_artifact`, `log_experiment_result` | Model/artifact persistence and result logging |
 
 ## Physics-Informed GPR
 
@@ -48,7 +52,7 @@ Example:
 ```python
 import torch
 
-from gpr_gpytorch import EquationMeanFunction, train_gpytorch_gpr
+from genmatics_gpr import EquationMeanFunction, train_gpytorch_gpr
 
 
 def oxidation_equation(features, parameters):

@@ -5,7 +5,7 @@ from scipy.stats import pearsonr
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 
-def calculate_regression_metrics(
+def regression_metrics(
     y_true,
     y_pred,
     *,
@@ -37,7 +37,7 @@ def calculate_regression_metrics(
     }
 
 
-def calculate_train_test_metrics(
+def train_test_regression_metrics(
     y_train_true,
     y_train_pred,
     y_test_true,
@@ -46,14 +46,14 @@ def calculate_train_test_metrics(
     """Calculate regression metrics for both train and test predictions."""
     metrics = {}
     metrics.update(
-        calculate_regression_metrics(
+        regression_metrics(
             y_train_true,
             y_train_pred,
             prefix="train",
         )
     )
     metrics.update(
-        calculate_regression_metrics(
+        regression_metrics(
             y_test_true,
             y_test_pred,
             prefix="test",

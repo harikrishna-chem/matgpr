@@ -6,7 +6,7 @@ from sklearn.gaussian_process.kernels import ConstantKernel, Matern, RBF, WhiteK
 from sklearn.model_selection import GridSearchCV
 
 
-def make_sklearn_gpr_kernel(
+def build_sklearn_gpr_kernel(
     name: str = "matern",
     *,
     n_features: int | None = None,
@@ -35,7 +35,7 @@ def make_sklearn_gpr_kernel(
     raise ValueError("name must be one of: rbf, matern, ard_rbf, ard_matern")
 
 
-def build_sklearn_gpr(
+def build_sklearn_gpr_model(
     *,
     kernel: str = "matern",
     n_features: int | None = None,
@@ -49,7 +49,7 @@ def build_sklearn_gpr(
     This returns an unfitted model. Put it inside a scikit-learn Pipeline with
     ``build_preprocessor`` when raw dataframe columns need preprocessing.
     """
-    kernel_object = make_sklearn_gpr_kernel(kernel, n_features=n_features)
+    kernel_object = build_sklearn_gpr_kernel(kernel, n_features=n_features)
     return GaussianProcessRegressor(
         kernel=kernel_object,
         alpha=alpha,
@@ -69,11 +69,11 @@ def build_sklearn_gpr_grid_search(
 ) -> GridSearchCV:
     """Build a grid search over useful scikit-learn GPR kernels and settings."""
     kernels = [
-        make_sklearn_gpr_kernel("rbf"),
-        make_sklearn_gpr_kernel("matern"),
+        build_sklearn_gpr_kernel("rbf"),
+        build_sklearn_gpr_kernel("matern"),
         ConstantKernel(1.0) * Matern(length_scale=1.0, nu=1.5) + WhiteKernel(noise_level=1.0),
-        make_sklearn_gpr_kernel("ard_rbf", n_features=n_features),
-        make_sklearn_gpr_kernel("ard_matern", n_features=n_features),
+        build_sklearn_gpr_kernel("ard_rbf", n_features=n_features),
+        build_sklearn_gpr_kernel("ard_matern", n_features=n_features),
     ]
 
     model = GaussianProcessRegressor(

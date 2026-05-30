@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genmatics-gpr"
+version = "0.1.0"
+description = "Utilities for data preparation, Gaussian Process Regression, and model analysis."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "gpytorch",
+    "joblib",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "scikit-learn",
+    "scipy",
+    "torch",
+]
+
+[tool.setuptools.packages.find]
+include = ["genmatics_gpr*"]

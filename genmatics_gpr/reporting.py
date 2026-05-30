@@ -8,7 +8,7 @@ import pandas as pd
 
 
 
-def missingness_report(df: pd.DataFrame) -> pd.DataFrame:
+def summarize_missingness(df: pd.DataFrame) -> pd.DataFrame:
 
     """Return missing counts and fractions by column."""
 
@@ -32,9 +32,8 @@ def missingness_report(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
-def basic_numeric_report(df: pd.DataFrame) -> pd.DataFrame:
+def summarize_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     """Return descriptive statistics for numeric columns."""
 
     return df.describe().T
-

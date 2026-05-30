@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 
-def split_features_target(
+def separate_features_target(
     df: pd.DataFrame,
     target_column: str,
 ) -> tuple[pd.DataFrame, pd.Series]:

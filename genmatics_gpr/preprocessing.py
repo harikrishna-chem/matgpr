@@ -1,32 +1,49 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from pathlib import Path
 
-import joblib
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
-
-try:
-    from .scaling import make_scaler
-except ImportError:
-    from scaling import make_scaler
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, RobustScaler, StandardScaler
 
 
-def infer_feature_columns(X: pd.DataFrame) -> tuple[list[str], list[str]]:
-    """Infer numeric and categorical feature columns from a dataframe.
+def identify_feature_types(X: pd.DataFrame) -> tuple[list[str], list[str]]:
+    """Identify numeric and categorical feature columns in a dataframe.
 
     Returns
     -------
     numeric_features, categorical_features
-        Two lists that can be passed directly into ``build_preprocessor``.
+        Lists that can be passed directly into ``build_preprocessor``.
     """
     numeric_features = X.select_dtypes(include="number").columns.tolist()
     categorical_features = [column for column in X.columns if column not in numeric_features]
     return numeric_features, categorical_features
+
+
+def build_scaler(name: str = "standard"):
+    """Create a scikit-learn feature scaler by name.
+
+    Parameters
+    ----------
+    name
+        ``"standard"`` for zero-mean/unit-variance scaling, ``"minmax"`` for
+        range scaling, ``"robust"`` for median/IQR scaling, or ``"none"`` /
+        ``"passthrough"`` to leave features unchanged in a pipeline.
+    """
+    normalized = name.lower()
+
+    if normalized == "standard":
+        return StandardScaler()
+    if normalized == "minmax":
+        return MinMaxScaler()
+    if normalized == "robust":
+        return RobustScaler()
+    if normalized in {"none", "passthrough"}:
+        return "passthrough"
+
+    raise ValueError("name must be one of: standard, minmax, robust, none")
 
 
 def build_preprocessor(
@@ -51,7 +68,7 @@ def build_preprocessor(
         numeric_pipeline = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy=numeric_imputation)),
-                ("scaler", make_scaler(scaler)),
+                ("scaler", build_scaler(scaler)),
             ]
         )
         transformers.append(("numeric", numeric_pipeline, numeric_features))
@@ -60,7 +77,7 @@ def build_preprocessor(
         categorical_pipeline = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy=categorical_imputation)),
-                ("onehot", _make_one_hot_encoder()),
+                ("onehot", _build_one_hot_encoder()),
             ]
         )
         transformers.append(("categorical", categorical_pipeline, categorical_features))
@@ -71,48 +88,7 @@ def build_preprocessor(
     return ColumnTransformer(transformers=transformers, remainder="drop")
 
 
-def save_artifact(artifact, path: str | Path) -> None:
-    """Save a fitted preprocessor, model, or full pipeline with joblib."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(artifact, path)
-
-
-def load_artifact(path: str | Path):
-    """Load a joblib artifact saved by ``save_artifact``."""
-    return joblib.load(path)
-
-
-def append_experiment_result(
-    metrics: dict,
-    *,
-    metadata: dict | None = None,
-    path: str | Path = "results.csv",
-) -> None:
-    """Append one experiment result row to a CSV file.
-
-    ``metadata`` is written before metric columns and is intended for values
-    such as model name, kernel, train size, random state, or feature set.
-    """
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    row_data = {}
-    if metadata is not None:
-        row_data.update(metadata)
-    row_data.update(metrics)
-
-    row = pd.DataFrame([row_data])
-    file_exists = path.exists()
-    row.to_csv(
-        path,
-        mode="a" if file_exists else "w",
-        header=not file_exists,
-        index=False,
-    )
-
-
-def _make_one_hot_encoder() -> OneHotEncoder:
+def _build_one_hot_encoder() -> OneHotEncoder:
     """Create a dense one-hot encoder across scikit-learn versions."""
     try:
         return OneHotEncoder(handle_unknown="ignore", sparse_output=False)
