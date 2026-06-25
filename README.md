@@ -1,8 +1,8 @@
-# genmatics-gpr
+# matgpr
 
-General Python utilities for cleaning materials datasets, preprocessing
-features, training Gaussian Process Regression models, analyzing model quality,
-and making reusable plots.
+Materials informatics utilities for cleaning datasets, preprocessing features,
+training Gaussian Process Regression models, analyzing model quality, and
+building physics-informed GPR models.
 
 The importable package is `genmatics_gpr`.
 
@@ -30,7 +30,7 @@ The importable package is `genmatics_gpr`.
 | `genmatics_gpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `genmatics_gpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
 | `genmatics_gpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
-| `genmatics_gpr.gpytorch_gpr` | `EquationMeanFunction`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
+| `genmatics_gpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `genmatics_gpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `genmatics_gpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
 | `genmatics_gpr.visualization` | `plot_parity`, `plot_distribution`, `plot_correlation_matrix`, `plot_learning_curve`, `plot_pca_scree`, `plot_pca_scores` | Common model and data plots |
@@ -39,12 +39,13 @@ The importable package is `genmatics_gpr`.
 
 ## Physics-Informed GPR
 
-Physics-informed models use `EquationMeanFunction`. The user supplies:
+Physics-informed models use `PhysicsInformedMean`. The user supplies:
 
 - an equation callable,
 - the feature columns used by that equation,
 - optional learnable parameter initial values,
-- which parameters should stay positive,
+- optional fixed physical constants,
+- which learnable parameters should stay positive,
 - optional feature scaling information to recover original units.
 
 Example:
@@ -52,7 +53,7 @@ Example:
 ```python
 import torch
 
-from genmatics_gpr import EquationMeanFunction, train_gpytorch_gpr
+from genmatics_gpr import PhysicsInformedMean, fit_gpytorch_gpr
 
 
 def oxidation_equation(features, parameters):
@@ -64,22 +65,24 @@ def oxidation_equation(features, parameters):
     return torch.sqrt(torch.clamp(kp * time_min, min=1e-12))
 
 
-mean_function = EquationMeanFunction(
+mean_function = PhysicsInformedMean(
     equation=oxidation_equation,
-    column_indices={"temperature_c": 0, "time_min": 1},
-    parameter_initial_values={"A": 1.0, "Q": 100_000.0},
+    feature_indices={"temperature_c": 0, "time_min": 1},
+    learnable_parameters={"A": 1.0, "Q": 100_000.0},
     positive_parameters=("A", "Q"),
 )
 
-model, likelihood = train_gpytorch_gpr(
+result = fit_gpytorch_gpr(
     X_train,
     y_train,
     mean_module=mean_function,
 )
+prediction = result.predict(X_test)
 ```
 
 This replaces hard-coded equation-specific mean classes. New physics equations
-can be added in notebooks or scripts without changing the library.
+can be added in notebooks or scripts without changing the library. The older
+`EquationMeanFunction` name remains available as a compatibility alias.
 
 ## Dependencies
 

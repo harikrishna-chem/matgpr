@@ -9,7 +9,6 @@ from .data_cleaning import (
     replace_missing_placeholders,
 )
 from .data_splitting import separate_features_target, split_train_test
-from .gpytorch_gpr import EquationMeanFunction, predict_gpytorch_gpr, train_gpytorch_gpr
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .metrics import regression_metrics, train_test_regression_metrics
 from .pca import fit_pca, summarize_pca, transform_pca
@@ -29,8 +28,33 @@ from .visualization import (
     plot_pca_scree,
 )
 
+try:
+    from .gpytorch_gpr import (
+        EquationMeanFunction,
+        ExactGPRModel,
+        GPyTorchGPRResult,
+        GPyTorchPrediction,
+        PhysicsInformedMean,
+        fit_gpytorch_gpr,
+        predict_gpytorch_gpr,
+        train_gpytorch_gpr,
+    )
+except ImportError:
+    EquationMeanFunction = None
+    ExactGPRModel = None
+    GPyTorchGPRResult = None
+    GPyTorchPrediction = None
+    PhysicsInformedMean = None
+    fit_gpytorch_gpr = None
+    predict_gpytorch_gpr = None
+    train_gpytorch_gpr = None
+
 __all__ = [
     "EquationMeanFunction",
+    "ExactGPRModel",
+    "GPyTorchGPRResult",
+    "GPyTorchPrediction",
+    "PhysicsInformedMean",
     "build_preprocessor",
     "build_scaler",
     "build_sklearn_gpr_grid_search",
@@ -39,6 +63,7 @@ __all__ = [
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",
     "filter_iqr_outliers",
+    "fit_gpytorch_gpr",
     "fit_pca",
     "identify_feature_types",
     "impute_missing_values",

@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "genmatics-gpr"
+name = "matgpr"
 version = "0.1.0"
-description = "Utilities for data preparation, Gaussian Process Regression, and model analysis."
+description = "Materials informatics utilities for Gaussian Process Regression and physics-informed GPR."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
