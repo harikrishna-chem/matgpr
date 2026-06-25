@@ -604,7 +604,10 @@ def _to_tensor(x, *, device: str, dtype: torch.dtype) -> torch.Tensor:
         return x.to(device=device, dtype=dtype)
     if hasattr(x, "to_numpy"):
         x = x.to_numpy()
-    return torch.as_tensor(np.asarray(x), dtype=dtype, device=device)
+    array = np.asarray(x)
+    if not array.flags.writeable:
+        array = array.copy()
+    return torch.as_tensor(array, dtype=dtype, device=device)
 
 
 def _resolve_feature_indices(

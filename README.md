@@ -113,9 +113,20 @@ python3 -m pip install -r requirements.txt
 python3 -m pip install -e .
 ```
 
+## Examples
+
+The first worked example is available in `examples/opv`:
+
+- `opv_gpr_modeling.ipynb` compares standard GPR with physics-informed GPR
+  models of increasing mean-function complexity.
+- `physics_informed_gpr_report.md` explains the physical rationale,
+  implementation details, and learning-curve results.
+- `dataset.csv` contains the OPV descriptor dataset used by the notebook.
+
 ## Roadmap
 
-- Add five published-paper example workflows for materials-informatics users.
+- Add four more published-paper example workflows for materials-informatics
+  users.
 - Expand documentation with tutorials, API references, and example equations.
 - Add multitask Gaussian-process models.
 - Add additional physics-informed model families.
