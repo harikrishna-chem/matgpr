@@ -16,6 +16,13 @@ The dataset contains 280 small-molecule OPV systems and 13 quantum-chemical
 descriptors. The notebook predicts experimental `PCE` using a fixed holdout
 test set and learning curves over increasing training-set sizes.
 
+## Reference
+
+H. Sahu, W. Rao, A. Troisi, and H. Ma, "Toward Predicting Efficiency of
+Organic Solar Cells via Machine Learning and Improved Descriptors," Advanced
+Energy Materials, 8, 1801032, 2018. DOI:
+[10.1002/aenm.201801032](https://doi.org/10.1002/aenm.201801032).
+
 ## Why Modify the GP Mean Function?
 
 A standard GPR model usually uses a learned constant mean and relies on the
@@ -207,7 +214,7 @@ transport_score = average(
 ## How the Physics Mean Is Implemented
 
 The implementation uses the reusable `PhysicsInformedMean` class from
-`genmatics_gpr`.
+`matgpr`.
 
 Each physics equation receives two dictionaries:
 

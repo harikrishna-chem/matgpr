@@ -4,13 +4,13 @@ import os
 import unittest
 
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
-os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-genmatics-gpr")
-os.environ.setdefault("XDG_CACHE_HOME", "/tmp/genmatics-gpr-cache")
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
+os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import torch
 
-from genmatics_gpr.gpytorch_gpr import (
+from matgpr.gpytorch_gpr import (
     GPyTorchGPRResult,
     PhysicsInformedMean,
     fit_gpytorch_gpr,

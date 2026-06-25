@@ -8,7 +8,7 @@ workflows on materials datasets. The first release focuses on clean data
 preparation utilities, scikit-learn and GPyTorch GPR models, uncertainty-aware
 prediction, and a flexible physics-informed mean-function API.
 
-The current importable package is `genmatics_gpr`.
+The importable package is `matgpr`.
 
 ## Repository Description
 
@@ -46,16 +46,16 @@ physics-informed mean functions and uncertainty-aware prediction.
 
 | Module | Main functions/classes | Purpose |
 | --- | --- | --- |
-| `genmatics_gpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
-| `genmatics_gpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
-| `genmatics_gpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
-| `genmatics_gpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
-| `genmatics_gpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
-| `genmatics_gpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
-| `genmatics_gpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
-| `genmatics_gpr.visualization` | `plot_parity`, `plot_distribution`, `plot_correlation_matrix`, `plot_learning_curve`, `plot_pca_scree`, `plot_pca_scores` | Common model and data plots |
-| `genmatics_gpr.reporting` | `summarize_missingness`, `summarize_numeric_columns` | Quick dataframe reports |
-| `genmatics_gpr.io_utils` | `save_artifact`, `load_artifact`, `log_experiment_result` | Model/artifact persistence and result logging |
+| `matgpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
+| `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
+| `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
+| `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
+| `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
+| `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
+| `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
+| `matgpr.visualization` | `plot_parity`, `plot_distribution`, `plot_correlation_matrix`, `plot_learning_curve`, `plot_pca_scree`, `plot_pca_scores` | Common model and data plots |
+| `matgpr.reporting` | `summarize_missingness`, `summarize_numeric_columns` | Quick dataframe reports |
+| `matgpr.io_utils` | `save_artifact`, `load_artifact`, `log_experiment_result` | Model/artifact persistence and result logging |
 
 ## Physics-Informed GPR
 
@@ -73,7 +73,7 @@ Example:
 ```python
 import torch
 
-from genmatics_gpr import PhysicsInformedMean, fit_gpytorch_gpr
+from matgpr import PhysicsInformedMean, fit_gpytorch_gpr
 
 
 def oxidation_equation(features, parameters):
