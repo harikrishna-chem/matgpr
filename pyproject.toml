@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "matgpr"
 version = "0.1.0"
-description = "Materials informatics utilities for Gaussian Process Regression and physics-informed GPR."
+description = "Gaussian Process Regression toolkit for materials informatics, including physics-informed mean functions."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

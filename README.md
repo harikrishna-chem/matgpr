@@ -1,10 +1,30 @@
 # matgpr
 
-Materials informatics utilities for cleaning datasets, preprocessing features,
-training Gaussian Process Regression models, analyzing model quality, and
-building physics-informed GPR models.
+Gaussian Process Regression tools for materials informatics, with first-class
+support for physics-informed mean functions.
 
-The importable package is `genmatics_gpr`.
+`matgpr` is an early-stage research package for building reproducible GPR
+workflows on materials datasets. The first release focuses on clean data
+preparation utilities, scikit-learn and GPyTorch GPR models, uncertainty-aware
+prediction, and a flexible physics-informed mean-function API.
+
+The current importable package is `genmatics_gpr`.
+
+## Repository Description
+
+Gaussian Process Regression toolkit for materials informatics, including
+physics-informed mean functions and uncertainty-aware prediction.
+
+## Highlights
+
+- Data cleaning, feature preprocessing, train/test splitting, and quick reports.
+- Scikit-learn GPR helpers for baseline models and kernel search.
+- GPyTorch exact GPR with ARD kernels, target standardization, and predictive
+  uncertainty.
+- `PhysicsInformedMean` for combining mechanistic equations with learned GP
+  residuals.
+- Plotting and metrics utilities for parity plots, learning curves, PCA, and
+  regression quality checks.
 
 ## Suggested Workflow
 
@@ -15,8 +35,8 @@ The importable package is `genmatics_gpr`.
    train/test sets with `split_train_test`.
 3. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
-4. Train a model with either `build_sklearn_gpr_model` or
-   `train_gpytorch_gpr`.
+4. Train a model with either `build_sklearn_gpr_model`,
+   `fit_gpytorch_gpr`, or `train_gpytorch_gpr`.
 5. Evaluate predictions with `regression_metrics` or
    `train_test_regression_metrics`.
 6. Visualize results with `plot_parity`, `plot_learning_curve`,
@@ -84,10 +104,25 @@ This replaces hard-coded equation-specific mean classes. New physics equations
 can be added in notebooks or scripts without changing the library. The older
 `EquationMeanFunction` name remains available as a compatibility alias.
 
-## Dependencies
+## Installation
 
-Install the dependencies with:
+From a local checkout:
 
 ```bash
 python3 -m pip install -r requirements.txt
+python3 -m pip install -e .
 ```
+
+## Roadmap
+
+- Add five published-paper example workflows for materials-informatics users.
+- Expand documentation with tutorials, API references, and example equations.
+- Add multitask Gaussian-process models.
+- Add additional physics-informed model families.
+- Add Bayesian optimization workflows for selecting the next experiments.
+
+## Project Status
+
+This repository is under active development. The public API is being shaped
+around transparent examples, readable code, and research workflows that other
+materials scientists can adapt.
