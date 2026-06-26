@@ -9,7 +9,8 @@ descriptors and compares:
 
 - one standard GPR baseline,
 - three selected physics-informed GPR models,
-- uncertainty-aware external-test parity plots,
+- repeated low-data 20 percent training / 80 percent test splits,
+- uncertainty-aware external-test parity plots from the fixed 20/80 split,
 - a production model trained on 100 percent of the data,
 - SHAP interpretation for the production model.
 
@@ -56,26 +57,31 @@ alignment, and excited-state descriptors.
 
 ## Model Selection
 
-An initial screening run evaluated candidate PI-GPR means at the 20 percent
-training-data point using a fixed 30 percent external test set. Each candidate
-was trained on 20 random stratified subsets. The three PI-GPR models retained
-for the final notebook were selected by low mean RMSE with small RMSE standard
+An updated low-data screening run evaluated candidate PI-GPR means over 20
+random stratified splits, each with 20 percent of the dataset used for training
+and 80 percent held out for testing. The three PI-GPR models retained for the
+final notebook were selected by low mean RMSE with small RMSE standard
 deviation.
 
 | Retained PI-GPR model | 20 percent RMSE mean | 20 percent RMSE std |
 | --- | ---: | ---: |
-| PI-GPR: degeneracy + binding + transport | 1.4083 | 0.0634 |
-| PI-GPR: all simple physics | 1.4322 | 0.0703 |
-| PI-GPR: degeneracy + binding | 1.4480 | 0.0592 |
+| PI-GPR: degeneracy + binding | 1.3239 | 0.0646 |
+| PI-GPR: degeneracy + binding + transport | 1.3298 | 0.0758 |
+| PI-GPR: degeneracy | 1.3361 | 0.0634 |
+
+For reference, the standard GPR baseline had mean RMSE 1.5229 with standard
+deviation 0.0732 under the same repeated 20/80 protocol. This supports the
+intended low-data demonstration: physically informed mean functions provide a
+better starting point when only a small training set is available.
 
 The final comparison therefore keeps four models:
 
 | Model | Mean function |
 | --- | --- |
 | Standard GPR | learned constant mean |
-| PI-GPR: degeneracy + binding + transport | orbital near-degeneracy, low binding energy, and transport proxies |
-| PI-GPR: all simple physics | all simple physics scores from the screening run |
 | PI-GPR: degeneracy + binding | compact orbital and binding prior |
+| PI-GPR: degeneracy + binding + transport | orbital near-degeneracy, low binding energy, and transport proxies |
+| PI-GPR: degeneracy | orbital near-degeneracy prior |
 
 ## How Physics Enters the Mean Function
 
@@ -117,19 +123,32 @@ The physics scores are:
 s_deg   = (-z(delHD) - z(delLD) - z(delLA)) / 3
 s_bind  = -z(E_bind)
 s_trans = (z(log(N_atom)) + z(log(polarizability)) - z(lamda_h)) / 3
-s_gap   = -abs(z(Eg))
-s_align = (z(AL-DH) + z(DL-AL)) / 2
-s_exc   = (z(delGE) + z(E_T1)) / 2
 ```
 
 The signs are chosen so that larger scores represent physically favorable
 conditions: smaller frontier-orbital gaps, lower exciton binding energy, larger
-conjugation and polarizability, lower hole reorganization energy, and more
-favorable excited-state or alignment proxies.
+conjugation and polarizability, and lower hole reorganization energy.
 
 ## Retained Mean-Function Equations
 
 The three retained PI-GPR models use the following prior means.
+
+### PI-GPR: Degeneracy + Binding
+
+```text
+m_DB(x) = b
+        + w_deg  * s_deg(x)
+        + w_bind * s_bind(x)
+```
+
+Features used:
+
+- `delHD`, `delLD`, `delLA` for frontier-orbital near-degeneracy,
+- `E_bind` for exciton separation.
+
+This is the most compact retained physics prior. It keeps the paper's central
+orbital-degeneracy idea and one charge-separation descriptor while avoiding
+extra terms.
 
 ### PI-GPR: Degeneracy + Binding + Transport
 
@@ -146,41 +165,20 @@ Features used:
 - `E_bind` for exciton separation,
 - `N_atom`, `polarizability`, `lamda_h` for charge-transport proxies.
 
-### PI-GPR: All Simple Physics
+### PI-GPR: Degeneracy
 
 ```text
-m_all(x) = b
-         + w_deg   * s_deg(x)
-         + w_bind  * s_bind(x)
-         + w_trans * s_trans(x)
-         + w_gap   * s_gap(x)
-         + w_align * s_align(x)
-         + w_exc   * s_exc(x)
+m_deg(x) = b
+         + w_deg * s_deg(x)
 ```
 
 Features used:
 
-- all features from `m_DBT`,
-- `Eg` for the optical-gap window score,
-- `AL-DH`, `DL-AL` for donor-acceptor energy alignment,
-- `delGE`, `E_T1` for excited-state response and loss proxies.
+- `delHD`, `delLD`, `delLA` for frontier-orbital near-degeneracy.
 
-### PI-GPR: Degeneracy + Binding
-
-```text
-m_DB(x) = b
-        + w_deg  * s_deg(x)
-        + w_bind * s_bind(x)
-```
-
-Features used:
-
-- `delHD`, `delLD`, `delLA` for frontier-orbital near-degeneracy,
-- `E_bind` for exciton separation.
-
-This is the most compact retained physics prior. It keeps the paper's central
-orbital-degeneracy idea and one charge-separation descriptor while avoiding the
-extra transport and excited-state terms.
+This model isolates the source paper's central physical argument. It asks
+whether orbital near-degeneracy alone is enough to outperform a standard GPR
+mean in the low-data regime.
 
 ## Learned and Fixed Parameters
 
@@ -192,13 +190,11 @@ Learned during each GP fit:
 - `b`: the baseline PCE level in the physics mean,
 - `w_deg`: strength of the near-degeneracy score,
 - `w_bind`: strength of the low-binding-energy score,
-- `w_trans`: strength of the transport score,
-- `w_gap`: strength of the optical-gap score,
-- `w_align`: strength of the energy-alignment score,
-- `w_exc`: strength of the excited-state score.
+- `w_trans`: strength of the transport score.
 
-Only the weights present in a given model are learned. For example, `m_DB`
-learns `b`, `w_deg`, and `w_bind`, while `m_all` learns all listed weights.
+Only the weights present in a given model are learned. For example, `m_deg`
+learns `b` and `w_deg`, while `m_DBT` learns `b`, `w_deg`, `w_bind`, and
+`w_trans`.
 
 The physics weights are constrained positive in the implementation. This keeps
 the sign of each physics score aligned with the intended OPV mechanism. The
@@ -211,7 +207,7 @@ Learned at the same time as the physics parameters:
 - Gaussian likelihood noise.
 
 These parameters are learned on the fly for every learning-curve split, every
-70 percent training-pool fit, and the final 100 percent production fit. They
+20 percent training-pool fit, and the final 100 percent production fit. They
 are optimized jointly by minimizing the negative exact GP marginal log
 likelihood with Adam. The physics equation is therefore not fitted first and
 then frozen; it is part of the probabilistic model.
@@ -231,20 +227,22 @@ statistics or scaling parameters.
 
 The notebook now uses:
 
-- 30 percent of the dataset as an external test set,
-- 70 percent of the dataset as the training pool,
-- training data percentages from 10 to 70 percent of the full dataset,
-- 20 random stratified subsets per training percentage,
+- 20 percent of the dataset as the maximum training pool,
+- 80 percent of the dataset as the external test set,
+- training data percentages of 10 and 20 percent of the full dataset,
+- 20 random stratified 20/80 splits per training percentage,
 - RMSE and R2 learning curves with standard-deviation error bars,
 - Matern ARD kernels and target standardization for every model.
 
-This design focuses on the low-data regime while retaining a clean external
-test set for final uncertainty comparison.
+At the 10 percent point, the model trains on half of each 20 percent training
+split. At the 20 percent point, it trains on the full low-data training split.
+This design intentionally emphasizes the regime where physics-informed priors
+should be most useful.
 
 ## External-Test Parity and Uncertainty
 
-After the learning curve, the four retained models are trained on the full 70
-percent training pool and evaluated on the untouched 30 percent test set. The
+After the learning curve, the four retained models are trained on the fixed 20
+percent training split and evaluated on the fixed 80 percent test set. The
 notebook creates one publication-style 2 by 2 parity figure:
 
 - experimental PCE on the x-axis,
@@ -291,6 +289,7 @@ story:
 - use SHAP to explain the final model.
 
 The strongest claim should come from the learning curves and parity plots after
-the full notebook is run. If a PI-GPR model wins in the 10 to 30 percent data
-regime while maintaining reasonable uncertainty, it provides a clear example of
-why physics-informed GPR is valuable for small experimental materials datasets.
+the full notebook is run. If a PI-GPR model wins with only 10 to 20 percent of
+the data while maintaining reasonable uncertainty, it provides a clear example
+of why physics-informed GPR is valuable for small experimental materials
+datasets.
