@@ -2,19 +2,16 @@
 
 ## Purpose
 
-This report documents the physics-informed Gaussian Process Regression
-(PI-GPR) models used in `opv_gpr_modeling.ipynb` for predicting organic
-photovoltaic (OPV) power conversion efficiency (PCE). The goal is to compare a
-standard data-driven GPR model against GPR models whose mean functions encode
-OPV physics from the source paper:
+This report documents the OPV physics-informed Gaussian Process Regression
+(PI-GPR) example in `opv_gpr_modeling.ipynb`. The notebook predicts organic
+photovoltaic (OPV) power conversion efficiency (PCE) from 13 molecular
+descriptors and compares:
 
-Sahu, Rao, Troisi, and Ma, "Toward Predicting Efficiency of Organic Solar Cells
-via Machine Learning and Improved Descriptors," Advanced Energy Materials,
-2018.
-
-The dataset contains 280 small-molecule OPV systems and 13 quantum-chemical
-descriptors. The notebook predicts experimental `PCE` using a fixed holdout
-test set and learning curves over increasing training-set sizes.
+- one standard GPR baseline,
+- three selected physics-informed GPR models,
+- uncertainty-aware external-test parity plots,
+- a production model trained on 100 percent of the data,
+- SHAP interpretation for the production model.
 
 ## Reference
 
@@ -25,342 +22,275 @@ Energy Materials, 8, 1801032, 2018. DOI:
 
 ## Why Modify the GP Mean Function?
 
-A standard GPR model usually uses a learned constant mean and relies on the
-kernel to discover all structure from data. That is flexible, but inefficient
-when the training set is small.
+A standard GPR model uses a learned constant mean and relies on the covariance
+kernel to discover structure from data. That is flexible, but it can be
+inefficient for small materials datasets.
 
-The physics-informed approach used here keeps the same GP covariance model but
-replaces the constant prior mean with a mechanistic trend:
+The PI-GPR models use the same GP covariance model but replace the constant
+prior mean with a physically motivated trend:
 
 ```text
 PCE = physics-informed mean + GP residual
 ```
 
-The mean function captures a physically motivated first-order expectation for
-PCE. The GP residual then learns deviations from that expectation. This makes
-the model especially useful in the low-data regime, where the kernel has not
-yet seen enough examples to learn the trend on its own.
+The mean function gives the model a chemically meaningful starting point. The
+kernel then learns residual deviations from that physics prior.
 
-## Physical Basis from the Paper
+## Physical Basis
 
-The paper argues that OPV efficiency depends on multiple microscopic processes:
+The source paper emphasizes that OPV efficiency depends on coupled microscopic
+processes:
 
 - photon absorption and exciton formation,
 - exciton diffusion to the donor/acceptor interface,
 - exciton dissociation into free carriers,
 - charge transport,
-- recombination and loss channels.
+- recombination and energetic loss channels.
 
-The most distinctive physical insight is that frontier orbitals beyond only
-HOMO and LUMO can participate in these processes. When the donor HOMO/HOMO-1
-gap, donor LUMO/LUMO+1 gap, or acceptor LUMO/LUMO+1 gap is small, nearby
-orbitals can contribute to exciton formation, exciton dissociation, and charge
-transport. This near-degeneracy motivates the first physics-informed mean.
+The most direct physics prior is frontier-orbital near-degeneracy. Small donor
+HOMO/HOMO-1, donor LUMO/LUMO+1, and acceptor LUMO/LUMO+1 gaps can allow nearby
+orbitals to participate in exciton formation, exciton dissociation, and charge
+transport. The notebook also tests low exciton binding energy, conjugation,
+polarizability, hole reorganization energy, optical gap, donor-acceptor energy
+alignment, and excited-state descriptors.
 
-The paper also motivates using exciton binding energy, conjugation length,
-polarizability, and hole reorganization energy because these descriptors are
-connected to charge separation and carrier transport.
+## Model Selection
 
-## Models Compared
+An initial screening run evaluated candidate PI-GPR means at the 20 percent
+training-data point using a fixed 30 percent external test set. Each candidate
+was trained on 20 random stratified subsets. The three PI-GPR models retained
+for the final notebook were selected by low mean RMSE with small RMSE standard
+deviation.
 
-The notebook compares four models. They use the same GPyTorch exact GPR
-training function, Matern kernel, automatic relevance determination (ARD), and
-target standardization. They differ only in the GP mean function.
+| Retained PI-GPR model | 20 percent RMSE mean | 20 percent RMSE std |
+| --- | ---: | ---: |
+| PI-GPR: degeneracy + binding + transport | 1.4083 | 0.0634 |
+| PI-GPR: all simple physics | 1.4322 | 0.0703 |
+| PI-GPR: degeneracy + binding | 1.4480 | 0.0592 |
 
-### Model 0: Standard GPR
+The final comparison therefore keeps four models:
 
-**Notebook label:** `Standard GPR`
+| Model | Mean function |
+| --- | --- |
+| Standard GPR | learned constant mean |
+| PI-GPR: degeneracy + binding + transport | orbital near-degeneracy, low binding energy, and transport proxies |
+| PI-GPR: all simple physics | all simple physics scores from the screening run |
+| PI-GPR: degeneracy + binding | compact orbital and binding prior |
 
-**Mean function:** learned constant mean.
+## How Physics Enters the Mean Function
 
-**Reason for inclusion:** This is the data-driven baseline. It represents the
-common GPR workflow where all structure is learned from the covariance kernel.
-
-**Implementation:**
-
-```python
-mean_module = None
-result = fit_gpytorch_gpr(..., mean_module=mean_module)
-```
-
-When `mean_module=None`, `fit_gpytorch_gpr` uses a standard constant GPyTorch
-mean internally.
-
-### Model 1: Frontier-Orbital Near-Degeneracy Mean
-
-**Notebook label:** `PI-GPR 1: degeneracy`
-
-**Physics included:**
-
-- donor HOMO/HOMO-1 gap: `delHD`
-- donor LUMO/LUMO+1 gap: `delLD`
-- acceptor LUMO/LUMO+1 gap: `delLA`
-
-**Physical reason:**
-
-Small values of these gaps indicate near-degenerate frontier orbitals. The
-paper connects this near-degeneracy to additional orbital participation in
-exciton formation, exciton dissociation, hole transport, and ultimately higher
-PCE.
-
-**Mean form:**
+For a standard GPR model, the prior mean is only a learned constant:
 
 ```text
-mean_PCE = baseline + w_degeneracy * degeneracy_score
+m_standard(x) = c
+```
+
+The physics-informed models replace this constant prior with a descriptor-based
+mean function:
+
+```text
+y(x) = m_physics(x) + f_residual(x) + noise
 ```
 
 where:
 
-```text
-degeneracy_score = average(-z(delHD), -z(delLD), -z(delLA))
-```
+- `m_physics(x)` is the physics-informed mean in PCE units,
+- `f_residual(x)` is the GP residual learned by the covariance kernel,
+- `noise` is the learned Gaussian observation noise.
 
-Here `z(...)` means a training-set z-score. The negative sign makes the score
-larger when the orbital gaps are smaller, which is physically favorable.
+The GP does not use the physics equation as a separate preprocessing step. The
+equation is part of the GP model through `PhysicsInformedMean`, so the physics
+parameters are optimized during GP training.
 
-**Implementation details:**
+## Physics Scores
 
-- Implemented by `degeneracy_mean_equation`.
-- Wrapped with `PhysicsInformedMean`.
-- `baseline` and `degeneracy_weight` are learnable.
-- `degeneracy_weight` is constrained positive, so the model learns how much to
-  reward near-degeneracy without allowing the direction to flip.
-
-### Model 2: Near-Degeneracy + Exciton Binding Mean
-
-**Notebook label:** `PI-GPR 2: degeneracy + binding`
-
-**Physics included:**
-
-- all terms from Model 1,
-- hole-electron binding energy: `E_bind`.
-
-**Physical reason:**
-
-Lower exciton binding energy should make charge separation easier and reduce
-losses from bound electron-hole pairs. The paper identifies `E_bind` as an
-important descriptor because it estimates the strength of hole-electron
-interaction.
-
-**Mean form:**
+The retained PI-GPR models are built from standardized physics scores. Let
+`z(q)` be the z-score of descriptor `q` using only the active training subset:
 
 ```text
-mean_PCE = baseline
-         + w_degeneracy * degeneracy_score
-         + w_binding * exciton_separation_score
+z(q) = (q - mean_train(q)) / std_train(q)
 ```
 
-where:
+The physics scores are:
 
 ```text
-exciton_separation_score = -z(E_bind)
+s_deg   = (-z(delHD) - z(delLD) - z(delLA)) / 3
+s_bind  = -z(E_bind)
+s_trans = (z(log(N_atom)) + z(log(polarizability)) - z(lamda_h)) / 3
+s_gap   = -abs(z(Eg))
+s_align = (z(AL-DH) + z(DL-AL)) / 2
+s_exc   = (z(delGE) + z(E_T1)) / 2
 ```
 
-The score is larger when `E_bind` is smaller.
+The signs are chosen so that larger scores represent physically favorable
+conditions: smaller frontier-orbital gaps, lower exciton binding energy, larger
+conjugation and polarizability, lower hole reorganization energy, and more
+favorable excited-state or alignment proxies.
 
-**Implementation details:**
+## Retained Mean-Function Equations
 
-- Implemented by `degeneracy_binding_mean_equation`.
-- `baseline`, `degeneracy_weight`, and `binding_weight` are learnable.
-- Both physics weights are positive-constrained.
+The three retained PI-GPR models use the following prior means.
 
-### Model 3: Near-Degeneracy + Binding + Transport Mean
-
-**Notebook label:** `PI-GPR 3: degeneracy + binding + transport`
-
-**Physics included:**
-
-- all terms from Model 2,
-- conjugation length proxy: `N_atom`,
-- donor polarizability: `polarizability`,
-- hole reorganization energy: `lamda_h`.
-
-**Physical reason:**
-
-Charge transport and fill factor are expected to improve when the donor has a
-larger conjugated path and greater polarizability, while lower hole
-reorganization energy should reduce the barrier for hole transport. These
-effects are not a full device-physics model, but they are chemically
-interpretable proxies for transport quality.
-
-**Mean form:**
+### PI-GPR: Degeneracy + Binding + Transport
 
 ```text
-mean_PCE = baseline
-         + w_degeneracy * degeneracy_score
-         + w_binding * exciton_separation_score
-         + w_transport * transport_score
+m_DBT(x) = b
+         + w_deg   * s_deg(x)
+         + w_bind  * s_bind(x)
+         + w_trans * s_trans(x)
 ```
 
-where:
+Features used:
+
+- `delHD`, `delLD`, `delLA` for frontier-orbital near-degeneracy,
+- `E_bind` for exciton separation,
+- `N_atom`, `polarizability`, `lamda_h` for charge-transport proxies.
+
+### PI-GPR: All Simple Physics
 
 ```text
-transport_score = average(
-    z(log(N_atom)),
-    z(log(polarizability)),
-    -z(lamda_h)
-)
+m_all(x) = b
+         + w_deg   * s_deg(x)
+         + w_bind  * s_bind(x)
+         + w_trans * s_trans(x)
+         + w_gap   * s_gap(x)
+         + w_align * s_align(x)
+         + w_exc   * s_exc(x)
 ```
 
-**Implementation details:**
+Features used:
 
-- Implemented by `degeneracy_binding_transport_mean_equation`.
-- `baseline`, `degeneracy_weight`, `binding_weight`, and
-  `transport_weight` are learnable.
-- All physics weights are positive-constrained.
-- The use of `log(N_atom)` and `log(polarizability)` reduces the influence of
-  very large molecules or high-polarizability outliers.
+- all features from `m_DBT`,
+- `Eg` for the optical-gap window score,
+- `AL-DH`, `DL-AL` for donor-acceptor energy alignment,
+- `delGE`, `E_T1` for excited-state response and loss proxies.
 
-## How the Physics Mean Is Implemented
+### PI-GPR: Degeneracy + Binding
 
-The implementation uses the reusable `PhysicsInformedMean` class from
-`matgpr`.
-
-Each physics equation receives two dictionaries:
-
-```python
-def physics_equation(features, parameters):
-    ...
-    return mean_pce
+```text
+m_DB(x) = b
+        + w_deg  * s_deg(x)
+        + w_bind * s_bind(x)
 ```
 
-- `features` maps selected descriptor names to torch tensors.
-- `parameters` maps fixed statistics and learnable parameters to torch tensors.
+Features used:
 
-Important implementation choices:
+- `delHD`, `delLD`, `delLA` for frontier-orbital near-degeneracy,
+- `E_bind` for exciton separation.
 
-- The notebook standardizes all GPR input features with `StandardScaler`.
-- `PhysicsInformedMean` receives the scaler means and standard deviations so
-  the physics equation can work in original descriptor units.
-- Physics scores use training-set means and standard deviations only, avoiding
-  test-set leakage.
-- The GP target is standardized during training, but predictions are returned
-  in original PCE units.
-- The physics mean is trained jointly with GP kernel hyperparameters and noise.
+This is the most compact retained physics prior. It keeps the paper's central
+orbital-degeneracy idea and one charge-separation descriptor while avoiding the
+extra transport and excited-state terms.
 
-This means the physics model is not hard-coded as a separate preprocessing
-step. It is part of the probabilistic GP model.
+## Learned and Fixed Parameters
 
-## Learning-Curve Performance
+The physics-informed mean has both learned parameters and fixed training-set
+statistics.
 
-The notebook was run with:
+Learned during each GP fit:
 
-- fixed 20 percent holdout test set,
-- stratified training subsets from the remaining 224 samples,
-- training fractions: 0.10, 0.20, 0.40, 0.60, 1.00,
-- 2 repeats per training fraction,
-- 80 optimization iterations per GPyTorch fit,
-- Matern ARD kernel for every model.
+- `b`: the baseline PCE level in the physics mean,
+- `w_deg`: strength of the near-degeneracy score,
+- `w_bind`: strength of the low-binding-energy score,
+- `w_trans`: strength of the transport score,
+- `w_gap`: strength of the optical-gap score,
+- `w_align`: strength of the energy-alignment score,
+- `w_exc`: strength of the excited-state score.
 
-### Holdout RMSE
+Only the weights present in a given model are learned. For example, `m_DB`
+learns `b`, `w_deg`, and `w_bind`, while `m_all` learns all listed weights.
 
-Lower RMSE is better.
+The physics weights are constrained positive in the implementation. This keeps
+the sign of each physics score aligned with the intended OPV mechanism. The
+baseline `b` is unconstrained.
 
-| Model | 20 samples | 45 samples | 90 samples | 134 samples | 224 samples |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Standard GPR | 1.706 | 1.450 | 1.352 | 1.252 | 1.095 |
-| PI-GPR 1: degeneracy | 1.593 | 1.395 | 1.291 | 1.295 | 1.169 |
-| PI-GPR 2: degeneracy + binding | 1.526 | 1.365 | 1.251 | 1.227 | 1.169 |
-| PI-GPR 3: degeneracy + binding + transport | 1.518 | 1.353 | 1.280 | 1.172 | 1.157 |
+Learned at the same time as the physics parameters:
 
-### Holdout Pearson Correlation
+- ARD Matern kernel length scales,
+- GP output scale,
+- Gaussian likelihood noise.
 
-Higher Pearson `r` is better.
+These parameters are learned on the fly for every learning-curve split, every
+70 percent training-pool fit, and the final 100 percent production fit. They
+are optimized jointly by minimizing the negative exact GP marginal log
+likelihood with Adam. The physics equation is therefore not fitted first and
+then frozen; it is part of the probabilistic model.
 
-| Model | 20 samples | 45 samples | 90 samples | 134 samples | 224 samples |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Standard GPR | 0.245 | 0.553 | 0.590 | 0.651 | 0.755 |
-| PI-GPR 1: degeneracy | 0.368 | 0.550 | 0.628 | 0.624 | 0.710 |
-| PI-GPR 2: degeneracy + binding | 0.434 | 0.571 | 0.658 | 0.672 | 0.706 |
-| PI-GPR 3: degeneracy + binding + transport | 0.440 | 0.581 | 0.651 | 0.716 | 0.713 |
+Fixed within each fit:
 
-## Performance Interpretation
+- feature means and standard deviations used for each `z(...)` score,
+- `log(N_atom)` and `log(polarizability)` means and standard deviations,
+- input-scaler means and standard deviations used before GP fitting,
+- target mean and standard deviation used for target standardization.
 
-The learning curves show the main value of physics-informed GPR: data
-efficiency.
+These fixed quantities are computed only from the training data available in
+that fit. The external test set is never used to compute physics-score
+statistics or scaling parameters.
 
-At the smallest training size, all physics-informed models outperform the
-standard GPR baseline:
+## Learning-Curve Design
 
-- Standard GPR RMSE: 1.706
-- Best PI-GPR RMSE: 1.518
-- Standard GPR Pearson `r`: 0.245
-- Best PI-GPR Pearson `r`: 0.440
+The notebook now uses:
 
-This is a large improvement in the regime that matters most for materials
-informatics: when only a small number of measured systems are available.
+- 30 percent of the dataset as an external test set,
+- 70 percent of the dataset as the training pool,
+- training data percentages from 10 to 70 percent of the full dataset,
+- 20 random stratified subsets per training percentage,
+- RMSE and R2 learning curves with standard-deviation error bars,
+- Matern ARD kernels and target standardization for every model.
 
-At intermediate training sizes, the physics-informed models remain competitive
-and often better. For example, at 134 samples, the most complex PI-GPR model
-has the best RMSE and Pearson correlation:
+This design focuses on the low-data regime while retaining a clean external
+test set for final uncertainty comparison.
 
-- Standard GPR RMSE: 1.252
-- PI-GPR 3 RMSE: 1.172
-- Standard GPR Pearson `r`: 0.651
-- PI-GPR 3 Pearson `r`: 0.716
+## External-Test Parity and Uncertainty
 
-At the full training size, the standard GPR slightly outperforms the
-physics-informed variants:
+After the learning curve, the four retained models are trained on the full 70
+percent training pool and evaluated on the untouched 30 percent test set. The
+notebook creates one publication-style 2 by 2 parity figure:
 
-- Standard GPR RMSE: 1.095
-- PI-GPR 3 RMSE: 1.157
-- Standard GPR Pearson `r`: 0.755
-- PI-GPR 3 Pearson `r`: 0.713
+- experimental PCE on the x-axis,
+- predicted PCE on the y-axis,
+- GP predictive standard deviation as vertical error bars,
+- RMSE, R2, and Pearson `r` annotated on each subplot.
 
-This does not invalidate the physics-informed approach. Instead, it shows a
-healthy behavior: when the dataset is larger, a flexible standard GP can learn
-much of the trend directly from data. The physics prior is most valuable when
-data are scarce or when interpretability is important.
+The purpose is to compare both accuracy and uncertainty quality across the
+standard and physics-informed models.
 
-## Learned Physics Parameters
+## Production Model
 
-For the full training-pool fit, the most complex model learned positive weights
-for every physics term:
+The notebook selects the best model from the retained four-model comparison
+using the 20 percent training-data RMSE summary. That selected model is then
+refit on 100 percent of the OPV dataset.
 
-| Parameter | Learned value |
-| --- | ---: |
-| `baseline` | 5.410 |
-| `degeneracy_weight` | 1.155 |
-| `binding_weight` | 0.126 |
-| `transport_weight` | 0.364 |
+If the selected model is physics-informed, the production model keeps an
+interpretable prior mean. If standard GPR wins, that is useful evidence that
+the current physics priors should be revised or expanded before claiming a
+physics-informed advantage.
 
-The largest learned physics contribution is the near-degeneracy term, which is
-consistent with the paper's central argument. The transport term is also used,
-while the binding contribution is smaller after near-degeneracy and transport
-are included.
+## SHAP Analysis
 
-These weights should not be interpreted as causal coefficients. They are
-diagnostics showing how the GP prior mean used each physically motivated score.
+The notebook computes SHAP values for the production model using a
+model-agnostic permutation explainer. The SHAP section provides:
 
-## Conclusion: Why Use Physics-Informed GPR?
+- a top-feature table,
+- a mean absolute SHAP bar plot,
+- dependence-style plots for the strongest features,
+- a SHAP summary plot showing feature value and prediction impact.
 
-Physics-informed GPR should be used here because it gives the model a
-scientifically meaningful starting point. For OPV PCE prediction, the prior
-mean can encode mechanisms that are known before fitting:
+The goal is to identify which descriptors drive the production model and
+whether their impacts agree with OPV intuition.
 
-- near-degenerate frontier orbitals can improve exciton formation,
-  dissociation, and charge transport,
-- lower exciton binding energy can help charge separation,
-- conjugation, polarizability, and hole reorganization energy can influence
-  transport.
+## Conclusion
 
-Compared with standard GPR, the physics-informed models are more data-efficient
-and more interpretable. They give better learning-curve performance when the
-training set is small, which is the typical situation in experimental materials
-informatics. They also make the model easier to explain to domain scientists,
-because part of the prediction comes from explicit OPV physics rather than only
-from a black-box covariance fit.
+This OPV example is designed to support a defensible materials-informatics
+story:
 
-The practical recommendation is:
+- compare standard GPR against physics-informed GPR under the same kernel,
+- select PI-GPR candidates from repeated low-data RMSE results,
+- evaluate uncertainty on a true external test set,
+- train the final production model on all available data,
+- use SHAP to explain the final model.
 
-- use standard GPR as a strong baseline,
-- use physics-informed GPR when training data are limited,
-- compare several physics-informed means of increasing complexity,
-- keep the physics prior only if it improves learning curves or provides useful
-  scientific interpretability.
-
-For this OPV example, the strongest story is not that physics-informed GPR
-always beats standard GPR. The stronger and more defensible conclusion is that
-physics-informed GPR substantially improves the low-data regime and provides a
-mechanistically interpretable model, which is exactly where materials
-informatics needs help most.
+The strongest claim should come from the learning curves and parity plots after
+the full notebook is run. If a PI-GPR model wins in the 10 to 30 percent data
+regime while maintaining reasonable uncertainty, it provides a clear example of
+why physics-informed GPR is valuable for small experimental materials datasets.

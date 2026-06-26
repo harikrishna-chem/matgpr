@@ -1,0 +1,17 @@
+name: matgpr
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - ipykernel
+  - jupyterlab
+  - joblib
+  - matplotlib
+  - numpy
+  - pandas
+  - pytorch
+  - gpytorch
+  - scikit-learn
+  - scipy
+  - shap
