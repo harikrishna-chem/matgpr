@@ -11,6 +11,8 @@ and compares:
 - PI-GPR with a frontier-orbital degeneracy mean,
 - PI-GPR with a frontier-orbital degeneracy plus exciton-binding mean,
 - a low-data parity plot with predictive uncertainty,
+- 90/10 train-test validation with 10-fold cross-validation on the 90 percent
+  training set,
 - a production model trained on 100 percent of the data,
 - SHAP interpretation for the production model.
 
@@ -200,6 +202,28 @@ Each parity panel shows:
 
 The purpose is to make the low-data contrast visually clear while using the
 learning curves as the full 10 to 70 percent performance comparison.
+
+## 90/10 Validation With 10-Fold Cross-Validation
+
+Before fitting the final production model, the notebook performs one additional
+validation step using the selected best model from the learning-curve summary.
+
+The workflow is:
+
+- split the full dataset into 90 percent training and 10 percent test data,
+- run 10-fold cross-validation on the 90 percent training set,
+- summarize cross-validation RMSE, R2, MAE, and Pearson `r`,
+- refit the selected model on the full 90 percent training set,
+- generate train and test parity predictions with GP uncertainty error bars.
+
+The figure has two panels:
+
+- left: cross-validation statistics reported as mean and standard deviation,
+- right: parity plot for the 90 percent training set and 10 percent held-out
+  test set, with predictive uncertainty shown as vertical error bars.
+
+This analysis gives a more conventional model-validation view before the final
+production fit uses all available OPV data.
 
 ## Production Model And SHAP
 
