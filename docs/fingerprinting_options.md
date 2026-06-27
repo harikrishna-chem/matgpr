@@ -63,13 +63,18 @@ Recommended options:
 Current `matgpr` implementation:
 
 ```python
-from matgpr import append_composition_fingerprints
+from matgpr import CompositionFeaturizer, append_composition_fingerprints
 
 model_data = append_composition_fingerprints(
     data,
     formula_column="composition",
     errors="coerce",
 ).dropna().reset_index(drop=True)
+
+composition_features = CompositionFeaturizer(
+    formula_column="composition",
+    errors="coerce",
+).fit_transform(data)
 ```
 
 Best default for early GPR examples:
@@ -134,7 +139,7 @@ Recommended options:
 Current `matgpr` implementation:
 
 ```python
-from matgpr import featurize_smiles
+from matgpr import SmilesFeaturizer, featurize_smiles
 
 result = featurize_smiles(
     data["solvent_smiles"],
@@ -144,6 +149,14 @@ result = featurize_smiles(
     column_prefix="solvent",
     errors="coerce",
 )
+
+solvent_features = SmilesFeaturizer(
+    smiles_column="solvent_smiles",
+    fingerprint_type="morgan+descriptors",
+    n_bits=256,
+    column_prefix="solvent",
+    errors="coerce",
+).fit_transform(data)
 ```
 
 Best default:
@@ -170,7 +183,7 @@ Current `matgpr` polymer handling:
 Example:
 
 ```python
-from matgpr import canonicalize_polymer_smiles, featurize_smiles
+from matgpr import PolymerSmilesFeaturizer, canonicalize_polymer_smiles, featurize_smiles
 
 canonical = canonicalize_polymer_smiles("[*]CC[*]")
 print(canonical)  # C1CCCCC1
@@ -183,6 +196,14 @@ polymer_result = featurize_smiles(
     column_prefix="polymer",
     errors="coerce",
 )
+
+polymer_features = PolymerSmilesFeaturizer(
+    smiles_column="polymer_smiles",
+    fingerprint_type="morgan+descriptors",
+    n_bits=256,
+    column_prefix="polymer",
+    errors="coerce",
+).fit_transform(data)
 ```
 
 Recommended polymer workflow:
@@ -232,6 +253,9 @@ Already implemented:
 - `fingerprint_smiles`
 - `featurize_smiles`
 - `append_smiles_features`
+- `CompositionFeaturizer`
+- `SmilesFeaturizer`
+- `PolymerSmilesFeaturizer`
 
 ### Near-Term Additions
 

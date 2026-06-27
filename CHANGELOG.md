@@ -20,6 +20,8 @@ semantic-versioning conventions once the first public release is tagged.
   polymer SMILES.
 - Scikit-learn-style `MatGPRRegressor` and `PhysicsInformedGPRRegressor`
   estimator classes.
+- Scikit-learn-style `CompositionFeaturizer`, `SmilesFeaturizer`, and
+  `PolymerSmilesFeaturizer` transformer classes.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.

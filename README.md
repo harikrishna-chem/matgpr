@@ -33,13 +33,15 @@ physics-informed mean functions and uncertainty-aware prediction.
    `filter_iqr_outliers`.
 2. Separate the target from features with `separate_features_target`, then make
    train/test sets with `split_train_test`.
-3. Identify column types with `identify_feature_types` and build a transformer
+3. Add materials descriptors with `CompositionFeaturizer`, `SmilesFeaturizer`,
+   `PolymerSmilesFeaturizer`, or the lower-level fingerprint helpers.
+4. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
-4. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+5. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-5. Evaluate predictions with `regression_metrics` or
+6. Evaluate predictions with `regression_metrics` or
    `train_test_regression_metrics`.
-6. Visualize results with `plot_parity`, `plot_learning_curve`,
+7. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
 ## Documentation
@@ -59,6 +61,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
 | `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
+| `matgpr.featurizers` | `CompositionFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |

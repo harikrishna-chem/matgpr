@@ -10,6 +10,7 @@ from .data_cleaning import (
 )
 from .data_splitting import separate_features_target, split_train_test
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
+from .featurizers import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .metrics import regression_metrics, train_test_regression_metrics
 from .inorganic_fingerprints import (
@@ -75,8 +76,11 @@ __all__ = [
     "PhysicsInformedMean",
     "PhysicsInformedGPRRegressor",
     "CompositionFingerprintResult",
+    "CompositionFeaturizer",
     "DEFAULT_RDKIT_DESCRIPTORS",
+    "PolymerSmilesFeaturizer",
     "SmilesFingerprintResult",
+    "SmilesFeaturizer",
     "append_composition_fingerprints",
     "append_smiles_features",
     "build_preprocessor",

@@ -38,6 +38,9 @@ from matgpr import (
     impute_missing_values,
     summarize_missingness,
     summarize_numeric_columns,
+    CompositionFeaturizer,
+    SmilesFeaturizer,
+    PolymerSmilesFeaturizer,
     separate_features_target,
     split_train_test,
     identify_feature_types,
@@ -125,6 +128,21 @@ Useful functions:
 | `featurize_compositions(formulas, errors="raise")` | Featurizes many formulas and returns features plus failed rows. |
 | `append_composition_fingerprints(data, formula_column="composition")` | Appends descriptors to an existing dataframe. |
 
+For scikit-learn-style workflows, use `CompositionFeaturizer`:
+
+```python
+from matgpr import CompositionFeaturizer
+
+composition_featurizer = CompositionFeaturizer(
+    formula_column="composition",
+    errors="coerce",
+)
+
+composition_features = composition_featurizer.fit_transform(data)
+failed_formulas = composition_featurizer.failed_
+feature_names = composition_featurizer.get_feature_names_out()
+```
+
 ### 3.2 Molecule and Polymer Fingerprints
 
 For organic molecules and polymers, `matgpr` uses RDKit.
@@ -195,6 +213,29 @@ Useful functions:
 | `fingerprint_smiles(smiles, smiles_type="molecule")` | Featurizes one SMILES string. |
 | `featurize_smiles(smiles_values, errors="raise")` | Featurizes many SMILES strings and records failures. |
 | `append_smiles_features(data, smiles_column=...)` | Appends RDKit features to an existing dataframe. |
+
+For scikit-learn-style workflows:
+
+```python
+from matgpr import PolymerSmilesFeaturizer, SmilesFeaturizer
+
+polymer_featurizer = PolymerSmilesFeaturizer(
+    smiles_column="polymer_smiles",
+    fingerprint_type="morgan+descriptors",
+    n_bits=256,
+    errors="coerce",
+)
+polymer_features = polymer_featurizer.fit_transform(data)
+
+solvent_featurizer = SmilesFeaturizer(
+    smiles_column="solvent_smiles",
+    fingerprint_type="descriptors",
+)
+solvent_features = solvent_featurizer.fit_transform(data)
+```
+
+`SmilesFeaturizer` and `PolymerSmilesFeaturizer` store the most recent
+canonical SMILES in `canonical_smiles_` and failed rows in `failed_`.
 
 ## 4. Prepare Features and Targets
 
