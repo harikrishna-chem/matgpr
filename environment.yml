@@ -8,6 +8,8 @@ dependencies:
   - jupyterlab
   - joblib
   - matplotlib
+  - matminer
+  - mendeleev
   - numpy
   - pandas
   - pymatgen

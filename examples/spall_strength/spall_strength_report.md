@@ -65,10 +65,18 @@ else: use brittle proxy
 
 ## Learning Curve Protocol
 
-- Training pool/test split is repeated 20 times.
-- Training pool usage is varied from 10 percent to 100 percent in 10 percent steps.
-- Each point reports mean and standard deviation across the 20 splits.
+- Training pool/test split is repeated 10 times to keep the exact-GPR benchmark practical.
+- Training pool usage is varied from 10 percent to 100 percent using `[10, 30, 50, 70, 90, 100]`.
+- Each point reports mean and standard deviation across the 10 splits.
 - Metrics: RMSE, R2, MAE, and Pearson r.
+
+## 90/10 Validation And SHAP
+
+- After low-data model selection, the selected model is evaluated on a 90/10 train-test split.
+- The 90 percent training partition is evaluated with 10-fold cross-validation.
+- The validation figure reports cross-validation statistics on the left and train/test parity with uncertainty bars on the right.
+- The production model is then refit on 100 percent of the filtered data.
+- Permutation SHAP is applied to the production model to identify which mechanical-property features drive predicted spall strength.
 
 ## Notes
 

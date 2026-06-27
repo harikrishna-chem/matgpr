@@ -12,6 +12,8 @@ dependencies = [
     "gpytorch",
     "joblib",
     "matplotlib",
+    "matminer",
+    "mendeleev",
     "numpy",
     "pandas",
     "pymatgen",
@@ -24,6 +26,26 @@ dependencies = [
 [project.optional-dependencies]
 examples = [
     "shap",
+]
+structures = [
+    "ase",
+    "dscribe",
+]
+molecular-extra = [
+    "mordredcommunity",
+]
+jarvis = [
+    "jarvis-tools",
+]
+deep = [
+    "deepchem",
+]
+all-fingerprints = [
+    "ase",
+    "deepchem",
+    "dscribe",
+    "jarvis-tools",
+    "mordredcommunity",
 ]
 
 [tool.setuptools.packages.find]

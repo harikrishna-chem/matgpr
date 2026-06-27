@@ -48,6 +48,9 @@ physics-informed mean functions and uncertainty-aware prediction.
   data, generating materials fingerprints, training standard and
   physics-informed GPR models, introducing custom physics equations, analyzing
   model performance, and saving artifacts.
+- `docs/fingerprinting_options.md` explains available fingerprinting backends,
+  when to use each option, which dependencies are core versus optional, and how
+  to implement them in `matgpr` workflows.
 
 ## Module Map
 

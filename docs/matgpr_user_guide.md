@@ -91,6 +91,9 @@ real high-performing materials, not data errors.
 
 ## 3. Materials Fingerprints
 
+For a detailed decision guide across composition, molecular, polymer, crystal,
+and atomistic fingerprints, see `docs/fingerprinting_options.md`.
+
 ### 3.1 Inorganic Composition Fingerprints
 
 For inorganic formulas, `matgpr` uses `pymatgen` to parse compositions and
@@ -609,7 +612,68 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 7.4 PCA
+### 7.4 90/10 Validation With 10-Fold Cross-Validation
+
+After selecting the best model family from learning curves, use a conventional
+validation protocol before fitting the final production model:
+
+1. Split the full dataset into 90 percent training and 10 percent held-out test.
+2. Run 10-fold cross-validation inside the 90 percent training partition.
+3. Refit the selected model on the full 90 percent training partition.
+4. Plot cross-validation statistics on the left and train/test parity with
+   uncertainty bars on the right.
+
+The exact fitting function depends on the notebook, but the structure should
+look like this:
+
+```python
+from sklearn.model_selection import StratifiedKFold, train_test_split
+
+N_CV_SPLITS = 10
+
+validation_train, validation_test = train_test_split(
+    model_data,
+    test_size=0.10,
+    random_state=42,
+    stratify=target_strata(model_data, TARGET_COLUMN),
+)
+
+cv = StratifiedKFold(n_splits=N_CV_SPLITS, shuffle=True, random_state=43)
+cv_records = []
+
+for fold, (train_idx, val_idx) in enumerate(cv.split(validation_train, target_strata(validation_train, TARGET_COLUMN)), start=1):
+    fold_train = validation_train.iloc[train_idx].reset_index(drop=True)
+    fold_val = validation_train.iloc[val_idx].reset_index(drop=True)
+
+    fitted = fit_model(best_model_key, fold_train)
+    train_pred = predict_model(fitted, fold_train)
+    val_pred = predict_model(fitted, fold_val)
+
+    cv_records.append({"fold": fold, "split": "CV train", **regression_summary(fold_train[TARGET_COLUMN], train_pred.mean)})
+    cv_records.append({"fold": fold, "split": "CV validation", **regression_summary(fold_val[TARGET_COLUMN], val_pred.mean)})
+
+cv_results = pd.DataFrame(cv_records)
+cv_summary = (
+    cv_results
+    .groupby("split")
+    .agg(
+        rmse_mean=("rmse", "mean"),
+        rmse_std=("rmse", "std"),
+        r2_mean=("r2", "mean"),
+        r2_std=("r2", "std"),
+        mae_mean=("mae", "mean"),
+        mae_std=("mae", "std"),
+        r_mean=("r", "mean"),
+        r_std=("r", "std"),
+    )
+    .reset_index()
+)
+```
+
+For small datasets, make sure each stratification bin has enough samples for
+10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
+
+### 7.5 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -622,23 +686,46 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 7.5 Optional SHAP-Style Feature Analysis
+### 7.6 SHAP Analysis
 
-`matgpr` does not require SHAP, but users can apply SHAP to a fitted model by
-wrapping the prediction call. This is most practical with a moderate number of
-features or after selecting top descriptors.
+`matgpr` does not require SHAP internally, but the example notebooks use SHAP
+for production-model interpretation. For compact tabular datasets, run SHAP on
+all selected model features. For large fingerprint datasets, use a tractable
+candidate set such as physics features, descriptor columns, and the most
+target-correlated fingerprint bits.
 
 ```python
 import shap
 
-def predict_for_shap(X_array):
-    return result.predict(X_array, return_std=False).mean
+selected_feature_columns = feature_columns
+SHAP_FEATURES = selected_feature_columns[:30]
+reference_values = model_data[feature_columns].median(numeric_only=True)
+shap_background = shap.sample(model_data[SHAP_FEATURES], 40, random_state=42)
+shap_explain = shap.sample(model_data[SHAP_FEATURES], 60, random_state=43)
 
-background = X_train_scaled[:100]
-explain = X_test_scaled[:50]
+def predict_for_shap(shap_frame):
+    shap_frame = pd.DataFrame(shap_frame, columns=SHAP_FEATURES)
+    full_frame = pd.DataFrame(
+        np.repeat(reference_values.to_numpy()[None, :], len(shap_frame), axis=0),
+        columns=feature_columns,
+    )
+    full_frame.loc[:, SHAP_FEATURES] = shap_frame.to_numpy()
+    X_scaled = scaler.transform(full_frame[feature_columns])
+    return result.predict(X_scaled, return_std=False).mean
 
-explainer = shap.KernelExplainer(predict_for_shap, background)
-shap_values = explainer.shap_values(explain)
+explainer = shap.PermutationExplainer(predict_for_shap, shap_background)
+shap_values = explainer(
+    shap_explain,
+    max_evals=2 * len(SHAP_FEATURES) + 1,
+    batch_size=16,
+)
+
+shap_importance = pd.DataFrame(
+    {
+        "feature": SHAP_FEATURES,
+        "mean_abs_shap": np.abs(shap_values.values).mean(axis=0),
+    }
+).sort_values("mean_abs_shap", ascending=False)
 ```
 
 For GPR, SHAP can be computationally expensive. For publication workflows,

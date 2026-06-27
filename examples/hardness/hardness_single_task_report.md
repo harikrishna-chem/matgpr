@@ -46,8 +46,10 @@ H(load) = H_floor + A / sqrt(load + P0)
 - Hold out 30 percent of the dataset for learning-curve evaluation.
 - Plot RMSE and R2 from 10 percent to 70 percent training data.
 - Select the best low-data model at 20 percent training data.
-- Run a 90/10 validation split with 5-fold cross-validation on the 90 percent training partition.
+- Run a 90/10 validation split with 10-fold cross-validation on the 90 percent training partition.
+- Show cross-validation statistics on the left and 90/10 train/test parity with uncertainty bars on the right.
 - Fit a production model on 100 percent of experimental data after validation.
+- Run permutation SHAP on the production model to identify the load and composition descriptors driving hardness predictions.
 
 ## Next Step
 
