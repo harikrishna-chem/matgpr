@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a new model, descriptor, workflow, or package capability.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What materials-informatics workflow should this enable?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the API, example, or workflow you want.
+    validations:
+      required: true
+  - type: textarea
+    id: physics
+    attributes:
+      label: Physics or scientific rationale
+      description: Include equations, references, or assumptions when relevant.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: validation
+    attributes:
+      label: Suggested validation
+      description: Datasets, metrics, or examples that should verify the feature.

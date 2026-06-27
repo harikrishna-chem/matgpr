@@ -24,6 +24,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = [
+    "build",
+    "ipykernel",
+    "nbconvert",
+    "nbformat",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "twine",
+]
 examples = [
     "shap",
 ]
@@ -50,3 +60,28 @@ all-fingerprints = [
 
 [tool.setuptools.packages.find]
 include = ["matgpr*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+extend-exclude = [
+    "examples",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+]
+ignore = [
+    "E402",
+    "E501",
+]

@@ -123,6 +123,28 @@ python3 -m pip install -r requirements.txt
 python3 -m pip install -e .
 ```
 
+For development:
+
+```bash
+python3 -m pip install -e ".[dev,examples]"
+python3 -m ruff check matgpr tests scripts
+python3 -m pytest
+python3 -m build
+```
+
+## Citation
+
+If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
+Individual examples should also cite the original papers and datasets listed in
+their reports.
+
+## Contributing
+
+See `CONTRIBUTING.md` for development setup, contribution expectations, and the
+current licensing status. A final public `LICENSE` file has not been added yet
+because the academic/commercial licensing model is still being decided; see
+`docs/license_strategy.md`.
+
 ## Examples
 
 The first worked example is available in `examples/opv`:

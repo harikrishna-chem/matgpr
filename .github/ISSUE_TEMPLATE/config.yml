@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Licensing and commercial use
+    url: https://github.com/harikrishna-chem/matgpr
+    about: Open an issue or contact the maintainer before commercial use.

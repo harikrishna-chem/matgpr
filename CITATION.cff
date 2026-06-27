@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use matgpr in a publication, please cite the package."
+title: "matgpr: Physics-informed Gaussian Process Regression for materials informatics"
+authors:
+  - family-names: "Sahu"
+    given-names: "Harikrishna"
+repository-code: "https://github.com/harikrishna-chem/matgpr"
+url: "https://github.com/harikrishna-chem/matgpr"
+version: "0.1.0"
+date-released: "2026-06-27"
+abstract: >
+  matgpr is a materials-informatics toolkit for Gaussian Process Regression,
+  uncertainty-aware prediction, materials fingerprinting, and physics-informed
+  mean functions.
+keywords:
+  - materials informatics
+  - Gaussian Process Regression
+  - physics-informed machine learning
+  - Bayesian optimization
+  - uncertainty quantification
+license: "LicenseRef-Proprietary-Source-Available"
