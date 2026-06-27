@@ -10,6 +10,8 @@ dependencies:
   - matplotlib
   - numpy
   - pandas
+  - pymatgen
+  - rdkit
   - pytorch
   - gpytorch
   - scikit-learn

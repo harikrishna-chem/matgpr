@@ -42,6 +42,13 @@ physics-informed mean functions and uncertainty-aware prediction.
 6. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
+## Documentation
+
+- `docs/matgpr_user_guide.md` provides a practical user guide for cleaning
+  data, generating materials fingerprints, training standard and
+  physics-informed GPR models, introducing custom physics equations, analyzing
+  model performance, and saving artifacts.
+
 ## Module Map
 
 | Module | Main functions/classes | Purpose |

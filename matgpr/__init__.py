@@ -11,6 +11,22 @@ from .data_cleaning import (
 from .data_splitting import separate_features_target, split_train_test
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .metrics import regression_metrics, train_test_regression_metrics
+from .inorganic_fingerprints import (
+    CompositionFingerprintResult,
+    append_composition_fingerprints,
+    clean_formula,
+    composition_fingerprint,
+    featurize_compositions,
+)
+from .organic_fingerprints import (
+    DEFAULT_RDKIT_DESCRIPTORS,
+    SmilesFingerprintResult,
+    append_smiles_features,
+    canonicalize_molecule_smiles,
+    canonicalize_polymer_smiles,
+    featurize_smiles,
+    fingerprint_smiles,
+)
 from .pca import fit_pca, summarize_pca, transform_pca
 from .preprocessing import build_preprocessor, build_scaler, identify_feature_types
 from .reporting import summarize_missingness, summarize_numeric_columns
@@ -55,14 +71,26 @@ __all__ = [
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
     "PhysicsInformedMean",
+    "CompositionFingerprintResult",
+    "DEFAULT_RDKIT_DESCRIPTORS",
+    "SmilesFingerprintResult",
+    "append_composition_fingerprints",
+    "append_smiles_features",
     "build_preprocessor",
     "build_scaler",
     "build_sklearn_gpr_grid_search",
     "build_sklearn_gpr_kernel",
     "build_sklearn_gpr_model",
+    "canonicalize_molecule_smiles",
+    "canonicalize_polymer_smiles",
+    "clean_formula",
+    "composition_fingerprint",
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",
+    "featurize_compositions",
+    "featurize_smiles",
     "filter_iqr_outliers",
+    "fingerprint_smiles",
     "fit_gpytorch_gpr",
     "fit_pca",
     "identify_feature_types",

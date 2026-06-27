@@ -27,6 +27,7 @@ env/
 ENV/
 .env
 .env.*
+AGENTS.md
 
 # Jupyter and notebook scratch files
 .ipynb_checkpoints/

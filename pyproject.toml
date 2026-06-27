@@ -14,6 +14,8 @@ dependencies = [
     "matplotlib",
     "numpy",
     "pandas",
+    "pymatgen",
+    "rdkit",
     "scikit-learn",
     "scipy",
     "torch",
