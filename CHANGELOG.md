@@ -22,6 +22,8 @@ semantic-versioning conventions once the first public release is tagged.
   estimator classes.
 - Scikit-learn-style `CompositionFeaturizer`, `SmilesFeaturizer`, and
   `PolymerSmilesFeaturizer` transformer classes.
+- Deterministic row-level fingerprint caching with cache keys, cache-hit
+  reports, and cache keys in failed-row reports.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.

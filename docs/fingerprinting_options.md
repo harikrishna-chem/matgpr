@@ -74,8 +74,14 @@ model_data = append_composition_fingerprints(
 composition_features = CompositionFeaturizer(
     formula_column="composition",
     errors="coerce",
+    cache_dir="fingerprint_cache",
 ).fit_transform(data)
 ```
+
+Use `cache_dir` for repeated notebooks or cross-validation workflows. Cache
+keys are deterministic hashes of the input value and featurization settings.
+Failed-row reports include those keys so problematic rows can be traced across
+runs.
 
 Best default for early GPR examples:
 
@@ -156,6 +162,7 @@ solvent_features = SmilesFeaturizer(
     n_bits=256,
     column_prefix="solvent",
     errors="coerce",
+    cache_dir="fingerprint_cache",
 ).fit_transform(data)
 ```
 
@@ -203,6 +210,7 @@ polymer_features = PolymerSmilesFeaturizer(
     n_bits=256,
     column_prefix="polymer",
     errors="coerce",
+    cache_dir="fingerprint_cache",
 ).fit_transform(data)
 ```
 
@@ -256,6 +264,7 @@ Already implemented:
 - `CompositionFeaturizer`
 - `SmilesFeaturizer`
 - `PolymerSmilesFeaturizer`
+- deterministic fingerprint cache keys through `fingerprint_cache_key`
 
 ### Near-Term Additions
 

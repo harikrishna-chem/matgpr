@@ -11,6 +11,7 @@ from .data_cleaning import (
 from .data_splitting import separate_features_target, split_train_test
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
 from .featurizers import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer
+from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .metrics import regression_metrics, train_test_regression_metrics
 from .inorganic_fingerprints import (
@@ -78,6 +79,7 @@ __all__ = [
     "CompositionFingerprintResult",
     "CompositionFeaturizer",
     "DEFAULT_RDKIT_DESCRIPTORS",
+    "FINGERPRINT_CACHE_SCHEMA_VERSION",
     "PolymerSmilesFeaturizer",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
@@ -98,6 +100,7 @@ __all__ = [
     "featurize_smiles",
     "filter_iqr_outliers",
     "fingerprint_smiles",
+    "fingerprint_cache_key",
     "fit_gpytorch_gpr",
     "fit_pca",
     "identify_feature_types",

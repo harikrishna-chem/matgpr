@@ -3,9 +3,16 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from .fingerprint_cache import (
+    fingerprint_cache_key,
+    read_fingerprint_cache_record,
+    write_fingerprint_cache_record,
+)
 
 DEFAULT_ELEMENTAL_PROPERTIES: tuple[str, ...] = (
     "atomic_number",
@@ -43,10 +50,16 @@ class CompositionFingerprintResult:
     failed
         Formulas that could not be parsed or featurized. Empty when
         ``errors="raise"`` and no exception was raised.
+    cache_keys
+        Deterministic cache keys for each input row.
+    cache_hit
+        Boolean flags indicating whether each row was loaded from cache.
     """
 
     features: pd.DataFrame
     failed: pd.DataFrame
+    cache_keys: pd.Series | None = None
+    cache_hit: pd.Series | None = None
 
 
 def clean_formula(formula: object) -> str:
@@ -109,6 +122,7 @@ def featurize_compositions(
     properties: Sequence[str] = DEFAULT_ELEMENTAL_PROPERTIES,
     statistics: Sequence[str] = DEFAULT_COMPOSITION_STATISTICS,
     errors: str = "raise",
+    cache_dir: str | Path | None = None,
 ) -> CompositionFingerprintResult:
     """Featurize a sequence of inorganic formulas.
 
@@ -121,32 +135,79 @@ def featurize_compositions(
     errors
         ``"raise"`` stops at the first invalid formula. ``"coerce"`` returns
         rows filled with ``NaN`` and records failures in ``failed``.
+    cache_dir
+        Optional directory for persistent row-level JSON cache files. Cache keys
+        are deterministic hashes of the normalized formula and descriptor
+        settings.
     """
     if errors not in {"raise", "coerce"}:
         raise ValueError("errors must be either 'raise' or 'coerce'")
 
     rows: list[Mapping[str, float]] = []
     failures: list[dict[str, object]] = []
+    cache_keys: list[str] = []
+    cache_hits: list[bool] = []
     feature_names = [f"{property_name}_{statistic}" for property_name in properties for statistic in statistics]
+    cache_parameters = {
+        "properties": list(properties),
+        "statistics": list(statistics),
+    }
 
     for index, formula in enumerate(formulas):
+        normalized_formula = clean_formula(formula)
+        cache_key = fingerprint_cache_key(
+            namespace="composition",
+            value=normalized_formula,
+            parameters=cache_parameters,
+        )
+        cache_keys.append(cache_key)
+
         try:
-            rows.append(
-                composition_fingerprint(
-                    formula,
-                    properties=properties,
-                    statistics=statistics,
-                )
+            cached_features = _read_cached_feature_row(
+                cache_dir,
+                namespace="composition",
+                cache_key=cache_key,
+                feature_names=feature_names,
+            )
+            if cached_features is not None:
+                rows.append(cached_features)
+                cache_hits.append(True)
+                continue
+
+            features = composition_fingerprint(
+                formula,
+                properties=properties,
+                statistics=statistics,
+            )
+            rows.append(features)
+            cache_hits.append(False)
+            _write_cached_feature_row(
+                cache_dir,
+                namespace="composition",
+                cache_key=cache_key,
+                input_value=normalized_formula,
+                features=features,
+                metadata=cache_parameters,
             )
         except Exception as exc:
             if errors == "raise":
                 raise ValueError(f"Could not featurize formula at position {index}: {formula!r}") from exc
-            failures.append({"index": index, "formula": formula, "error": str(exc)})
+            failures.append(
+                {
+                    "index": index,
+                    "formula": formula,
+                    "cache_key": cache_key,
+                    "error": str(exc),
+                }
+            )
             rows.append({name: np.nan for name in feature_names})
+            cache_hits.append(False)
 
     return CompositionFingerprintResult(
         features=pd.DataFrame(rows, columns=feature_names),
-        failed=pd.DataFrame(failures, columns=["index", "formula", "error"]),
+        failed=pd.DataFrame(failures, columns=["index", "formula", "cache_key", "error"]),
+        cache_keys=pd.Series(cache_keys, name="composition_cache_key"),
+        cache_hit=pd.Series(cache_hits, name="composition_cache_hit"),
     )
 
 
@@ -156,6 +217,7 @@ def append_composition_fingerprints(
     formula_column: str = "composition",
     drop_formula_column: bool = False,
     errors: str = "raise",
+    cache_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """Append inorganic composition descriptors to a dataframe.
 
@@ -165,10 +227,55 @@ def append_composition_fingerprints(
     if formula_column not in data.columns:
         raise KeyError(f"Formula column '{formula_column}' not found")
 
-    result = featurize_compositions(data[formula_column], errors=errors)
+    result = featurize_compositions(data[formula_column], errors=errors, cache_dir=cache_dir)
     features = result.features.set_index(data.index)
     base = data.drop(columns=[formula_column]) if drop_formula_column else data.copy()
     return pd.concat([base, features], axis=1)
+
+
+def _read_cached_feature_row(
+    cache_dir: str | Path | None,
+    *,
+    namespace: str,
+    cache_key: str,
+    feature_names: Sequence[str],
+) -> dict[str, float] | None:
+    record = read_fingerprint_cache_record(cache_dir, namespace=namespace, cache_key=cache_key)
+    if record is None:
+        return None
+    features = record.get("features")
+    if not isinstance(features, Mapping):
+        return None
+    if any(name not in features for name in feature_names):
+        return None
+    return {name: _cached_float(features[name]) for name in feature_names}
+
+
+def _write_cached_feature_row(
+    cache_dir: str | Path | None,
+    *,
+    namespace: str,
+    cache_key: str,
+    input_value: object,
+    features: Mapping[str, float],
+    metadata: Mapping[str, object],
+) -> None:
+    write_fingerprint_cache_record(
+        cache_dir,
+        namespace=namespace,
+        cache_key=cache_key,
+        record={
+            "input": input_value,
+            "features": dict(features),
+            "metadata": dict(metadata),
+        },
+    )
+
+
+def _cached_float(value: object) -> float:
+    if value is None:
+        return np.nan
+    return float(value)
 
 
 def _parse_composition(formula: object):

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+from .fingerprint_cache import (
+    fingerprint_cache_key,
+    read_fingerprint_cache_record,
+    write_fingerprint_cache_record,
+)
 
 DEFAULT_RDKIT_DESCRIPTORS: tuple[str, ...] = (
     "MolWt",
@@ -34,11 +41,17 @@ class SmilesFingerprintResult:
     failed
         Rows that could not be parsed or featurized. Empty when
         ``errors="raise"`` and no exception was raised.
+    cache_keys
+        Deterministic cache keys for each input row.
+    cache_hit
+        Boolean flags indicating whether each row was loaded from cache.
     """
 
     features: pd.DataFrame
     canonical_smiles: pd.Series
     failed: pd.DataFrame
+    cache_keys: pd.Series | None = None
+    cache_hit: pd.Series | None = None
 
 
 def canonicalize_molecule_smiles(smiles: object) -> str:
@@ -142,6 +155,7 @@ def featurize_smiles(
     descriptors: Sequence[str] = DEFAULT_RDKIT_DESCRIPTORS,
     column_prefix: str | None = None,
     errors: str = "raise",
+    cache_dir: str | Path | None = None,
 ) -> SmilesFingerprintResult:
     """Featurize a sequence of molecule or polymer SMILES strings."""
     if errors not in {"raise", "coerce"}:
@@ -152,9 +166,48 @@ def featurize_smiles(
     rows: list[np.ndarray] = []
     canonical_smiles: list[str | float] = []
     failures: list[dict[str, object]] = []
+    cache_keys: list[str] = []
+    cache_hits: list[bool] = []
+    cache_parameters = {
+        "smiles_type": smiles_type.lower(),
+        "fingerprint_type": fingerprint_type.lower(),
+        "n_bits": n_bits,
+        "radius": radius,
+        "descriptors": list(descriptors),
+        "polymer_repeat_units": 3,
+        "polymer_join_ends": True,
+    }
 
     for index, smiles in enumerate(smiles_values):
+        normalized_smiles = _smiles_cache_value(smiles)
+        cache_key = fingerprint_cache_key(
+            namespace="smiles",
+            value=normalized_smiles,
+            parameters=cache_parameters,
+        )
+        cache_keys.append(cache_key)
+
         try:
+            if feature_names is None:
+                feature_names = _feature_names(
+                    fingerprint_type=fingerprint_type,
+                    n_bits=n_bits,
+                    descriptors=descriptors,
+                    prefix=prefix,
+                )
+
+            cached_row = _read_cached_smiles_row(
+                cache_dir,
+                namespace="smiles",
+                cache_key=cache_key,
+                n_features=len(feature_names),
+            )
+            if cached_row is not None:
+                rows.append(cached_row["array"])
+                canonical_smiles.append(cached_row["canonical_smiles"])
+                cache_hits.append(True)
+                continue
+
             array, canonical, names = fingerprint_smiles(
                 smiles,
                 smiles_type=smiles_type,
@@ -163,10 +216,21 @@ def featurize_smiles(
                 radius=radius,
                 descriptors=descriptors,
             )
-            if feature_names is None:
-                feature_names = [f"{prefix}_{name}" for name in names]
+            generated_feature_names = [f"{prefix}_{name}" for name in names]
+            if feature_names != generated_feature_names:
+                feature_names = generated_feature_names
             rows.append(array)
             canonical_smiles.append(canonical)
+            cache_hits.append(False)
+            _write_cached_smiles_row(
+                cache_dir,
+                namespace="smiles",
+                cache_key=cache_key,
+                input_value=normalized_smiles,
+                array=array,
+                canonical_smiles=canonical,
+                metadata=cache_parameters,
+            )
         except Exception as exc:
             if errors == "raise":
                 raise ValueError(f"Could not featurize SMILES at position {index}: {smiles!r}") from exc
@@ -179,7 +243,17 @@ def featurize_smiles(
                 )
             rows.append(np.full(len(feature_names), np.nan, dtype=float))
             canonical_smiles.append(np.nan)
-            failures.append({"index": index, "smiles": smiles, "error": str(exc)})
+            cache_hits.append(False)
+            failures.append(
+                {
+                    "index": index,
+                    "smiles": smiles,
+                    "cache_key": cache_key,
+                    "smiles_type": smiles_type,
+                    "fingerprint_type": fingerprint_type,
+                    "error": str(exc),
+                }
+            )
 
     if feature_names is None:
         feature_names = _feature_names(
@@ -192,7 +266,12 @@ def featurize_smiles(
     return SmilesFingerprintResult(
         features=pd.DataFrame(rows, columns=feature_names),
         canonical_smiles=pd.Series(canonical_smiles, name=f"{prefix}_canonical_smiles"),
-        failed=pd.DataFrame(failures, columns=["index", "smiles", "error"]),
+        failed=pd.DataFrame(
+            failures,
+            columns=["index", "smiles", "cache_key", "smiles_type", "fingerprint_type", "error"],
+        ),
+        cache_keys=pd.Series(cache_keys, name=f"{prefix}_cache_key"),
+        cache_hit=pd.Series(cache_hits, name=f"{prefix}_cache_hit"),
     )
 
 
@@ -208,6 +287,7 @@ def append_smiles_features(
     column_prefix: str | None = None,
     errors: str = "raise",
     include_canonical_smiles: bool = True,
+    cache_dir: str | Path | None = None,
 ) -> pd.DataFrame:
     """Append RDKit features for a SMILES column to a dataframe."""
     if smiles_column not in data.columns:
@@ -222,6 +302,7 @@ def append_smiles_features(
         descriptors=descriptors,
         column_prefix=column_prefix,
         errors=errors,
+        cache_dir=cache_dir,
     )
     features = result.features.set_index(data.index)
     output = data.copy()
@@ -376,12 +457,74 @@ def _default_prefix(smiles_type: str, fingerprint_type: str) -> str:
 
 
 def _mol_from_smiles(smiles: object):
-    if smiles is None or (isinstance(smiles, float) and np.isnan(smiles)):
-        raise ValueError("SMILES is empty")
-    molecule = _chem().MolFromSmiles(str(smiles).strip())
+    molecule = _chem().MolFromSmiles(_clean_smiles_text(smiles))
     if molecule is None:
         raise ValueError(f"Invalid SMILES '{smiles}'")
     return molecule
+
+
+def _clean_smiles_text(smiles: object) -> str:
+    normalized = _smiles_cache_value(smiles)
+    if not normalized:
+        raise ValueError("SMILES is empty")
+    return normalized
+
+
+def _smiles_cache_value(smiles: object) -> str:
+    if smiles is None or (isinstance(smiles, float) and np.isnan(smiles)):
+        return ""
+    return str(smiles).strip()
+
+
+def _read_cached_smiles_row(
+    cache_dir: str | Path | None,
+    *,
+    namespace: str,
+    cache_key: str,
+    n_features: int,
+) -> dict[str, object] | None:
+    record = read_fingerprint_cache_record(cache_dir, namespace=namespace, cache_key=cache_key)
+    if record is None:
+        return None
+    features = record.get("features")
+    canonical_smiles = record.get("canonical_smiles")
+    if not isinstance(features, Sequence) or isinstance(features, (str, bytes, bytearray)):
+        return None
+    if len(features) != n_features:
+        return None
+    return {
+        "array": np.asarray([_cached_float(value) for value in features], dtype=float),
+        "canonical_smiles": canonical_smiles,
+    }
+
+
+def _write_cached_smiles_row(
+    cache_dir: str | Path | None,
+    *,
+    namespace: str,
+    cache_key: str,
+    input_value: object,
+    array: np.ndarray,
+    canonical_smiles: str,
+    metadata: Mapping[str, object],
+) -> None:
+    write_fingerprint_cache_record(
+        cache_dir,
+        namespace=namespace,
+        cache_key=cache_key,
+        record={
+            "input": input_value,
+            "canonical_smiles": canonical_smiles,
+            "features": array.astype(float).tolist(),
+            "metadata": dict(metadata),
+        },
+    )
+
+
+def _cached_float(value: object) -> float:
+    if value is None:
+        return np.nan
+    return float(value)
 
 
 def _bit_vector_to_array(bit_vector) -> np.ndarray:

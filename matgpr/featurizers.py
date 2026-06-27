@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -38,6 +39,7 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
         statistics: Sequence[str] = DEFAULT_COMPOSITION_STATISTICS,
         column_prefix: str | None = None,
         errors: str = "raise",
+        cache_dir: str | Path | None = None,
         return_dataframe: bool = True,
     ):
         self.formula_column = formula_column
@@ -45,6 +47,7 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
         self.statistics = statistics
         self.column_prefix = column_prefix
         self.errors = errors
+        self.cache_dir = cache_dir
         self.return_dataframe = return_dataframe
 
     def fit(self, X, y=None):
@@ -69,11 +72,14 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
             properties=self.properties,
             statistics=self.statistics,
             errors=self.errors,
+            cache_dir=self.cache_dir,
         )
         features = result.features.copy()
         features.columns = self.feature_names_out_
         features.index = index
         self.failed_ = result.failed
+        self.cache_keys_ = result.cache_keys.set_axis(index)
+        self.cache_hit_ = result.cache_hit.set_axis(index)
         self.last_result_ = result
         return _format_transform_output(features, self.return_dataframe)
 
@@ -103,6 +109,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
         descriptors: Sequence[str] = DEFAULT_RDKIT_DESCRIPTORS,
         column_prefix: str | None = None,
         errors: str = "raise",
+        cache_dir: str | Path | None = None,
         include_canonical_smiles: bool = False,
         return_dataframe: bool = True,
     ):
@@ -114,6 +121,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
         self.descriptors = descriptors
         self.column_prefix = column_prefix
         self.errors = errors
+        self.cache_dir = cache_dir
         self.include_canonical_smiles = include_canonical_smiles
         self.return_dataframe = return_dataframe
 
@@ -130,6 +138,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
             descriptors=self.descriptors,
             column_prefix=self.column_prefix,
             errors=self.errors,
+            cache_dir=self.cache_dir,
         )
         feature_names = list(empty_result.features.columns)
         if self.include_canonical_smiles:
@@ -151,6 +160,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
             descriptors=self.descriptors,
             column_prefix=self.column_prefix,
             errors=self.errors,
+            cache_dir=self.cache_dir,
         )
         features = result.features.copy()
         features.index = index
@@ -162,6 +172,8 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
 
         self.canonical_smiles_ = canonical_smiles
         self.failed_ = result.failed
+        self.cache_keys_ = result.cache_keys.set_axis(index)
+        self.cache_hit_ = result.cache_hit.set_axis(index)
         self.last_result_ = result
         return _format_transform_output(features, self.return_dataframe)
 
@@ -184,6 +196,7 @@ class PolymerSmilesFeaturizer(SmilesFeaturizer):
         descriptors: Sequence[str] = DEFAULT_RDKIT_DESCRIPTORS,
         column_prefix: str | None = None,
         errors: str = "raise",
+        cache_dir: str | Path | None = None,
         include_canonical_smiles: bool = False,
         return_dataframe: bool = True,
     ):
@@ -196,6 +209,7 @@ class PolymerSmilesFeaturizer(SmilesFeaturizer):
             descriptors=descriptors,
             column_prefix=column_prefix,
             errors=errors,
+            cache_dir=cache_dir,
             include_canonical_smiles=include_canonical_smiles,
             return_dataframe=return_dataframe,
         )

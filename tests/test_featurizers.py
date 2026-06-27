@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 import unittest
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
@@ -52,6 +53,19 @@ class CompositionFeaturizerTests(unittest.TestCase):
         self.assertEqual(features.shape, (2, 1))
         self.assertTrue(np.isnan(features[1, 0]))
         self.assertEqual(featurizer.failed_.shape[0], 1)
+
+    def test_transformer_exposes_cache_metadata(self):
+        with tempfile.TemporaryDirectory() as cache_dir:
+            featurizer = CompositionFeaturizer(
+                properties=("atomic_number",),
+                statistics=("fwm",),
+                cache_dir=cache_dir,
+            )
+            featurizer.fit_transform(["B4C"])
+            featurizer.transform(["B4C"])
+
+        self.assertEqual(featurizer.cache_keys_.shape[0], 1)
+        self.assertTrue(bool(featurizer.cache_hit_.iloc[0]))
 
     def test_composition_featurizer_is_cloneable(self):
         featurizer = CompositionFeaturizer(

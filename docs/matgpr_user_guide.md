@@ -136,12 +136,17 @@ from matgpr import CompositionFeaturizer
 composition_featurizer = CompositionFeaturizer(
     formula_column="composition",
     errors="coerce",
+    cache_dir="fingerprint_cache",
 )
 
 composition_features = composition_featurizer.fit_transform(data)
 failed_formulas = composition_featurizer.failed_
 feature_names = composition_featurizer.get_feature_names_out()
 ```
+
+Set `cache_dir` when repeated notebook runs recompute the same fingerprints.
+Each row receives a deterministic cache key based on the input and descriptor
+settings. Failed-row reports include that key for traceability.
 
 ### 3.2 Molecule and Polymer Fingerprints
 
@@ -224,18 +229,21 @@ polymer_featurizer = PolymerSmilesFeaturizer(
     fingerprint_type="morgan+descriptors",
     n_bits=256,
     errors="coerce",
+    cache_dir="fingerprint_cache",
 )
 polymer_features = polymer_featurizer.fit_transform(data)
 
 solvent_featurizer = SmilesFeaturizer(
     smiles_column="solvent_smiles",
     fingerprint_type="descriptors",
+    cache_dir="fingerprint_cache",
 )
 solvent_features = solvent_featurizer.fit_transform(data)
 ```
 
 `SmilesFeaturizer` and `PolymerSmilesFeaturizer` store the most recent
 canonical SMILES in `canonical_smiles_` and failed rows in `failed_`.
+They also expose `cache_keys_` and `cache_hit_` when caching is enabled.
 
 ## 4. Prepare Features and Targets
 
