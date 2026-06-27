@@ -35,8 +35,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    train/test sets with `split_train_test`.
 3. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
-4. Train a model with either `build_sklearn_gpr_model`,
-   `fit_gpytorch_gpr`, or `train_gpytorch_gpr`.
+4. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+   `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
 5. Evaluate predictions with `regression_metrics` or
    `train_test_regression_metrics`.
 6. Visualize results with `plot_parity`, `plot_learning_curve`,
@@ -59,6 +59,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
 | `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
+| `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
@@ -113,6 +114,25 @@ prediction = result.predict(X_test)
 This replaces hard-coded equation-specific mean classes. New physics equations
 can be added in notebooks or scripts without changing the library. The older
 `EquationMeanFunction` name remains available as a compatibility alias.
+
+For estimator-style workflows, use `PhysicsInformedGPRRegressor`:
+
+```python
+from matgpr import PhysicsInformedGPRRegressor
+
+model = PhysicsInformedGPRRegressor(
+    equation=oxidation_equation,
+    feature_indices={"temperature_c": 0, "time_min": 1},
+    learnable_parameters={"A": 1.0, "Q": 100_000.0},
+    positive_parameters=("A", "Q"),
+    training_iter=1000,
+    verbose=False,
+)
+
+model.fit(X_train, y_train)
+y_pred, y_std = model.predict(X_test, return_std=True)
+learned_parameters = model.learned_physics_parameters_
+```
 
 ## Installation
 

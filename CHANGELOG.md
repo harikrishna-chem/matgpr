@@ -18,6 +18,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Organic molecule and polymer fingerprints based on RDKit.
 - Cyclic-trimer polymer repeat-unit canonicalization for two-ended `[*]`
   polymer SMILES.
+- Scikit-learn-style `MatGPRRegressor` and `PhysicsInformedGPRRegressor`
+  estimator classes.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.

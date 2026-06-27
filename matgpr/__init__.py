@@ -9,6 +9,7 @@ from .data_cleaning import (
     replace_missing_placeholders,
 )
 from .data_splitting import separate_features_target, split_train_test
+from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .metrics import regression_metrics, train_test_regression_metrics
 from .inorganic_fingerprints import (
@@ -70,7 +71,9 @@ __all__ = [
     "ExactGPRModel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
+    "MatGPRRegressor",
     "PhysicsInformedMean",
+    "PhysicsInformedGPRRegressor",
     "CompositionFingerprintResult",
     "DEFAULT_RDKIT_DESCRIPTORS",
     "SmilesFingerprintResult",

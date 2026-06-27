@@ -42,6 +42,8 @@ from matgpr import (
     split_train_test,
     identify_feature_types,
     build_preprocessor,
+    MatGPRRegressor,
+    PhysicsInformedGPRRegressor,
     build_sklearn_gpr_model,
     fit_gpytorch_gpr,
     regression_metrics,
@@ -268,7 +270,47 @@ Available helper functions:
 | `build_sklearn_gpr_model(...)` | Returns an unfitted `GaussianProcessRegressor`. |
 | `build_sklearn_gpr_grid_search(...)` | Returns a `GridSearchCV` over common GPR kernels and settings. |
 
-### 5.2 GPyTorch Exact GPR
+### 5.2 MatGPR Estimator API
+
+Use `MatGPRRegressor` when you want GPyTorch uncertainty handling with a
+scikit-learn-style estimator interface.
+
+```python
+from matgpr import MatGPRRegressor
+
+model = MatGPRRegressor(
+    kernel="matern",
+    ard=True,
+    lr=0.03,
+    training_iter=1000,
+    initial_noise=0.05,
+    standardize_y=True,
+    random_state=42,
+)
+
+model.fit(X_train_array, y_train.to_numpy())
+y_test_pred, y_test_std = model.predict(X_test_array, return_std=True)
+metrics = regression_metrics(y_test, y_test_pred)
+```
+
+Useful fitted attributes:
+
+| Attribute | Meaning |
+| --- | --- |
+| `result_` | Full `GPyTorchGPRResult` object. |
+| `model_`, `likelihood_` | Fitted GPyTorch objects. |
+| `loss_history_` | Training loss by optimizer iteration. |
+| `target_mean_`, `target_std_` | Target standardization values. |
+
+For confidence intervals:
+
+```python
+prediction = model.predict_distribution(X_test_array, confidence_level=0.95)
+```
+
+`prediction` contains `mean`, `std`, `lower`, and `upper`.
+
+### 5.3 GPyTorch Exact GPR
 
 Use GPyTorch GPR when you want the `PhysicsInformedMean` API, direct access to
 training loss, target standardization, and flexible uncertainty handling.
@@ -357,6 +399,32 @@ def equation(features, parameters):
 
 `features` is a dictionary of tensors. `parameters` is a dictionary of tensors.
 The equation must return one mean value per sample.
+
+For high-level workflows, `PhysicsInformedGPRRegressor` builds the
+`PhysicsInformedMean` internally and exposes `fit`, `predict`, `score`,
+`get_params`, and `set_params`.
+
+```python
+from matgpr import PhysicsInformedGPRRegressor
+
+
+def physics_mean(features, parameters):
+    return parameters["offset"] + parameters["slope"] * features["physics_descriptor"]
+
+
+model = PhysicsInformedGPRRegressor(
+    equation=physics_mean,
+    feature_indices={"physics_descriptor": 0},
+    learnable_parameters={"offset": 0.0, "slope": 1.0},
+    positive_parameters=("slope",),
+    training_iter=1000,
+    random_state=42,
+)
+
+model.fit(X_train_scaled, y_train)
+y_test_pred, y_test_std = model.predict(X_test_scaled, return_std=True)
+learned_parameters = model.learned_physics_parameters_
+```
 
 ### 6.2 Example 1: Arrhenius Mean Function
 
