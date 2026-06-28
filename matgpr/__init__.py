@@ -129,7 +129,7 @@ from .validation import (
     TrainTestValidationResult,
     cross_validate_regressor,
     evaluate_train_test_split,
-    repeated_learning_curve,
+    learning_curve,
 )
 from .visualization import (
     plot_correlation_matrix,
@@ -260,6 +260,7 @@ __all__ = [
     "load_artifact",
     "log_experiment_result",
     "list_physics_equation_templates",
+    "learning_curve",
     "make_target_transform",
     "normalize_column_names",
     "pairwise_composition_distance",
@@ -278,7 +279,6 @@ __all__ = [
     "power_law_equation",
     "regression_metrics",
     "replace_missing_placeholders",
-    "repeated_learning_curve",
     "rule_of_mixtures_equation",
     "save_artifact",
     "separate_features_target",

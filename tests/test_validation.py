@@ -12,7 +12,7 @@ from matgpr import (
     TrainTestValidationResult,
     cross_validate_regressor,
     evaluate_train_test_split,
-    repeated_learning_curve,
+    learning_curve,
 )
 
 
@@ -96,16 +96,18 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("test", set(result.predictions["split"]))
         self.assertGreater(result.predictions.shape[0], len(self.y))
 
-    def test_repeated_learning_curve_returns_run_metrics_and_summary(self):
-        result = repeated_learning_curve(
+    def test_learning_curve_returns_run_metrics_summary_and_predictions(self):
+        result = learning_curve(
             self.estimator,
             self.X,
             self.y,
-            train_sizes=(0.5, 1.0),
-            n_repeats=3,
+            train_sizes=(50, 100),
+            train_size_unit="percent",
+            n_splits=3,
             test_size=6,
             random_state=9,
-            model_name="lc_model",
+            model_names="lc_model",
+            metric_splits=("train", "test"),
             store_predictions=True,
         )
         summary = result.summary(metric_columns=["test_RMSE"])
@@ -117,19 +119,60 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("test_RMSE_mean", summary.columns)
         self.assertEqual(summary.shape[0], 2)
 
+    def test_learning_curve_accepts_multiple_models_intervals_and_metric_choices(self):
+        result = learning_curve(
+            {
+                "linear_a": LinearMeanStdRegressor(constant_std=0.2),
+                "linear_b": LinearMeanStdRegressor(constant_std=0.3),
+            },
+            self.X,
+            self.y,
+            train_size_start=10,
+            train_size_stop=30,
+            train_size_step=10,
+            train_size_unit="percent",
+            n_splits=2,
+            test_size=6,
+            random_state=12,
+            metrics=("RMSE", "R2"),
+            metric_splits=("train", "test"),
+        )
+        summary = result.summary()
+
+        self.assertEqual(result.runs.shape[0], 12)
+        self.assertEqual(result.metric_names, ("RMSE", "R2"))
+        self.assertEqual(result.metric_splits, ("train", "test"))
+        self.assertEqual(set(result.runs["requested_train_size"]), {10.0, 20.0, 30.0})
+        self.assertIn("train_RMSE_mean", summary.columns)
+        self.assertIn("test_R2_std", summary.columns)
+        self.assertEqual(summary.shape[0], 6)
+
     def test_validation_errors_are_explicit(self):
         with self.assertRaises(ValueError):
             evaluate_train_test_split(self.estimator, self.X.iloc[:3], self.y.iloc[:2])
         with self.assertRaises(ValueError):
             cross_validate_regressor(self.estimator, self.X, self.y, cv=1)
         with self.assertRaises(ValueError):
-            repeated_learning_curve(
+            learning_curve(
                 self.estimator,
                 self.X,
                 self.y,
-                train_sizes=(0.01,),
-                n_repeats=1,
+                train_sizes=(1,),
+                train_size_unit="percent",
+                n_splits=1,
                 min_train_samples=2,
+            )
+        with self.assertRaises(ValueError):
+            learning_curve(self.estimator, self.X, self.y, metrics=("not_a_metric",))
+        with self.assertRaises(ValueError):
+            learning_curve({}, self.X, self.y)
+        with self.assertRaises(ValueError):
+            learning_curve(
+                self.estimator,
+                self.X,
+                self.y,
+                train_sizes=(2.5,),
+                train_size_unit="count",
             )
 
 

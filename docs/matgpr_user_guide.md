@@ -1424,30 +1424,42 @@ cv_summary = cv_result.summary(metric_columns=["test_RMSE", "test_R2", "test_r"]
 out_of_fold_predictions = cv_result.predictions
 ```
 
-For repeated learning curves:
+For learning curves:
 
 ```python
-from matgpr import repeated_learning_curve
+from matgpr import learning_curve
 
 
-learning_curve = repeated_learning_curve(
-    model,
+lc_result = learning_curve(
+    {
+        "standard GPR": standard_model,
+        "physics-informed GPR": physics_model,
+    },
     X,
     y,
-    train_sizes=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
-    n_repeats=20,
+    train_size_start=10,
+    train_size_stop=100,
+    train_size_step=10,
+    train_size_unit="percent",
+    n_splits=20,
     test_size=0.30,
     random_state=44,
-    model_name="physics-informed GPR",
+    metrics=("RMSE", "R2", "MAE", "r"),
+    metric_splits=("test",),
 )
 
-learning_curve_rows = learning_curve.runs
-learning_curve_summary = learning_curve.summary(metric_columns=["test_RMSE", "test_R2"])
+learning_curve_rows = lc_result.runs
+learning_curve_summary = lc_result.summary(metrics=("RMSE", "R2"), splits="test")
 ```
 
 These utilities clone the estimator for each split, return train/test metrics,
 and include uncertainty diagnostics when the estimator supports
 `predict(..., return_std=True)`.
+
+Use `metric_splits=("train", "test")` when train and held-out learning curves
+should be compared. The result table always includes `train_size`,
+`train_size_percent`, and `n_train`; choose the displayed x-axis in
+`plot_learning_curve(...)`.
 
 ### 10.2 Regression Metrics
 
@@ -1548,20 +1560,34 @@ information as a dataframe, which is useful for reports and benchmark tables.
 
 ### 10.5 Learning Curves
 
-For repeated train-size experiments, collect rows with columns such as
-`train_size`, `model`, and `test_R2`.
+For train-size experiments, collect rows with columns such as `train_size`,
+`n_train`, `model`, and `test_R2`.
 
 ```python
 fig, ax, summary = plot_learning_curve(
-    results_df,
-    train_size_col="train_size",
-    metric_col="test_R2",
-    model_col="model",
-    title="Learning curve",
+    lc_result.runs,
+    metric="RMSE",
+    split="test",
+    x_axis="percent",
+    title="Test RMSE learning curve",
 )
 ```
 
-For RMSE learning curves, set `metric_col="test_RMSE"`.
+To show train and test curves together, request both splits:
+
+```python
+fig, ax, summary = plot_learning_curve(
+    lc_result.runs,
+    metric="RMSE",
+    split=("train", "test"),
+    x_axis="count",
+    title="Train/test RMSE learning curve",
+)
+```
+
+Use `metric="RMSE"`, `metric="R2"`, `metric="MAE"`, or `metric="r"` to choose
+the plotted metric. Use `metric_col="test_RMSE"` or another explicit column
+name when plotting custom metrics.
 
 ### 10.6 90/10 Validation With 10-Fold Cross-Validation
 

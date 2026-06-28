@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -220,7 +222,10 @@ def plot_learning_curve(
     df: pd.DataFrame,
     *,
     train_size_col: str = "train_size",
-    metric_col: str = "test_R2",
+    metric_col: str | Sequence[str] | None = "test_R2",
+    metric: str | None = None,
+    split: str | Sequence[str] = "test",
+    x_axis: str = "percent",
     model_col: str = "model",
     models: list[str] | None = None,
     figsize: tuple[float, float] = (7, 5),
@@ -232,25 +237,58 @@ def plot_learning_curve(
     """Plot mean metric versus train-set size for one or more models.
 
     Repeated runs at the same train size are averaged. Error bars show one
-    standard deviation across runs.
+    standard deviation across runs. Use ``x_axis="percent"`` to show training
+    data in percent, ``x_axis="count"`` to show sample counts, or
+    ``x_axis="fraction"`` to show the raw fraction. Use ``metric`` and
+    ``split`` as a convenient alternative to a full metric column name. For
+    example, ``metric="RMSE", split="test"`` resolves to ``test_RMSE`` and
+    ``metric="RMSE", split=("train", "test")`` plots both train and test
+    RMSE curves.
     """
-    required = [train_size_col, metric_col, model_col]
-    missing = [column for column in required if column not in df.columns]
+    metric_columns = _resolve_learning_curve_metric_columns(
+        metric_col=metric_col,
+        metric=metric,
+        split=split,
+    )
+
+    plot_df = df.copy()
+    x_col, x_label = _resolve_learning_curve_x_axis(
+        plot_df,
+        train_size_col=train_size_col,
+        x_axis=x_axis,
+    )
+
+    required = [x_col, model_col, *metric_columns]
+    missing = [column for column in required if column not in plot_df.columns]
     if missing:
         raise KeyError(f"Missing required columns: {missing}")
 
-    plot_df = df.copy()
     if models is not None:
         plot_df = plot_df[plot_df[model_col].isin(models)]
     if plot_df.empty:
         raise ValueError("No data available after filtering models")
 
-    plot_df["train_size_percent"] = plot_df[train_size_col] * 100
+    metric_frames = []
+    for column in metric_columns:
+        split_name, metric_name = _metric_column_parts(column)
+        metric_frame = plot_df[[model_col, x_col, column]].rename(
+            columns={column: "metric_value"}
+        )
+        metric_frame["metric_col"] = column
+        metric_frame["split"] = split_name
+        metric_frame["metric"] = metric_name
+        metric_frames.append(metric_frame)
+
+    long_df = pd.concat(metric_frames, ignore_index=True)
     summary = (
-        plot_df.groupby([model_col, "train_size_percent"])
-        .agg(metric_mean=(metric_col, "mean"), metric_std=(metric_col, "std"), n_runs=(metric_col, "count"))
+        long_df.groupby([model_col, "metric_col", "split", "metric", x_col], dropna=False)
+        .agg(
+            metric_mean=("metric_value", "mean"),
+            metric_std=("metric_value", "std"),
+            n_runs=("metric_value", "count"),
+        )
         .reset_index()
-        .sort_values(["train_size_percent", model_col])
+        .sort_values([x_col, model_col, "metric_col"])
     )
     summary["metric_std"] = summary["metric_std"].fillna(0.0)
 
@@ -258,10 +296,23 @@ def plot_learning_curve(
     markers = ["o", "s", "^", "D", "v", "P", "X"]
     linestyles = ["-", "--", "-.", ":"]
 
-    for i, model_name in enumerate(summary[model_col].unique()):
-        model_data = summary[summary[model_col] == model_name]
+    curve_keys = (
+        summary[[model_col, "metric_col"]]
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    )
+    for i, (model_name, metric_column) in enumerate(curve_keys):
+        model_data = summary[
+            (summary[model_col] == model_name)
+            & (summary["metric_col"] == metric_column)
+        ]
+        label = _learning_curve_label(
+            model_name,
+            metric_column,
+            multiple_metrics=len(metric_columns) > 1,
+        )
         ax.errorbar(
-            model_data["train_size_percent"],
+            model_data[x_col],
             model_data["metric_mean"],
             yerr=model_data["metric_std"],
             fmt=markers[i % len(markers)] + linestyles[i % len(linestyles)],
@@ -269,20 +320,136 @@ def plot_learning_curve(
             capsize=3,
             markersize=7,
             linewidth=2.2,
-            label=str(model_name),
+            label=label,
         )
 
-    ax.set_xlabel("Train set size (%)")
-    ax.set_ylabel(ylabel or metric_col)
-    ax.set_title(title or f"{metric_col} vs Train Set Size")
-    ax.set_xticks(sorted(summary["train_size_percent"].unique()))
-    if metric_col.lower() in {"test_r2", "train_r2", "r2", "test_r", "train_r", "r"}:
+    y_axis_label = ylabel or _learning_curve_y_label(metric=metric, metric_columns=metric_columns)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_axis_label)
+    ax.set_title(title or f"{y_axis_label} vs Train Set Size")
+    ax.set_xticks(sorted(summary[x_col].unique()))
+    if all(
+        column.lower() in {"test_r2", "train_r2", "r2", "test_r", "train_r", "r"}
+        for column in metric_columns
+    ):
         ax.set_ylim(0.0, 1.05)
     ax.grid(True, alpha=0.25)
     ax.legend(frameon=False, loc="best")
     fig.tight_layout()
     _save_figure(fig, save_path, dpi)
     return fig, ax, summary
+
+
+def _resolve_learning_curve_metric_columns(
+    *,
+    metric_col: str | Sequence[str] | None,
+    metric: str | None,
+    split: str | Sequence[str],
+) -> tuple[str, ...]:
+    if metric is not None:
+        metric_name = _normalize_plot_metric(metric)
+        return tuple(
+            f"{split_name}_{metric_name}"
+            for split_name in _normalize_plot_splits(split)
+        )
+    if metric_col is None:
+        raise ValueError("metric_col is required when metric is not supplied")
+    if isinstance(metric_col, str):
+        return (metric_col,)
+    columns = tuple(dict.fromkeys(str(column) for column in metric_col))
+    if not columns:
+        raise ValueError("metric_col must contain at least one column")
+    return columns
+
+
+def _resolve_learning_curve_x_axis(
+    df: pd.DataFrame,
+    *,
+    train_size_col: str,
+    x_axis: str,
+) -> tuple[str, str]:
+    normalized = str(x_axis).strip().lower()
+    if normalized in {"percent", "percentage", "%"}:
+        if "train_size_percent" not in df.columns:
+            _require_columns(df, [train_size_col], "learning curve dataframe")
+            df["train_size_percent"] = df[train_size_col] * 100
+        return "train_size_percent", "Train set size (%)"
+    if normalized in {"count", "counts", "n"}:
+        if "n_train" in df.columns:
+            return "n_train", "Train set size (samples)"
+        if (
+            train_size_col not in {"train_size", "train_size_percent"}
+            and train_size_col in df.columns
+        ):
+            return train_size_col, "Train set size (samples)"
+        raise KeyError(
+            "x_axis='count' requires an 'n_train' column or train_size_col "
+            "pointing to a sample-count column"
+        )
+    if normalized in {"fraction", "proportion"}:
+        _require_columns(df, [train_size_col], "learning curve dataframe")
+        return train_size_col, "Train set size (fraction)"
+    raise ValueError("x_axis must be one of: percent, count, fraction")
+
+
+def _normalize_plot_metric(metric: str) -> str:
+    aliases = {
+        "rmse": "RMSE",
+        "root_mean_squared_error": "RMSE",
+        "r2": "R2",
+        "r^2": "R2",
+        "mae": "MAE",
+        "mean_absolute_error": "MAE",
+        "r": "r",
+        "pearson": "r",
+        "pearson_r": "r",
+    }
+    normalized = str(metric).strip().lower()
+    if normalized not in aliases:
+        raise ValueError("metric must be one of: RMSE, R2, MAE, r")
+    return aliases[normalized]
+
+
+def _normalize_plot_splits(splits: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(splits, str):
+        if splits.lower().replace("_", "-") in {"train-test", "both"}:
+            splits = ("train", "test")
+        else:
+            splits = (splits,)
+    normalized = tuple(dict.fromkeys(str(split).strip().lower() for split in splits))
+    if not normalized:
+        raise ValueError("split must contain at least one split")
+    unknown = [split for split in normalized if split not in {"train", "test"}]
+    if unknown:
+        raise ValueError("split must include only 'train' and 'test'")
+    return normalized
+
+
+def _metric_column_parts(metric_column: str) -> tuple[str, str]:
+    split_name, separator, metric_name = str(metric_column).partition("_")
+    if separator and split_name in {"train", "test"} and metric_name:
+        return split_name, metric_name
+    return "", str(metric_column)
+
+
+def _learning_curve_label(model_name, metric_column: str, *, multiple_metrics: bool) -> str:
+    if not multiple_metrics:
+        return str(model_name)
+    split_name, metric_name = _metric_column_parts(metric_column)
+    label_suffix = f"{split_name} {metric_name}".strip()
+    return f"{model_name} ({label_suffix})" if label_suffix else f"{model_name} ({metric_column})"
+
+
+def _learning_curve_y_label(
+    *,
+    metric: str | None,
+    metric_columns: Sequence[str],
+) -> str:
+    if metric is not None:
+        return _normalize_plot_metric(metric)
+    if len(metric_columns) == 1:
+        return metric_columns[0]
+    return "Metric"
 
 
 def plot_pca_scree(

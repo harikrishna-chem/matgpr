@@ -23,7 +23,7 @@ types, and class methods.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
 - [Validation](validation.md): train/test evaluation, cross-validation, and
-  repeated learning-curve utilities.
+  configurable learning-curve utilities.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
   diagnostics.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and
