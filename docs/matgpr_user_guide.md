@@ -48,6 +48,9 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    KnownLimitConstraint,
+    MonotonicTrendConstraint,
+    append_virtual_observations,
     BoundedTargetTransform,
     ElementFractionKernel,
     StructureFeatureKernel,
@@ -741,7 +744,99 @@ prediction = target_transform.inverse_prediction(
 This approach is useful when the physics baseline is not differentiable, lives
 outside PyTorch, comes from a lookup table, or should remain completely fixed.
 
-## 8. Physics-Informed GPR
+## 8. Physics Constraints With Virtual Observations
+
+Some physics knowledge is easier to express as soft anchor observations than as
+a GP mean function. Examples include a known zero-response limit, a saturation
+value, or a local monotonic trend with respect to temperature, time, loading, or
+composition.
+
+`matgpr` provides virtual-observation utilities for this case. They augment the
+training set with physics-derived rows:
+
+```text
+X_aug = [X_observed, X_virtual]
+y_aug = [y_observed, y_virtual]
+```
+
+For a known limit in feature column `j`:
+
+```text
+x_virtual = x_reference with x_j = x_limit
+y_virtual = y_limit(x_virtual)
+```
+
+For a monotonic trend:
+
+```text
+x_virtual = x_reference + delta e_j
+y_virtual = y_reference + direction * minimum_slope * delta
+```
+
+where `direction` is `+1` for increasing trends and `-1` for decreasing trends.
+The `noise_std` assigned to virtual observations controls how strongly the
+anchor influences the model.
+
+```python
+from matgpr import (
+    KnownLimitConstraint,
+    MonotonicTrendConstraint,
+    append_virtual_observations,
+    build_sklearn_gpr_model,
+)
+
+zero_time = KnownLimitConstraint(
+    feature="time_s",
+    limit_value=0.0,
+    target_value=0.0,
+    noise_std=0.02,
+    label="zero_time_limit",
+)
+
+temperature_trend = MonotonicTrendConstraint(
+    feature="temperature_k",
+    direction="increasing",
+    step=25.0,
+    minimum_slope=0.0,
+    feature_max=1000.0,
+    noise_std=0.2,
+)
+
+limit_observations = zero_time.generate(X_train)
+trend_observations = temperature_trend.generate(X_train, y_train)
+
+augmented = append_virtual_observations(
+    X_train,
+    y_train,
+    limit_observations,
+    trend_observations,
+    base_alpha=1e-8,
+)
+
+model = build_sklearn_gpr_model(
+    n_features=augmented.X.shape[1],
+    alpha=augmented.alpha,
+)
+model.fit(augmented.X, augmented.y)
+```
+
+For scikit-learn GPR, pass `augmented.alpha` to use one observation variance
+per row. This lets real observations and virtual physics anchors have different
+noise levels. For GPyTorch workflows, the augmented `X` and `y` can still be
+used directly, but the current exact-GPR helper uses one learned Gaussian noise
+level for all rows.
+
+Use virtual observations carefully:
+
+- Keep anchor values physically defensible.
+- Use a larger `noise_std` when the constraint is approximate.
+- Report how many virtual observations were added.
+- Validate against held-out experimental data, not only augmented training
+  error.
+- Do not claim global monotonicity unless using a formal derivative-constrained
+  GP.
+
+## 9. Physics-Informed GPR
 
 Physics-informed GPR introduces physics through the GP mean function. The GP
 then learns the residual between the physics equation and the observed data.
@@ -766,7 +861,7 @@ where:
 | `k(x, x')` | Kernel covariance over the full feature space. |
 | `sigma_n^2` | Learned observation noise. |
 
-### 8.1 How Physics Is Introduced
+### 9.1 How Physics Is Introduced
 
 In `matgpr`, physics is introduced with `PhysicsInformedMean`.
 
@@ -817,7 +912,7 @@ y_test_pred, y_test_std = model.predict(X_test_scaled, return_std=True)
 learned_parameters = model.learned_physics_parameters_
 ```
 
-### 8.2 Example 1: Arrhenius Mean Function
+### 9.2 Example 1: Arrhenius Mean Function
 
 For a temperature-dependent transport property:
 
@@ -890,7 +985,7 @@ features, but the Arrhenius equation should use temperature in Kelvin.
 `PhysicsInformedMean` converts selected scaled columns back to original units
 before evaluating the equation.
 
-### 8.3 Example 2: Degeneracy and Binding Mean Function
+### 9.3 Example 2: Degeneracy and Binding Mean Function
 
 For OPV-like materials, a simple physics-informed mean can encode the idea that
 larger degeneracy can improve accessible pathways, while stronger binding can
@@ -954,7 +1049,7 @@ result = fit_gpytorch_gpr(
 )
 ```
 
-### 8.4 Learned vs Fixed Parameters
+### 9.4 Learned vs Fixed Parameters
 
 Use `learnable_parameters` when a parameter should be optimized from data:
 
@@ -995,7 +1090,7 @@ After training, inspect learned values:
 result.model.mean_module.current_parameter_values()
 ```
 
-### 8.5 Practical Guidance for Physics Equations
+### 9.5 Practical Guidance for Physics Equations
 
 Good physics-informed mean functions should be:
 
@@ -1008,9 +1103,9 @@ Good physics-informed mean functions should be:
 Start with one or two physics terms. Add complexity only when learning curves,
 test-set metrics, and uncertainty calibration improve.
 
-## 9. Model Analysis
+## 10. Model Analysis
 
-### 9.1 Regression Metrics
+### 10.1 Regression Metrics
 
 ```python
 metrics = regression_metrics(y_test, prediction.mean)
@@ -1037,7 +1132,7 @@ metrics = train_test_regression_metrics(
 )
 ```
 
-### 9.2 Parity Plot With Uncertainty
+### 10.2 Parity Plot With Uncertainty
 
 ```python
 fig, ax = plot_parity(
@@ -1054,7 +1149,7 @@ fig, ax = plot_parity(
 )
 ```
 
-### 9.3 Uncertainty Diagnostics
+### 10.3 Uncertainty Diagnostics
 
 GPR models return a predictive mean and standard deviation. Use the standard
 regression metrics for point-prediction accuracy, then separately check whether
@@ -1107,7 +1202,7 @@ fig, ax, diagnostics = plot_uncertainty_vs_error(
 For tabular workflows, `calibration_curve(...)` returns the same coverage
 information as a dataframe, which is useful for reports and benchmark tables.
 
-### 9.4 Learning Curves
+### 10.4 Learning Curves
 
 For repeated train-size experiments, collect rows with columns such as
 `train_size`, `model`, and `test_R2`.
@@ -1124,7 +1219,7 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 9.5 90/10 Validation With 10-Fold Cross-Validation
+### 10.5 90/10 Validation With 10-Fold Cross-Validation
 
 After selecting the best model family from learning curves, use a conventional
 validation protocol before fitting the final production model:
@@ -1185,7 +1280,7 @@ cv_summary = (
 For small datasets, make sure each stratification bin has enough samples for
 10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
 
-### 9.6 PCA
+### 10.6 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -1198,7 +1293,7 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 9.7 SHAP Analysis
+### 10.7 SHAP Analysis
 
 `matgpr` does not require SHAP internally, but the example notebooks use SHAP
 for production-model interpretation. For compact tabular datasets, run SHAP on
@@ -1243,7 +1338,7 @@ shap_importance = pd.DataFrame(
 For GPR, SHAP can be computationally expensive. For publication workflows,
 combine SHAP with domain checks, correlation analysis, and sensitivity plots.
 
-## 10. Save Models and Results
+## 11. Save Models and Results
 
 Save fitted preprocessors, models, or full pipelines:
 
@@ -1271,7 +1366,7 @@ log_experiment_result(
 )
 ```
 
-## 11. Common Troubleshooting
+## 12. Common Troubleshooting
 
 ### Invalid Polymer SMILES
 
@@ -1320,7 +1415,7 @@ For small materials datasets:
   kernel, and split.
 - Report both mean performance and standard deviation across splits.
 
-## 12. Minimal End-to-End Example
+## 13. Minimal End-to-End Example
 
 ```python
 import pandas as pd

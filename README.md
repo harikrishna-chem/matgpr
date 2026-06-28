@@ -30,6 +30,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   compositions plus structure-feature kernels for crystal descriptors.
 - Target transforms for positive, bounded, standardized, and physics-residual
   modeling workflows.
+- Soft physics-constraint anchors for known limits and monotonic trends through
+  virtual observations.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -53,11 +55,14 @@ physics-informed mean functions and uncertainty-aware prediction.
 6. Optionally transform targets with `LogTargetTransform`,
    `BoundedTargetTransform`, `StandardizedTargetTransform`, or
    `PhysicsResidualTransform`.
-7. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+7. Optionally add physics-derived virtual observations with
+   `KnownLimitConstraint`, `MonotonicTrendConstraint`, and
+   `append_virtual_observations`.
+8. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-8. Evaluate point predictions with `regression_metrics` or
+9. Evaluate point predictions with `regression_metrics` or
    `train_test_regression_metrics`.
-9. Visualize results with `plot_parity`, `plot_learning_curve`,
+10. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
@@ -85,6 +90,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.featurizers` | `CompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
 | `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `StructureFeatureKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
 | `matgpr.target_transforms` | `LogTargetTransform`, `BoundedTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target constraints, transforms, and physics-residual modeling |
+| `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |

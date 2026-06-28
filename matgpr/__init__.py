@@ -62,6 +62,14 @@ from .structure_fingerprints import (
     structure_fingerprint,
 )
 from .pca import fit_pca, summarize_pca, transform_pca
+from .physics_constraints import (
+    AugmentedTrainingData,
+    KnownLimitConstraint,
+    MonotonicTrendConstraint,
+    VirtualObservationSet,
+    append_virtual_observations,
+    combine_virtual_observations,
+)
 from .preprocessing import build_preprocessor, build_scaler, identify_feature_types
 from .reporting import summarize_missingness, summarize_numeric_columns
 from .sklearn_gpr import (
@@ -124,9 +132,12 @@ __all__ = [
     "FeatureSubsetKernel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
+    "AugmentedTrainingData",
     "IdentityTargetTransform",
+    "KnownLimitConstraint",
     "LogTargetTransform",
     "MatGPRRegressor",
+    "MonotonicTrendConstraint",
     "PhysicsInformedMean",
     "PhysicsInformedGPRRegressor",
     "PhysicsResidualTransform",
@@ -144,10 +155,12 @@ __all__ = [
     "StructureFeaturizer",
     "StructureFingerprintResult",
     "TanimotoKernel",
+    "VirtualObservationSet",
     "append_composition_fingerprints",
     "append_element_fractions",
     "append_smiles_features",
     "append_structure_fingerprints",
+    "append_virtual_observations",
     "BoundedTargetTransform",
     "build_additive_kernel",
     "build_element_fraction_gpr_kernel",
@@ -163,6 +176,7 @@ __all__ = [
     "canonicalize_polymer_smiles",
     "calibration_curve",
     "clean_formula",
+    "combine_virtual_observations",
     "composition_fingerprint",
     "default_element_symbols",
     "drop_columns_by_missing_fraction",

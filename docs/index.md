@@ -17,6 +17,7 @@ prediction accuracy.
   structure-feature kernels for crystal geometry.
 - Target-transform and physics-residual workflows for properties that are
   positive, bounded, transformed, or baseline-corrected.
+- Soft physics-constraint anchors for known limits and monotonic trends.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.

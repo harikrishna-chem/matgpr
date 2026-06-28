@@ -34,6 +34,8 @@ semantic-versioning conventions once the first public release is tagged.
   structure-aware GPR kernels for global lattice/packing similarity.
 - Bounded target transforms for GPR workflows with finite physical output
   limits.
+- Soft physics-constraint utilities for known limits and monotonic trends using
+  virtual observations.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent

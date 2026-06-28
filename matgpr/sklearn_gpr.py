@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, RBF, WhiteKernel
@@ -54,7 +56,7 @@ def build_sklearn_gpr_model(
     *,
     kernel: str = "matern",
     n_features: int | None = None,
-    alpha: float = 1e-8,
+    alpha: float | Sequence[float] | np.ndarray = 1e-8,
     normalize_y: bool = True,
     n_restarts_optimizer: int = 5,
     random_state: int = 42,
@@ -63,6 +65,8 @@ def build_sklearn_gpr_model(
 
     This returns an unfitted model. Put it inside a scikit-learn Pipeline with
     ``build_preprocessor`` when raw dataframe columns need preprocessing.
+    ``alpha`` may be a scalar or one variance per training row, which is useful
+    when appending soft virtual physics observations.
     """
     kernel_object = build_sklearn_gpr_kernel(kernel, n_features=n_features)
     return GaussianProcessRegressor(
