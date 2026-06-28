@@ -57,6 +57,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Dual-license metadata and notices: AGPL-3.0 community license plus separate
   commercial license availability.
 - CI/package-quality scaffolding.
+- Scikit-learn estimator compliance and pipeline tests covering official
+  estimator checks, `GridSearchCV`, material featurizers, and GPR pipelines.
 
 ### Changed
 

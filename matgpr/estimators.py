@@ -8,6 +8,11 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.metrics import r2_score
 from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
 
+try:
+    from sklearn.utils.validation import validate_data
+except ImportError:  # pragma: no cover - compatibility with older scikit-learn
+    validate_data = None
+
 from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMean, fit_gpytorch_gpr
 
 __all__ = [
@@ -67,21 +72,7 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
         y
             One-dimensional target values.
         """
-        feature_names = _feature_names_from_input(X)
-        X_checked, y_checked = check_X_y(
-            X,
-            y,
-            ensure_2d=True,
-            dtype="numeric",
-            y_numeric=True,
-        )
-        self.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != self.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            self.feature_names_in_ = feature_names
-        elif hasattr(self, "feature_names_in_"):
-            delattr(self, "feature_names_in_")
+        X_checked, y_checked = _validate_fit_input(self, X, y)
 
         _seed_torch(self.random_state)
         dtype = _resolve_torch_dtype(self.dtype)
@@ -187,28 +178,7 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
         return None
 
     def _validate_prediction_input(self, X) -> np.ndarray:
-        if hasattr(self, "feature_names_in_"):
-            input_feature_names = _feature_names_from_input(X)
-            if input_feature_names is not None and not np.array_equal(
-                input_feature_names,
-                self.feature_names_in_,
-            ):
-                raise ValueError(
-                    "Prediction features must match the fitted feature names and order"
-                )
-
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_min_samples=1,
-        )
-        if X_checked.shape[1] != self.n_features_in_:
-            raise ValueError(
-                f"X has {X_checked.shape[1]} features, but this estimator was fitted with "
-                f"{self.n_features_in_} features"
-            )
-        return X_checked
+        return _validate_predict_input(self, X)
 
 
 class PhysicsInformedGPRRegressor(MatGPRRegressor):
@@ -311,6 +281,68 @@ def _feature_names_from_input(X) -> np.ndarray | None:
     if not all(isinstance(name, str) for name in names):
         return None
     return names
+
+
+def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
+    if validate_data is not None:
+        return validate_data(
+            estimator,
+            X,
+            y,
+            ensure_2d=True,
+            dtype="numeric",
+            y_numeric=True,
+        )
+
+    feature_names = _feature_names_from_input(X)
+    X_checked, y_checked = check_X_y(
+        X,
+        y,
+        ensure_2d=True,
+        dtype="numeric",
+        y_numeric=True,
+    )
+    estimator.n_features_in_ = X_checked.shape[1]
+    if feature_names is not None:
+        if len(feature_names) != estimator.n_features_in_:
+            raise ValueError("Number of dataframe columns does not match validated features")
+        estimator.feature_names_in_ = feature_names
+    elif hasattr(estimator, "feature_names_in_"):
+        delattr(estimator, "feature_names_in_")
+    return X_checked, y_checked
+
+
+def _validate_predict_input(estimator, X) -> np.ndarray:
+    if validate_data is not None:
+        return validate_data(
+            estimator,
+            X,
+            reset=False,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_min_samples=1,
+        )
+
+    if hasattr(estimator, "feature_names_in_"):
+        input_feature_names = _feature_names_from_input(X)
+        if input_feature_names is not None and not np.array_equal(
+            input_feature_names,
+            estimator.feature_names_in_,
+        ):
+            raise ValueError("Prediction features must match the fitted feature names and order")
+
+    X_checked = check_array(
+        X,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_min_samples=1,
+    )
+    if X_checked.shape[1] != estimator.n_features_in_:
+        raise ValueError(
+            f"X has {X_checked.shape[1]} features, but this estimator was fitted with "
+            f"{estimator.n_features_in_} features"
+        )
+    return X_checked
 
 
 def _resolve_torch_dtype(dtype: str | torch.dtype) -> torch.dtype:

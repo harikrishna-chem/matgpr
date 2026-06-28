@@ -444,6 +444,44 @@ prediction = model.predict_distribution(X_test_array, confidence_level=0.95)
 
 `prediction` contains `mean`, `std`, `lower`, and `upper`.
 
+`MatGPRRegressor` follows the scikit-learn estimator interface and can be used
+inside pipelines, grid searches, and column transformers. For example, combine
+composition descriptors and process variables before fitting GPR:
+
+```python
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+
+from matgpr import CompositionFeaturizer, MatGPRRegressor
+
+features = ColumnTransformer(
+    transformers=[
+        (
+            "composition",
+            CompositionFeaturizer(
+                properties=("atomic_number",),
+                statistics=("fwm", "max"),
+                return_dataframe=False,
+            ),
+            ["formula"],
+        ),
+        ("process", "passthrough", ["temperature_k", "load_n"]),
+    ]
+)
+
+model = Pipeline(
+    steps=[
+        ("features", features),
+        ("scale", StandardScaler()),
+        ("gpr", MatGPRRegressor(training_iter=1000, random_state=42)),
+    ]
+)
+
+model.fit(train_data, y_train)
+y_test_pred, y_test_std = model.predict(test_data, return_std=True)
+```
+
 ### 5.3 GPyTorch Exact GPR
 
 Use GPyTorch GPR when you want the `PhysicsInformedMean` API, direct access to

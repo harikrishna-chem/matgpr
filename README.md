@@ -23,6 +23,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Scikit-learn GPR helpers for baseline models and kernel search.
 - GPyTorch exact GPR with ARD kernels, target standardization, and predictive
   uncertainty.
+- Scikit-learn-compatible estimators and featurizers for pipelines, grid
+  search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
   residuals.
 - Reusable physics equation templates for Arrhenius, square-root-time,

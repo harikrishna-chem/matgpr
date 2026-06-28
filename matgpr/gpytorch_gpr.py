@@ -684,7 +684,9 @@ def _validate_training_arrays(train_x: torch.Tensor, train_y: torch.Tensor) -> N
     if train_x.shape[0] != train_y.shape[0]:
         raise ValueError("X_train and y_train must contain the same number of samples")
     if train_x.shape[0] < 2:
-        raise ValueError("At least two training samples are required")
+        raise ValueError(
+            f"At least two training samples are required; got n_samples = {train_x.shape[0]}"
+        )
 
 
 def _validate_confidence_level(confidence_level: float | None) -> None:
