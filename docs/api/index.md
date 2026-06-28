@@ -18,6 +18,8 @@ types, and class methods.
   function-value and derivative observations.
 - [Noise Models](noise_models.md): source-dependent, replicate-aware, and
   feature-dependent observation-noise profiles.
+- [Physics Equation Templates](physics_equations.md): reusable Arrhenius,
+  power-law, Hall-Petch, free-volume, mixture, and OPV mean equations.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty

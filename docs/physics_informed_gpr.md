@@ -105,6 +105,38 @@ prediction = result.predict(X_test, confidence_level=0.95)
 learned_parameters = result.model.mean_module.current_parameter_values()
 ```
 
+## Reusable Equation Templates
+
+For common materials trends, start with a documented template instead of
+rewriting the equation in every notebook:
+
+```python
+from matgpr import get_physics_equation_template
+
+
+template = get_physics_equation_template("arrhenius_rate")
+
+mean_function = template.build_mean_function(
+    feature_indices={"temperature_k": 0},
+    learnable_parameter_overrides={
+        "prefactor": 1.0,
+        "activation_energy": 25_000.0,
+    },
+)
+```
+
+Each template reports the canonical feature names, default learnable
+parameters, positive constraints, fixed constants, and a short equation
+description:
+
+```python
+template.summary()
+```
+
+The initial template set covers Arrhenius, square-root-time Arrhenius growth,
+power-law scaling, Hall-Petch grain-size strengthening, free-volume exponential
+transport, and rule-of-mixtures baselines.
+
 ## Feature Scaling
 
 Most GPR workflows scale features before training. A physics equation, however,

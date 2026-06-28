@@ -25,6 +25,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   uncertainty.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
   residuals.
+- Reusable physics equation templates for Arrhenius, square-root-time,
+  power-law, Hall-Petch, free-volume, and rule-of-mixtures mean functions.
 - Physics-aware kernels, including Tanimoto similarity for molecular and
   polymer fingerprints and element-fraction kernels for inorganic
   compositions plus structure-feature kernels for crystal descriptors.
@@ -66,11 +68,13 @@ physics-informed mean functions and uncertainty-aware prediction.
    `fit_derivative_constrained_gpr`.
 9. Optionally build per-row observation noise with `SourceNoiseModel`,
    `ReplicateNoiseModel`, `FeatureNoiseModel`, and `combine_noise_profiles`.
-10. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+10. Optionally start from a reusable physics equation template with
+   `get_physics_equation_template`.
+11. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-11. Evaluate point predictions with `regression_metrics` or
+12. Evaluate point predictions with `regression_metrics` or
    `train_test_regression_metrics`.
-12. Visualize results with `plot_parity`, `plot_learning_curve`,
+13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
@@ -101,6 +105,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
+| `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `list_physics_equation_templates` | Reusable materials-physics mean-equation templates |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |

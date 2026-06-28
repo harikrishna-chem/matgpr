@@ -1245,7 +1245,82 @@ result = fit_gpytorch_gpr(
 )
 ```
 
-### 9.4 Learned vs Fixed Parameters
+### 9.4 Reusable Physics Equation Templates
+
+For common materials trends, `matgpr` includes reusable equation templates. A
+template stores:
+
+- the equation callable,
+- the required physics feature names,
+- default learnable parameter initial values,
+- positive-parameter constraints,
+- fixed constants such as the gas constant,
+- short documentation for reporting.
+
+Available templates include:
+
+| Template | Equation form | Typical use |
+| --- | --- | --- |
+| `arrhenius_rate` | \(A \exp(-E_a / RT)\) | Diffusion, conductivity, reaction or transport rates |
+| `arrhenius_sqrt_time` | \(b + \sqrt{A \exp(-E_a / RT)t}\) | Oxidation, diffusion depth, aging |
+| `power_law` | \(b + c x^n\) | Load, rate, concentration, or field scaling |
+| `hall_petch` | \(\sigma_0 + k d^{-1/2}\) | Strength, hardness, yield stress with grain size |
+| `free_volume_exponential` | \(b + A \exp(-B/f_v)\) | Polymer diffusion, permeability, mobility |
+| `rule_of_mixtures` | \((1-\phi)y_m + \phi y_i + \gamma\phi(1-\phi)\) | Composites, alloys, blends |
+
+Use `get_physics_equation_template` when you want a documented starting point:
+
+```python
+from matgpr import get_physics_equation_template, fit_gpytorch_gpr
+
+
+template = get_physics_equation_template("arrhenius_rate")
+
+mean_module = template.build_mean_function(
+    feature_indices={"temperature_k": feature_columns.index("temperature_k")},
+    learnable_parameter_overrides={
+        "prefactor": 1.0,
+        "activation_energy": 25_000.0,
+    },
+    feature_means={"temperature_k": feature_means["temperature_k"]},
+    feature_stds={"temperature_k": feature_stds["temperature_k"]},
+)
+
+result = fit_gpytorch_gpr(
+    X_train_scaled,
+    y_train,
+    mean_module=mean_module,
+    kernel="matern",
+    ard=True,
+    training_iter=1000,
+)
+
+learned_parameters = result.model.mean_module.current_parameter_values()
+```
+
+The template feature names are canonical names used inside the equation. They
+do not need to match dataframe column names. For example, a hardness notebook
+can map an experimental load column to the `power_law` template:
+
+```python
+template = get_physics_equation_template("power_law")
+
+mean_module = template.build_mean_function(
+    feature_indices={"driving_variable": feature_columns.index("load_n")},
+    learnable_parameter_overrides={
+        "coefficient": 1.0,
+        "exponent": -0.1,
+        "offset": float(y_train.mean()),
+    },
+)
+```
+
+The templates are not proof that a system obeys the equation. Treat them as
+transparent inductive biases, then validate them against standard GPR with
+learning curves, held-out parity plots, uncertainty calibration, and learned
+parameter checks.
+
+### 9.5 Learned vs Fixed Parameters
 
 Use `learnable_parameters` when a parameter should be optimized from data:
 
@@ -1286,7 +1361,7 @@ After training, inspect learned values:
 result.model.mean_module.current_parameter_values()
 ```
 
-### 9.5 Practical Guidance for Physics Equations
+### 9.6 Practical Guidance for Physics Equations
 
 Good physics-informed mean functions should be:
 
