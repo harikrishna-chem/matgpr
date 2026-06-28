@@ -51,6 +51,9 @@ from matgpr import (
     KnownLimitConstraint,
     MonotonicTrendConstraint,
     append_virtual_observations,
+    DerivativeObservationSet,
+    MonotonicDerivativeConstraint,
+    fit_derivative_constrained_gpr,
     BoundedTargetTransform,
     ElementFractionKernel,
     StructureFeatureKernel,
@@ -835,6 +838,93 @@ Use virtual observations carefully:
   error.
 - Do not claim global monotonicity unless using a formal derivative-constrained
   GP.
+
+### 8.1 Derivative-Constrained GPR
+
+When physics gives slope information, use derivative-constrained GPR instead
+of converting the slope into ordinary function-value anchors. In this model,
+the GP is trained on both function observations and derivative observations:
+
+```text
+y_i = f(x_i) + epsilon_i
+g_m = df(z_m) / dz_{q_m} + eta_m
+```
+
+For an RBF kernel,
+
+```text
+k(x, x') = sigma_f^2 exp(-0.5 sum_d ((x_d - x'_d) / ell_d)^2)
+```
+
+`matgpr` uses the exact joint covariance between function values and
+derivatives:
+
+```text
+cov[f(x), df(z)/dz_j] =
+    k(x, z) (x_j - z_j) / ell_j^2
+
+cov[df(x)/dx_i, df(z)/dz_j] =
+    k(x, z) [1(i = j) / ell_i^2
+             - (x_i - z_i)(x_j - z_j) / (ell_i^2 ell_j^2)]
+```
+
+This is useful for materials trends such as increasing diffusivity with
+temperature, decreasing viscosity with temperature, positive time dependence,
+or a known near-zero derivative in a saturation regime.
+
+```python
+from matgpr import (
+    MonotonicDerivativeConstraint,
+    fit_derivative_constrained_gpr,
+)
+
+temperature_slope = MonotonicDerivativeConstraint(
+    feature="temperature_k",
+    direction="increasing",
+    minimum_slope=0.01,
+    noise_std=0.1,
+)
+
+derivative_observations = temperature_slope.generate(X_train)
+
+result = fit_derivative_constrained_gpr(
+    X_train,
+    y_train,
+    derivative_observations,
+    length_scale=None,
+    signal_variance=1.0,
+    value_noise_std=0.05,
+    standardize_y=True,
+    optimize_hyperparameters=True,
+)
+
+prediction = result.predict(X_test, confidence_level=0.95)
+```
+
+You can also pass measured or equation-derived slopes directly:
+
+```python
+from matgpr import DerivativeObservationSet
+
+derivative_observations = DerivativeObservationSet(
+    X=slope_anchor_features,
+    feature_indices=feature_columns.index("temperature_k"),
+    derivative_values=d_property_d_temperature,
+    noise_std=0.2,
+)
+```
+
+Important details:
+
+- Derivatives must be with respect to the same feature scale used in `X`.
+- If `X` is standardized, transform derivative values to that standardized
+  feature scale before fitting. For `x_scaled = (x - mean) / scale`, use
+  `dy / dx_scaled = scale * dy / dx`.
+- `noise_std` controls how strongly derivative observations influence the
+  posterior.
+- Monotonic derivative observations are soft equality observations of the
+  local slope; they encourage a trend near anchor points, but they still do not
+  prove global monotonicity everywhere.
 
 ## 9. Physics-Informed GPR
 

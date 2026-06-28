@@ -9,6 +9,14 @@ from .data_cleaning import (
     replace_missing_placeholders,
 )
 from .data_splitting import separate_features_target, split_train_test
+from .derivative_gpr import (
+    DerivativeConstrainedGPRPrediction,
+    DerivativeConstrainedGPRResult,
+    DerivativeObservationSet,
+    MonotonicDerivativeConstraint,
+    combine_derivative_observations,
+    fit_derivative_constrained_gpr,
+)
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
 from .featurizers import (
     CompositionFeaturizer,
@@ -133,10 +141,14 @@ __all__ = [
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
     "AugmentedTrainingData",
+    "DerivativeConstrainedGPRPrediction",
+    "DerivativeConstrainedGPRResult",
+    "DerivativeObservationSet",
     "IdentityTargetTransform",
     "KnownLimitConstraint",
     "LogTargetTransform",
     "MatGPRRegressor",
+    "MonotonicDerivativeConstraint",
     "MonotonicTrendConstraint",
     "PhysicsInformedMean",
     "PhysicsInformedGPRRegressor",
@@ -177,6 +189,7 @@ __all__ = [
     "calibration_curve",
     "clean_formula",
     "combine_virtual_observations",
+    "combine_derivative_observations",
     "composition_fingerprint",
     "default_element_symbols",
     "drop_columns_by_missing_fraction",
@@ -189,6 +202,7 @@ __all__ = [
     "filter_iqr_outliers",
     "fingerprint_smiles",
     "fingerprint_cache_key",
+    "fit_derivative_constrained_gpr",
     "fit_gpytorch_gpr",
     "fit_pca",
     "gaussian_nlpd",

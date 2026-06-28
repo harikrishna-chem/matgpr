@@ -18,6 +18,7 @@ prediction accuracy.
 - Target-transform and physics-residual workflows for properties that are
   positive, bounded, transformed, or baseline-corrected.
 - Soft physics-constraint anchors for known limits and monotonic trends.
+- Derivative-constrained GPR for slope-informed physics trends.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.
