@@ -69,6 +69,7 @@ nav:
       - Physics Equation Templates: api/physics_equations.md
       - Physics-Informed GPR: api/gpytorch_gpr.md
       - Validation: api/validation.md
+      - Bayesian Optimization: api/bayesian_optimization.md
       - Uncertainty: api/uncertainty.md
       - Fingerprints: api/fingerprints.md
       - Data And Metrics: api/data.md

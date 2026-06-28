@@ -21,7 +21,9 @@ Most `matgpr` projects follow this pattern:
 7. Predict with uncertainty.
 8. Analyze RMSE, R2, Pearson r, parity plots, uncertainty calibration,
    learning curves, PCA, and feature effects.
-9. Save models, preprocessors, metrics, and plots.
+9. Optionally rank candidate materials for the next experiment with Bayesian
+   optimization.
+10. Save models, preprocessors, metrics, and plots.
 
 Core imports:
 
@@ -73,6 +75,7 @@ from matgpr import (
     train_test_regression_metrics,
     uncertainty_diagnostics,
     calibration_curve,
+    suggest_next_experiments,
     plot_parity,
     plot_learning_curve,
     plot_uncertainty_calibration,
@@ -1731,7 +1734,57 @@ shap_importance = pd.DataFrame(
 For GPR, SHAP can be computationally expensive. For publication workflows,
 combine SHAP with domain checks, correlation analysis, and sensitivity plots.
 
-## 11. Save Models and Results
+## 11. Bayesian Optimization
+
+After validating a GPR model, use Bayesian optimization when the goal is to
+choose the next material, molecule, polymer, formulation, or experiment from a
+finite candidate pool. The first `matgpr` Bayesian-optimization API uses
+BoTorch as an optional backend:
+
+```bash
+python -m pip install "matgpr[bo]"
+```
+
+For finite candidate lists, featurize measured rows and candidate rows with the
+same descriptor pipeline, then rank the candidates:
+
+```python
+from matgpr import suggest_next_experiments
+
+
+bo_result = suggest_next_experiments(
+    X_train=X_measured_features,
+    y_train=y_measured,
+    X_candidates=X_candidate_features,
+    candidate_data=candidate_metadata,
+    top_k=5,
+    acquisition_function="log_expected_improvement",
+    maximize=True,
+)
+
+recommendations = bo_result.recommendations
+ranked_pool = bo_result.ranked_candidates
+```
+
+The returned tables include:
+
+| Column | Meaning |
+| --- | --- |
+| `matgpr_rank` | Candidate rank by acquisition value. |
+| `matgpr_predicted_mean` | GP posterior mean in original target direction. |
+| `matgpr_predicted_std` | GP posterior standard deviation. |
+| `matgpr_acquisition` | Acquisition value used for ranking. |
+
+Supported acquisition functions are `"log_expected_improvement"`,
+`"expected_improvement"`, `"probability_of_improvement"`, and
+`"upper_confidence_bound"`. Use `maximize=False` for targets where lower values
+are better, such as degradation rate, diffusion barrier, cost, or toxicity.
+
+This workflow assumes the candidate list is already generated. It is best for
+materials informatics tasks where users have a realistic library of synthesizable
+materials or feasible experimental conditions.
+
+## 12. Save Models and Results
 
 Save fitted preprocessors, models, or full pipelines:
 
@@ -1759,7 +1812,7 @@ log_experiment_result(
 )
 ```
 
-## 12. Common Troubleshooting
+## 13. Common Troubleshooting
 
 ### Invalid Polymer SMILES
 
@@ -1808,7 +1861,7 @@ For small materials datasets:
   kernel, and split.
 - Report both mean performance and standard deviation across splits.
 
-## 13. Minimal End-to-End Example
+## 14. Minimal End-to-End Example
 
 ```python
 import pandas as pd

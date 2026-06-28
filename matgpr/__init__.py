@@ -1,5 +1,12 @@
 """Utilities for data preparation, Gaussian Process Regression, and analysis."""
 
+from .bayesian_optimization import (
+    BayesianOptimizationResult,
+    BoTorchSurrogate,
+    fit_botorch_surrogate,
+    rank_discrete_candidates,
+    suggest_next_experiments,
+)
 from .data_cleaning import (
     drop_columns_by_missing_fraction,
     drop_duplicate_rows,
@@ -177,6 +184,8 @@ __all__ = [
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
     "AugmentedTrainingData",
+    "BayesianOptimizationResult",
+    "BoTorchSurrogate",
     "DerivativeConstrainedGPRPrediction",
     "DerivativeConstrainedGPRResult",
     "DerivativeObservationSet",
@@ -254,6 +263,7 @@ __all__ = [
     "featurize_smiles",
     "featurize_structures",
     "filter_iqr_outliers",
+    "fit_botorch_surrogate",
     "fingerprint_smiles",
     "fingerprint_cache_key",
     "fit_derivative_constrained_gpr",
@@ -288,6 +298,7 @@ __all__ = [
     "prediction_interval_bounds",
     "predict_gpytorch_gpr",
     "power_law_equation",
+    "rank_discrete_candidates",
     "regression_metrics",
     "replace_missing_placeholders",
     "require_optional_dependency",
@@ -300,6 +311,7 @@ __all__ = [
     "structure_fingerprint",
     "summarize_missingness",
     "summarize_numeric_columns",
+    "suggest_next_experiments",
     "summarize_pca",
     "train_gpytorch_gpr",
     "train_test_regression_metrics",

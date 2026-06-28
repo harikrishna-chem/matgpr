@@ -36,6 +36,12 @@ class OptionalDependency:
 
 
 OPTIONAL_DEPENDENCIES: dict[str, OptionalDependency] = {
+    "botorch": OptionalDependency(
+        import_name="botorch",
+        package_name="botorch",
+        extra="bo",
+        purpose="BoTorch Bayesian optimization",
+    ),
     "ase": OptionalDependency(
         import_name="ase",
         package_name="ase",

@@ -61,6 +61,8 @@ semantic-versioning conventions once the first public release is tagged.
   estimator checks, `GridSearchCV`, material featurizers, and GPR pipelines.
 - Optional-dependency helper registry with clear install messages and tests for
   advanced fingerprinting backends.
+- Optional BoTorch Bayesian-optimization helpers for fitting `SingleTaskGP`
+  surrogates, ranking finite candidate pools, and suggesting next experiments.
 
 ### Changed
 

@@ -43,6 +43,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   heteroscedastic datasets.
 - Validation APIs for train/test evaluation, cross-validation summaries, and
   configurable learning curves.
+- Optional BoTorch Bayesian optimization helpers for ranking finite materials
+  candidate pools and selecting next experiments.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -84,6 +86,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
+14. Optionally rank candidate materials for the next experiment with
+   `suggest_next_experiments` after installing the `bo` extra.
 
 ## Documentation
 
@@ -117,6 +121,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
+| `matgpr.bayesian_optimization` | `suggest_next_experiments`, `fit_botorch_surrogate`, `rank_discrete_candidates` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
@@ -213,6 +218,12 @@ For documentation:
 ```bash
 python3 -m pip install -e ".[docs,examples]"
 python3 -m mkdocs serve
+```
+
+For Bayesian optimization:
+
+```bash
+python3 -m pip install -e ".[bo]"
 ```
 
 ## Citation

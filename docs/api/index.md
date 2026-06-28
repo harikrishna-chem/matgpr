@@ -24,6 +24,8 @@ types, and class methods.
   mean-function utilities.
 - [Validation](validation.md): train/test evaluation, cross-validation, and
   configurable learning-curve utilities.
+- [Bayesian Optimization](bayesian_optimization.md): optional BoTorch
+  finite-pool candidate ranking for next-experiment selection.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
   diagnostics.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and

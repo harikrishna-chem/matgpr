@@ -77,6 +77,8 @@ class OptionalDependencyTests(unittest.TestCase):
         keys = {(dependency.import_name, dependency.extra) for dependency in listed}
 
         self.assertEqual(len(listed), len(keys))
+        self.assertIn("botorch", OPTIONAL_DEPENDENCIES)
+        self.assertIn(("botorch", "bo"), keys)
         self.assertIn("dscribe", OPTIONAL_DEPENDENCIES)
         self.assertIn(("dscribe", "structures"), keys)
         self.assertIn(("mordred", "molecular-extra"), keys)
