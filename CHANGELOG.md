@@ -24,6 +24,8 @@ semantic-versioning conventions once the first public release is tagged.
   `PolymerSmilesFeaturizer` transformer classes.
 - Deterministic row-level fingerprint caching with cache keys, cache-hit
   reports, and cache keys in failed-row reports.
+- Predictive uncertainty diagnostics for interval coverage, calibration curves,
+  Gaussian NLPD, standardized residuals, and uncertainty-error plots.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.

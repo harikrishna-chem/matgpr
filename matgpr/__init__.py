@@ -38,6 +38,15 @@ from .sklearn_gpr import (
     build_sklearn_gpr_kernel,
     build_sklearn_gpr_model,
 )
+from .uncertainty import (
+    calibration_curve,
+    gaussian_nlpd,
+    interval_coverage,
+    prediction_interval_bounds,
+    standardized_residuals,
+    uncertainty_diagnostics,
+    uncertainty_error_correlation,
+)
 from .visualization import (
     plot_correlation_matrix,
     plot_distribution,
@@ -45,6 +54,8 @@ from .visualization import (
     plot_parity,
     plot_pca_scores,
     plot_pca_scree,
+    plot_uncertainty_calibration,
+    plot_uncertainty_vs_error,
 )
 
 try:
@@ -92,6 +103,7 @@ __all__ = [
     "build_sklearn_gpr_model",
     "canonicalize_molecule_smiles",
     "canonicalize_polymer_smiles",
+    "calibration_curve",
     "clean_formula",
     "composition_fingerprint",
     "drop_columns_by_missing_fraction",
@@ -103,8 +115,10 @@ __all__ = [
     "fingerprint_cache_key",
     "fit_gpytorch_gpr",
     "fit_pca",
+    "gaussian_nlpd",
     "identify_feature_types",
     "impute_missing_values",
+    "interval_coverage",
     "load_artifact",
     "log_experiment_result",
     "normalize_column_names",
@@ -114,16 +128,22 @@ __all__ = [
     "plot_parity",
     "plot_pca_scores",
     "plot_pca_scree",
+    "plot_uncertainty_calibration",
+    "plot_uncertainty_vs_error",
+    "prediction_interval_bounds",
     "predict_gpytorch_gpr",
     "regression_metrics",
     "replace_missing_placeholders",
     "save_artifact",
     "separate_features_target",
     "split_train_test",
+    "standardized_residuals",
     "summarize_missingness",
     "summarize_numeric_columns",
     "summarize_pca",
     "train_gpytorch_gpr",
     "train_test_regression_metrics",
     "transform_pca",
+    "uncertainty_diagnostics",
+    "uncertainty_error_correlation",
 ]

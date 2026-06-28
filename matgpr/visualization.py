@@ -6,8 +6,10 @@ import pandas as pd
 
 try:
     from .metrics import regression_metrics
+    from .uncertainty import calibration_curve, uncertainty_diagnostics
 except ImportError:
     from metrics import regression_metrics
+    from uncertainty import calibration_curve, uncertainty_diagnostics
 
 
 def plot_parity(
@@ -354,8 +356,112 @@ def plot_pca_scores(
     return fig, ax
 
 
+def plot_uncertainty_calibration(
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    confidence_levels=None,
+    figsize: tuple[float, float] = (6, 5),
+    title: str = "Uncertainty Calibration",
+    save_path: str | None = None,
+    dpi: int = 300,
+):
+    """Plot observed versus expected Gaussian interval coverage."""
+    curve = calibration_curve(
+        y_true,
+        y_pred,
+        y_std,
+        confidence_levels=confidence_levels,
+    )
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.plot(
+        curve["expected_coverage"],
+        curve["observed_coverage"],
+        marker="o",
+        linewidth=2.0,
+        markersize=6,
+        color="tab:blue",
+        label="Model",
+    )
+    ax.plot([0, 1], [0, 1], "--", color="black", linewidth=1.4, label="Ideal")
+    ax.set_xlabel("Expected coverage")
+    ax.set_ylabel("Observed coverage")
+    ax.set_title(title)
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    _save_figure(fig, save_path, dpi)
+    return fig, ax, curve
+
+
+def plot_uncertainty_vs_error(
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    figsize: tuple[float, float] = (6, 5),
+    title: str = "Uncertainty vs Error",
+    save_path: str | None = None,
+    dpi: int = 300,
+):
+    """Plot predictive standard deviation versus absolute prediction error."""
+    y_true = _to_1d_float_array(y_true, "y_true")
+    y_pred = _to_1d_float_array(y_pred, "y_pred")
+    y_std = _to_1d_float_array(y_std, "y_std")
+    if not (len(y_true) == len(y_pred) == len(y_std)):
+        raise ValueError("y_true, y_pred, and y_std must have the same length")
+    if np.any(y_std <= 0):
+        raise ValueError("y_std must contain only positive values")
+
+    absolute_error = np.abs(y_true - y_pred)
+    diagnostics = uncertainty_diagnostics(y_true, y_pred, y_std)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.scatter(
+        y_std,
+        absolute_error,
+        s=55,
+        alpha=0.8,
+        color="tab:blue",
+        edgecolor="black",
+        linewidth=0.4,
+    )
+    ax.set_xlabel("Predictive standard deviation")
+    ax.set_ylabel("Absolute prediction error")
+    ax.set_title(title)
+    ax.grid(True, alpha=0.25)
+    ax.text(
+        0.05,
+        0.95,
+        f"NLPD = {diagnostics['NLPD']:.3f}\n"
+        f"Coverage = {diagnostics['observed_coverage']:.3f}\n"
+        f"Spearman = {diagnostics['uncertainty_error_spearman']:.3f}",
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=10,
+        bbox=dict(boxstyle="round", facecolor="white", edgecolor="gray", alpha=0.9),
+    )
+    fig.tight_layout()
+    _save_figure(fig, save_path, dpi)
+    return fig, ax, diagnostics
+
+
 def _to_1d_array(values) -> np.ndarray:
     return np.asarray(values).ravel()
+
+
+def _to_1d_float_array(values, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=float).ravel()
+    if array.size == 0:
+        raise ValueError(f"{name} must contain at least one value")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+    return array
 
 
 def _save_figure(fig, save_path: str | None, dpi: int) -> None:

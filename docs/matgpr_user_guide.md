@@ -19,8 +19,8 @@ Most `matgpr` projects follow this pattern:
 5. Scale or preprocess features using only the training data.
 6. Train a standard GPR or physics-informed GPR model.
 7. Predict with uncertainty.
-8. Analyze RMSE, R2, Pearson r, parity plots, learning curves, PCA, and feature
-   effects.
+8. Analyze RMSE, R2, Pearson r, parity plots, uncertainty calibration,
+   learning curves, PCA, and feature effects.
 9. Save models, preprocessors, metrics, and plots.
 
 Core imports:
@@ -51,8 +51,12 @@ from matgpr import (
     fit_gpytorch_gpr,
     regression_metrics,
     train_test_regression_metrics,
+    uncertainty_diagnostics,
+    calibration_curve,
     plot_parity,
     plot_learning_curve,
+    plot_uncertainty_calibration,
+    plot_uncertainty_vs_error,
     save_artifact,
 )
 ```
@@ -712,7 +716,60 @@ fig, ax = plot_parity(
 )
 ```
 
-### 7.3 Learning Curves
+### 7.3 Uncertainty Diagnostics
+
+GPR models return a predictive mean and standard deviation. Use the standard
+regression metrics for point-prediction accuracy, then separately check whether
+the predictive uncertainty is calibrated and useful.
+
+```python
+diagnostics = uncertainty_diagnostics(
+    y_test,
+    test_prediction.mean,
+    test_prediction.std,
+    confidence_level=0.95,
+)
+print(diagnostics)
+```
+
+Important uncertainty diagnostics:
+
+| Diagnostic | Meaning |
+| --- | --- |
+| `observed_coverage` | Fraction of points inside the requested Gaussian prediction interval. |
+| `coverage_error` | Observed coverage minus expected coverage. Values near zero are preferred. |
+| `NLPD` | Gaussian negative log predictive density. Lower is better. |
+| `mean_standardized_residual` | Average residual divided by predictive standard deviation. Values near zero suggest low bias. |
+| `std_standardized_residual` | Spread of standardized residuals. Values near one suggest calibrated standard deviations. |
+| `uncertainty_error_spearman` | Rank correlation between predictive standard deviation and absolute error. Positive values mean larger uncertainties tend to flag larger errors. |
+
+For calibration plots, compare observed interval coverage against expected
+coverage across several confidence levels:
+
+```python
+fig, ax, curve = plot_uncertainty_calibration(
+    y_test,
+    test_prediction.mean,
+    test_prediction.std,
+    save_path="figures/uncertainty_calibration.png",
+)
+```
+
+To check whether high-uncertainty predictions are also high-error predictions:
+
+```python
+fig, ax, diagnostics = plot_uncertainty_vs_error(
+    y_test,
+    test_prediction.mean,
+    test_prediction.std,
+    save_path="figures/uncertainty_vs_error.png",
+)
+```
+
+For tabular workflows, `calibration_curve(...)` returns the same coverage
+information as a dataframe, which is useful for reports and benchmark tables.
+
+### 7.4 Learning Curves
 
 For repeated train-size experiments, collect rows with columns such as
 `train_size`, `model`, and `test_R2`.
@@ -729,7 +786,7 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 7.4 90/10 Validation With 10-Fold Cross-Validation
+### 7.5 90/10 Validation With 10-Fold Cross-Validation
 
 After selecting the best model family from learning curves, use a conventional
 validation protocol before fitting the final production model:
@@ -790,7 +847,7 @@ cv_summary = (
 For small datasets, make sure each stratification bin has enough samples for
 10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
 
-### 7.5 PCA
+### 7.6 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -803,7 +860,7 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 7.6 SHAP Analysis
+### 7.7 SHAP Analysis
 
 `matgpr` does not require SHAP internally, but the example notebooks use SHAP
 for production-model interpretation. For compact tabular datasets, run SHAP on
