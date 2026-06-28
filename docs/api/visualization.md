@@ -1,0 +1,3 @@
+# Visualization
+
+::: matgpr.visualization

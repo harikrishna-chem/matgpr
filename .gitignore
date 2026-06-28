@@ -17,6 +17,7 @@ htmlcov/
 # Build artifacts
 build/
 dist/
+site/
 *.egg-info/
 pip-wheel-metadata/
 

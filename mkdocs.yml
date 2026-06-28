@@ -1,0 +1,69 @@
+site_name: matgpr
+site_description: Physics-informed Gaussian Process Regression tools for materials informatics.
+site_url: https://harikrishna-chem.github.io/matgpr/
+repo_name: harikrishna-chem/matgpr
+repo_url: https://github.com/harikrishna-chem/matgpr
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: indigo
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: indigo
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            members_order: source
+            show_root_heading: true
+            show_source: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - fenced_code
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - User Guide: matgpr_user_guide.md
+  - Physics-Informed GPR: physics_informed_gpr.md
+  - Fingerprinting Options: fingerprinting_options.md
+  - API Reference:
+      - Overview: api/index.md
+      - Estimators: api/estimators.md
+      - Featurizers: api/featurizers.md
+      - Physics-Informed GPR: api/gpytorch_gpr.md
+      - Uncertainty: api/uncertainty.md
+      - Fingerprints: api/fingerprints.md
+      - Data And Metrics: api/data.md
+      - Visualization: api/visualization.md
+  - License Strategy: license_strategy.md

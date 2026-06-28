@@ -37,6 +37,11 @@ dev = [
 examples = [
     "shap",
 ]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocstrings[python]",
+]
 structures = [
     "ase",
     "dscribe",

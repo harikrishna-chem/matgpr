@@ -51,10 +51,14 @@ physics-informed mean functions and uncertainty-aware prediction.
 
 ## Documentation
 
+- A MkDocs site can be built locally with `python -m mkdocs serve` after
+  installing `matgpr` with the `docs` extra.
 - `docs/matgpr_user_guide.md` provides a practical user guide for cleaning
   data, generating materials fingerprints, training standard and
   physics-informed GPR models, introducing custom physics equations, analyzing
   model performance, and saving artifacts.
+- `docs/physics_informed_gpr.md` explains how physics equations enter the GP
+  mean function and what users should report for PI-GPR models.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.
@@ -159,6 +163,13 @@ python3 -m pip install -e ".[dev,examples]"
 python3 -m ruff check matgpr tests scripts
 python3 -m pytest
 python3 -m build
+```
+
+For documentation:
+
+```bash
+python3 -m pip install -e ".[docs,examples]"
+python3 -m mkdocs serve
 ```
 
 ## Citation

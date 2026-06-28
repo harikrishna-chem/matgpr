@@ -1,0 +1,3 @@
+# Featurizers
+
+::: matgpr.featurizers

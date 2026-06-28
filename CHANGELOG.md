@@ -29,6 +29,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.
+- MkDocs Material documentation site scaffold with GitHub Pages deployment
+  workflow and generated API-reference pages.
 - License-strategy note for source-available/academic-use licensing decision.
 - CI/package-quality scaffolding.
 
