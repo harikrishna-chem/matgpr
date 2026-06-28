@@ -10,18 +10,26 @@ from .data_cleaning import (
 )
 from .data_splitting import separate_features_target, split_train_test
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
-from .featurizers import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer
+from .featurizers import (
+    CompositionFeaturizer,
+    PolymerSmilesFeaturizer,
+    SmilesFeaturizer,
+    StructureFeaturizer,
+)
 from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .kernels import (
     ElementFractionKernel,
     FeatureSubsetKernel,
+    StructureFeatureKernel,
     TanimotoKernel,
     build_additive_kernel,
     build_element_fraction_gpr_kernel,
     build_product_kernel,
+    build_structure_gpr_kernel,
     build_tanimoto_gpr_kernel,
     pairwise_composition_distance,
+    pairwise_structure_distance,
     pairwise_tanimoto_similarity,
 )
 from .metrics import regression_metrics, train_test_regression_metrics
@@ -44,6 +52,14 @@ from .organic_fingerprints import (
     canonicalize_polymer_smiles,
     featurize_smiles,
     fingerprint_smiles,
+)
+from .structure_fingerprints import (
+    DEFAULT_STRUCTURE_FEATURES,
+    StructureFingerprintResult,
+    append_structure_fingerprints,
+    featurize_structures,
+    structure_feature_names,
+    structure_fingerprint,
 )
 from .pca import fit_pca, summarize_pca, transform_pca
 from .preprocessing import build_preprocessor, build_scaler, identify_feature_types
@@ -116,16 +132,21 @@ __all__ = [
     "CompositionFingerprintResult",
     "CompositionFeaturizer",
     "DEFAULT_RDKIT_DESCRIPTORS",
+    "DEFAULT_STRUCTURE_FEATURES",
     "ElementFractionKernel",
     "FINGERPRINT_CACHE_SCHEMA_VERSION",
     "PolymerSmilesFeaturizer",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
     "StandardizedTargetTransform",
+    "StructureFeatureKernel",
+    "StructureFeaturizer",
+    "StructureFingerprintResult",
     "TanimotoKernel",
     "append_composition_fingerprints",
     "append_element_fractions",
     "append_smiles_features",
+    "append_structure_fingerprints",
     "build_additive_kernel",
     "build_element_fraction_gpr_kernel",
     "build_product_kernel",
@@ -134,6 +155,7 @@ __all__ = [
     "build_sklearn_gpr_grid_search",
     "build_sklearn_gpr_kernel",
     "build_sklearn_gpr_model",
+    "build_structure_gpr_kernel",
     "build_tanimoto_gpr_kernel",
     "canonicalize_molecule_smiles",
     "canonicalize_polymer_smiles",
@@ -147,6 +169,7 @@ __all__ = [
     "featurize_compositions",
     "featurize_element_fractions",
     "featurize_smiles",
+    "featurize_structures",
     "filter_iqr_outliers",
     "fingerprint_smiles",
     "fingerprint_cache_key",
@@ -161,6 +184,7 @@ __all__ = [
     "make_target_transform",
     "normalize_column_names",
     "pairwise_composition_distance",
+    "pairwise_structure_distance",
     "pairwise_tanimoto_similarity",
     "plot_correlation_matrix",
     "plot_distribution",
@@ -178,6 +202,8 @@ __all__ = [
     "separate_features_target",
     "split_train_test",
     "standardized_residuals",
+    "structure_feature_names",
+    "structure_fingerprint",
     "summarize_missingness",
     "summarize_numeric_columns",
     "summarize_pca",

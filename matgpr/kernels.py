@@ -10,12 +10,15 @@ from sklearn.gaussian_process.kernels import ConstantKernel, Hyperparameter, Ker
 __all__ = [
     "ElementFractionKernel",
     "FeatureSubsetKernel",
+    "StructureFeatureKernel",
     "TanimotoKernel",
     "build_additive_kernel",
     "build_element_fraction_gpr_kernel",
     "build_product_kernel",
+    "build_structure_gpr_kernel",
     "build_tanimoto_gpr_kernel",
     "pairwise_composition_distance",
+    "pairwise_structure_distance",
     "pairwise_tanimoto_similarity",
 ]
 
@@ -99,6 +102,78 @@ class ElementFractionKernel(Kernel):
             f"length_scale={self.length_scale}, "
             f"metric={self.metric!r}, "
             f"normalize={self.normalize})"
+        )
+
+
+class StructureFeatureKernel(Kernel):
+    """Kernel for continuous structure descriptors.
+
+    This kernel is intended for global crystal-structure descriptors such as
+    lattice-shape, volume-per-atom, and density features from
+    ``matgpr.structure_fingerprint``. It compares descriptor vectors after
+    optional fixed feature scaling using either an L2 RBF kernel or an L1
+    Laplacian kernel.
+    """
+
+    def __init__(
+        self,
+        *,
+        length_scale: float = 1.0,
+        length_scale_bounds: tuple[float, float] | str = (1e-5, 1e5),
+        metric: str = "l2",
+        feature_scales=None,
+    ):
+        self.length_scale = length_scale
+        self.length_scale_bounds = length_scale_bounds
+        self.metric = metric
+        self.feature_scales = feature_scales
+
+    @property
+    def hyperparameter_length_scale(self):
+        return Hyperparameter("length_scale", "numeric", self.length_scale_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient: bool = False):
+        """Return the structure-feature kernel matrix."""
+        if eval_gradient and Y is not None:
+            raise ValueError("Gradient can only be evaluated when Y is None")
+
+        length_scale = _validate_length_scale(self.length_scale)
+        distance = pairwise_structure_distance(
+            X,
+            Y,
+            metric=self.metric,
+            feature_scales=self.feature_scales,
+        )
+
+        if self.metric == "l2":
+            kernel = np.exp(-0.5 * distance / length_scale**2)
+            log_gradient = kernel * distance / length_scale**2
+        elif self.metric == "l1":
+            kernel = np.exp(-distance / length_scale)
+            log_gradient = kernel * distance / length_scale
+        else:
+            raise ValueError("metric must be either 'l1' or 'l2'")
+
+        if eval_gradient:
+            if self.hyperparameter_length_scale.fixed:
+                return kernel, np.empty((*kernel.shape, 0))
+            return kernel, log_gradient[:, :, None]
+        return kernel
+
+    def diag(self, X) -> np.ndarray:
+        """Return the diagonal of the kernel matrix."""
+        X = _scale_structure_features(X, feature_scales=self.feature_scales, name="X")
+        return np.ones(X.shape[0])
+
+    def is_stationary(self) -> bool:
+        """Return whether the kernel is stationary."""
+        return True
+
+    def __repr__(self) -> str:
+        return (
+            "StructureFeatureKernel("
+            f"length_scale={self.length_scale}, "
+            f"metric={self.metric!r})"
         )
 
 
@@ -282,6 +357,39 @@ def pairwise_composition_distance(
     raise ValueError("metric must be either 'l1' or 'l2'")
 
 
+def pairwise_structure_distance(
+    X,
+    Y=None,
+    *,
+    metric: str = "l2",
+    feature_scales=None,
+) -> np.ndarray:
+    """Return pairwise distances between continuous structure descriptor rows.
+
+    Parameters
+    ----------
+    X, Y
+        Two-dimensional arrays of structure descriptors.
+    metric
+        ``"l2"`` returns squared Euclidean distance. ``"l1"`` returns summed
+        absolute feature differences.
+    feature_scales
+        Optional positive per-feature scales. When supplied, descriptor columns
+        are divided by these scales before distances are computed.
+    """
+    X = _scale_structure_features(X, feature_scales=feature_scales, name="X")
+    Y = X if Y is None else _scale_structure_features(Y, feature_scales=feature_scales, name="Y")
+    if X.shape[1] != Y.shape[1]:
+        raise ValueError("X and Y must have the same number of features")
+
+    difference = X[:, None, :] - Y[None, :, :]
+    if metric == "l2":
+        return np.sum(difference * difference, axis=2)
+    if metric == "l1":
+        return np.sum(np.abs(difference), axis=2)
+    raise ValueError("metric must be either 'l1' or 'l2'")
+
+
 def build_element_fraction_gpr_kernel(
     *,
     constant_value: float = 1.0,
@@ -297,6 +405,26 @@ def build_element_fraction_gpr_kernel(
             length_scale=length_scale,
             metric=metric,
             normalize=normalize,
+        )
+        + WhiteKernel(noise_level=noise_level)
+    )
+
+
+def build_structure_gpr_kernel(
+    *,
+    constant_value: float = 1.0,
+    length_scale: float = 1.0,
+    noise_level: float = 1.0,
+    metric: str = "l2",
+    feature_scales=None,
+):
+    """Build a scikit-learn GPR kernel for continuous structure descriptors."""
+    return (
+        ConstantKernel(constant_value)
+        * StructureFeatureKernel(
+            length_scale=length_scale,
+            metric=metric,
+            feature_scales=feature_scales,
         )
         + WhiteKernel(noise_level=noise_level)
     )
@@ -366,6 +494,21 @@ def _normalize_composition_vectors(
     if np.any(row_sums <= eps):
         raise ValueError(f"{name} must not contain all-zero composition rows")
     return array / row_sums[:, None]
+
+
+def _scale_structure_features(values, *, feature_scales, name: str) -> np.ndarray:
+    array = _to_2d_float_array(values, name)
+    if feature_scales is None:
+        return array
+
+    scales = np.asarray(feature_scales, dtype=float)
+    if scales.ndim != 1:
+        raise ValueError("feature_scales must be a one-dimensional array")
+    if scales.shape[0] != array.shape[1]:
+        raise ValueError("feature_scales must match the number of structure features")
+    if np.any(~np.isfinite(scales)) or np.any(scales <= 0):
+        raise ValueError("feature_scales must contain only positive finite values")
+    return array / scales
 
 
 def _to_2d_float_array(values, name: str) -> np.ndarray:

@@ -109,14 +109,40 @@ Recommended options:
 
 | Option | Package | Use case |
 | --- | --- | --- |
+| matgpr structure descriptors | `pymatgen` | Lightweight lattice, volume, and density descriptors |
 | matminer structure featurizers | `matminer` | Global crystal-structure descriptors for tabular ML |
 | SOAP/ACSF/MBTR | `dscribe` | Atomistic local-environment and many-body descriptors |
 | ASE object conversion | `ase` | Bridge between structure formats and atomistic descriptors |
 | JARVIS descriptors | `jarvis-tools` | JARVIS-compatible structure workflows |
 
+Current `matgpr` implementation:
+
+```python
+from pymatgen.core import Structure
+
+from matgpr import StructureFeaturizer, append_structure_fingerprints
+
+structure = Structure.from_file("material.cif")
+
+structure_features = append_structure_fingerprints(
+    data,
+    structure_column="structure",
+    errors="coerce",
+)
+
+structure_featurizer = StructureFeaturizer(
+    structure_column="structure",
+    errors="coerce",
+    cache_dir="fingerprint_cache",
+).fit_transform(data)
+```
+
 Practical guidance:
 
-- For small tabular GPR, start with `matminer` structure featurizers.
+- For small tabular GPR, start with `append_structure_fingerprints` and
+  `StructureFeatureKernel`.
+- Compare against `matminer` structure featurizers when structure information
+  appears important.
 - For local atomic environments, defects, surfaces, or force-field-like
   descriptors, use `DScribe`.
 - For graph neural networks, keep the graph featurizer optional and separate
@@ -270,12 +296,16 @@ Already implemented:
 - `element_fraction_fingerprint`
 - `featurize_element_fractions`
 - `append_element_fractions`
+- `structure_fingerprint`
+- `featurize_structures`
+- `append_structure_fingerprints`
 - `canonicalize_molecule_smiles`
 - `canonicalize_polymer_smiles`
 - `fingerprint_smiles`
 - `featurize_smiles`
 - `append_smiles_features`
 - `CompositionFeaturizer`
+- `StructureFeaturizer`
 - `SmilesFeaturizer`
 - `PolymerSmilesFeaturizer`
 - deterministic fingerprint cache keys through `fingerprint_cache_key`
@@ -289,7 +319,7 @@ Recommended next wrappers:
 | `featurize_matminer_compositions` | `matminer` | Standard composition featurizer set |
 | `append_matminer_composition_features` | `matminer` | Add matminer descriptors to a dataframe |
 | `featurize_mendeleev_compositions` | `mendeleev` | Custom lightweight elemental-property descriptors |
-| `featurize_structures` | `matminer` | Structure descriptors from CIF or `pymatgen.Structure` |
+| `featurize_matminer_structures` | `matminer` | Larger published structure featurizer set |
 
 Keep optional wrappers import-safe. If an optional package is not installed,
 raise a clear message such as:

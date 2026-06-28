@@ -27,7 +27,7 @@ physics-informed mean functions and uncertainty-aware prediction.
   residuals.
 - Physics-aware kernels, including Tanimoto similarity for molecular and
   polymer fingerprints and element-fraction kernels for inorganic
-  compositions.
+  compositions plus structure-feature kernels for crystal descriptors.
 - Target transforms for log-scale targets, explicit standardization, and
   physics-residual modeling.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
@@ -42,12 +42,14 @@ physics-informed mean functions and uncertainty-aware prediction.
    `filter_iqr_outliers`.
 2. Separate the target from features with `separate_features_target`, then make
    train/test sets with `split_train_test`.
-3. Add materials descriptors with `CompositionFeaturizer`, `SmilesFeaturizer`,
-   `PolymerSmilesFeaturizer`, or the lower-level fingerprint helpers.
+3. Add materials descriptors with `CompositionFeaturizer`,
+   `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer`, or the
+   lower-level fingerprint helpers.
 4. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
 5. Choose a kernel, including `TanimotoKernel` for molecular or polymer
-   fingerprints or `ElementFractionKernel` for elemental composition vectors.
+   fingerprints, `ElementFractionKernel` for elemental composition vectors, or
+   `StructureFeatureKernel` for crystal-structure descriptors.
 6. Optionally transform targets with `LogTargetTransform`,
    `StandardizedTargetTransform`, or `PhysicsResidualTransform`.
 7. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
@@ -79,8 +81,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
 | `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
-| `matgpr.featurizers` | `CompositionFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
-| `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
+| `matgpr.featurizers` | `CompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
+| `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `StructureFeatureKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
 | `matgpr.target_transforms` | `LogTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target transforms and physics-residual modeling |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |

@@ -14,11 +14,17 @@ from .inorganic_fingerprints import (
     featurize_compositions,
 )
 from .organic_fingerprints import DEFAULT_RDKIT_DESCRIPTORS, featurize_smiles
+from .structure_fingerprints import (
+    DEFAULT_STRUCTURE_FEATURES,
+    featurize_structures,
+    structure_feature_names,
+)
 
 __all__ = [
     "CompositionFeaturizer",
     "PolymerSmilesFeaturizer",
     "SmilesFeaturizer",
+    "StructureFeaturizer",
 ]
 
 
@@ -71,6 +77,62 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
             formulas,
             properties=self.properties,
             statistics=self.statistics,
+            errors=self.errors,
+            cache_dir=self.cache_dir,
+        )
+        features = result.features.copy()
+        features.columns = self.feature_names_out_
+        features.index = index
+        self.failed_ = result.failed
+        self.cache_keys_ = result.cache_keys.set_axis(index)
+        self.cache_hit_ = result.cache_hit.set_axis(index)
+        self.last_result_ = result
+        return _format_transform_output(features, self.return_dataframe)
+
+    def get_feature_names_out(self, input_features=None) -> np.ndarray:
+        """Return output descriptor names."""
+        check_is_fitted(self, "feature_names_out_")
+        return self.feature_names_out_.copy()
+
+
+class StructureFeaturizer(TransformerMixin, BaseEstimator):
+    """Scikit-learn-style transformer for global crystal-structure descriptors."""
+
+    def __init__(
+        self,
+        *,
+        structure_column: str | int | None = None,
+        features: Sequence[str] = DEFAULT_STRUCTURE_FEATURES,
+        column_prefix: str | None = None,
+        errors: str = "raise",
+        cache_dir: str | Path | None = None,
+        return_dataframe: bool = True,
+    ):
+        self.structure_column = structure_column
+        self.features = features
+        self.column_prefix = column_prefix
+        self.errors = errors
+        self.cache_dir = cache_dir
+        self.return_dataframe = return_dataframe
+
+    def fit(self, X, y=None):
+        """Store input-column metadata and deterministic descriptor names."""
+        _validate_errors(self.errors)
+        self.structure_column_ = _resolve_column(X, self.structure_column, kind="structure")
+        self.feature_names_out_ = np.asarray(
+            structure_feature_names(self.features, column_prefix=self.column_prefix),
+            dtype=object,
+        )
+        self.n_features_out_ = len(self.feature_names_out_)
+        return self
+
+    def transform(self, X):
+        """Transform structures into numeric lattice and packing descriptors."""
+        check_is_fitted(self, "feature_names_out_")
+        structures, index = _extract_values(X, self.structure_column_, kind="structure")
+        result = featurize_structures(
+            structures,
+            features=self.features,
             errors=self.errors,
             cache_dir=self.cache_dir,
         )
@@ -246,6 +308,9 @@ def _resolve_column(X, column: str | int | None, *, kind: str) -> str | int | No
     if isinstance(X, pd.Series):
         return column
 
+    if kind == "structure" and column is None and not isinstance(X, np.ndarray):
+        return column
+
     array = np.asarray(X, dtype=object)
     if array.ndim == 1:
         return column
@@ -273,6 +338,10 @@ def _extract_values(X, column: str | int | None, *, kind: str) -> tuple[Sequence
 
     if isinstance(X, pd.Series):
         return X.tolist(), X.index
+
+    if kind == "structure" and column is None and not isinstance(X, np.ndarray):
+        values = list(X)
+        return values, pd.RangeIndex(len(values))
 
     array = np.asarray(X, dtype=object)
     if array.ndim == 1:

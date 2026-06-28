@@ -9,11 +9,28 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+from pymatgen.core import Lattice, Structure
 from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from matgpr import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer
+from matgpr import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer, StructureFeaturizer
+
+
+def _diamond_structure() -> Structure:
+    return Structure(
+        Lattice.cubic(3.57),
+        ["C", "C"],
+        [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]],
+    )
+
+
+def _rocksalt_structure() -> Structure:
+    return Structure(
+        Lattice.cubic(5.64),
+        ["Na", "Cl"],
+        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+    )
 
 
 class CompositionFeaturizerTests(unittest.TestCase):
@@ -78,6 +95,58 @@ class CompositionFeaturizerTests(unittest.TestCase):
         self.assertEqual(cloned.formula_column, "formula")
         self.assertEqual(cloned.properties, ("atomic_number",))
         self.assertEqual(cloned.statistics, ("fwm",))
+
+
+class StructureFeaturizerTests(unittest.TestCase):
+    def test_transform_dataframe_structure_column(self):
+        data = pd.DataFrame(
+            {
+                "structure": [_diamond_structure(), _rocksalt_structure()],
+                "label": [1, 2],
+            },
+            index=[10, 20],
+        )
+        featurizer = StructureFeaturizer(
+            structure_column="structure",
+            features=("density", "log_volume_per_atom"),
+            column_prefix="struct",
+        )
+
+        features = featurizer.fit_transform(data)
+
+        self.assertEqual(features.index.tolist(), [10, 20])
+        self.assertEqual(features.columns.tolist(), ["struct_density", "struct_log_volume_per_atom"])
+        self.assertEqual(featurizer.get_feature_names_out().tolist(), features.columns.tolist())
+        self.assertEqual(featurizer.failed_.shape[0], 0)
+
+    def test_structure_featurizer_works_in_simple_pipeline(self):
+        pipeline = Pipeline(
+            steps=[
+                (
+                    "structure",
+                    StructureFeaturizer(
+                        features=("density", "log_volume_per_atom"),
+                        return_dataframe=False,
+                    ),
+                ),
+                ("scale", StandardScaler()),
+            ]
+        )
+
+        transformed = pipeline.fit_transform([_diamond_structure(), _rocksalt_structure()])
+
+        self.assertEqual(transformed.shape, (2, 2))
+        self.assertTrue(np.isfinite(transformed).all())
+
+    def test_structure_featurizer_is_cloneable(self):
+        featurizer = StructureFeaturizer(
+            structure_column="structure",
+            features=("density",),
+        )
+        cloned = clone(featurizer)
+
+        self.assertEqual(cloned.structure_column, "structure")
+        self.assertEqual(cloned.features, ("density",))
 
 
 class SmilesFeaturizerTests(unittest.TestCase):

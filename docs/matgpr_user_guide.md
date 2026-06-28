@@ -39,6 +39,7 @@ from matgpr import (
     summarize_missingness,
     summarize_numeric_columns,
     CompositionFeaturizer,
+    StructureFeaturizer,
     SmilesFeaturizer,
     PolymerSmilesFeaturizer,
     separate_features_target,
@@ -48,6 +49,7 @@ from matgpr import (
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
     ElementFractionKernel,
+    StructureFeatureKernel,
     TanimotoKernel,
     FeatureSubsetKernel,
     build_additive_kernel,
@@ -179,7 +181,48 @@ Set `cache_dir` when repeated notebook runs recompute the same fingerprints.
 Each row receives a deterministic cache key based on the input and descriptor
 settings. Failed-row reports include that key for traceability.
 
-### 3.2 Molecule and Polymer Fingerprints
+### 3.2 Crystal Structure Fingerprints
+
+For crystal structures, `matgpr` accepts `pymatgen.Structure` objects,
+structure-file paths, or CIF strings. The built-in descriptors are lightweight
+global structure features intended for small tabular GPR workflows.
+
+```python
+from matgpr import StructureFeaturizer, append_structure_fingerprints
+
+structure_data = append_structure_fingerprints(
+    data,
+    structure_column="structure",
+    errors="coerce",
+)
+
+structure_featurizer = StructureFeaturizer(
+    structure_column="structure",
+    errors="coerce",
+    cache_dir="fingerprint_cache",
+)
+
+structure_features = structure_featurizer.fit_transform(data)
+failed_structures = structure_featurizer.failed_
+structure_feature_names = structure_featurizer.get_feature_names_out()
+```
+
+The default structure descriptors include sorted log lattice lengths, sorted
+cosines of lattice angles, log volume per atom, and density. These descriptors
+are not a replacement for local-environment descriptors such as SOAP or MBTR,
+but they provide a fast structure-aware baseline without extra heavy
+dependencies.
+
+Useful functions:
+
+| Function | Purpose |
+| --- | --- |
+| `structure_fingerprint(structure)` | Featurizes one `pymatgen.Structure`, structure file, or CIF string. |
+| `featurize_structures(structures, errors="raise")` | Featurizes many structures and returns features plus failed rows. |
+| `append_structure_fingerprints(data, structure_column="structure")` | Appends structure descriptors to a dataframe. |
+| `structure_feature_names(...)` | Returns validated descriptor names, optionally with a prefix. |
+
+### 3.3 Molecule and Polymer Fingerprints
 
 For organic molecules and polymers, `matgpr` uses RDKit.
 
@@ -346,7 +389,7 @@ Available helper functions:
 
 | Function | Purpose |
 | --- | --- |
-| `build_sklearn_gpr_kernel(name="matern")` | Builds RBF, Matern, ARD, Tanimoto, or element-fraction composition kernels. |
+| `build_sklearn_gpr_kernel(name="matern")` | Builds RBF, Matern, ARD, Tanimoto, element-fraction, or structure kernels. |
 | `build_sklearn_gpr_model(...)` | Returns an unfitted `GaussianProcessRegressor`. |
 | `build_sklearn_gpr_grid_search(...)` | Returns a `GridSearchCV` over common GPR kernels and settings. |
 
@@ -435,8 +478,9 @@ metrics = regression_metrics(y_test, prediction.mean)
 Physics can also enter through the covariance function. The kernel controls
 which materials are considered similar. This is especially important for
 molecular and polymer fingerprints, where Euclidean distance is often less
-natural than overlap-based similarity, and for inorganic compositions where
-the amount of elemental substitution is physically meaningful.
+natural than overlap-based similarity, for inorganic compositions where the
+amount of elemental substitution is physically meaningful, and for crystal
+structures where lattice geometry and packing should affect similarity.
 
 ### 6.1 Tanimoto Kernel for Fingerprints
 
@@ -503,7 +547,42 @@ For convenience, `build_sklearn_gpr_kernel("composition")` and
 `build_sklearn_gpr_kernel("element_fraction")` return an element-fraction
 composition kernel with white noise.
 
-### 6.3 Mixed Fingerprint and Physics Kernels
+### 6.3 Structure Kernel for Crystal Geometry
+
+Use `StructureFeatureKernel` for continuous structure descriptors, such as the
+output of `featurize_structures`, `append_structure_fingerprints`, or
+`StructureFeaturizer`.
+
+```python
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel
+
+from matgpr import StructureFeatureKernel
+
+kernel = (
+    ConstantKernel(1.0)
+    * StructureFeatureKernel(metric="l2", length_scale=1.0)
+    + WhiteKernel(noise_level=1.0)
+)
+
+model = GaussianProcessRegressor(
+    kernel=kernel,
+    normalize_y=True,
+    random_state=42,
+)
+
+model.fit(X_train_structure_features, y_train)
+y_test_pred, y_test_std = model.predict(X_test_structure_features, return_std=True)
+```
+
+The default `metric="l2"` gives an RBF kernel over global structure descriptors.
+Use `feature_scales` or a scikit-learn scaler when structure features have very
+different units or ranges.
+
+For convenience, `build_sklearn_gpr_kernel("structure")` returns a
+structure-feature kernel with white noise.
+
+### 6.4 Mixed Fingerprint and Physics Kernels
 
 For mixed feature matrices, use `FeatureSubsetKernel` to apply different kernels
 to different column groups. This lets a fingerprint kernel act on molecular bits

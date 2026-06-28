@@ -4,6 +4,10 @@
 
 ::: matgpr.inorganic_fingerprints
 
+## Crystal Structure Fingerprints
+
+::: matgpr.structure_fingerprints
+
 ## Organic And Polymer Fingerprints
 
 ::: matgpr.organic_fingerprints
