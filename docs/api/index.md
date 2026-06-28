@@ -29,7 +29,7 @@ types, and class methods.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and
   cache helpers.
 - [Data And Metrics](data.md): cleaning, splitting, preprocessing, metrics, PCA,
-  reporting, and artifact utilities.
+  reporting, artifact utilities, and optional-dependency helpers.
 - [Visualization](visualization.md): plotting helpers for model analysis.
 
 Prefer the high-level estimator and featurizer APIs for reusable scripts.

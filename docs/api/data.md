@@ -28,6 +28,10 @@
 
 ::: matgpr.io_utils
 
+## Optional Dependencies
+
+::: matgpr.optional_dependencies
+
 ## Scikit-Learn GPR Helpers
 
 ::: matgpr.sklearn_gpr

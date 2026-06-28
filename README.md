@@ -18,6 +18,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 ## Highlights
 
 - Data cleaning, feature preprocessing, train/test splitting, and quick reports.
+- Optional-dependency helpers with clear install messages for advanced
+  fingerprinting backends.
 - Deterministic fingerprint caching and failed-row reports for repeated
   featurization workflows.
 - Scikit-learn GPR helpers for baseline models and kernel search.

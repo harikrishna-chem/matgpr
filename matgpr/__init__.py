@@ -69,6 +69,13 @@ from .organic_fingerprints import (
     featurize_smiles,
     fingerprint_smiles,
 )
+from .optional_dependencies import (
+    OPTIONAL_DEPENDENCIES,
+    OptionalDependency,
+    is_optional_dependency_available,
+    list_optional_dependencies,
+    require_optional_dependency,
+)
 from .structure_fingerprints import (
     DEFAULT_STRUCTURE_FEATURES,
     StructureFingerprintResult,
@@ -195,6 +202,8 @@ __all__ = [
     "R_GAS_CONSTANT_J_MOL_K",
     "PolymerSmilesFeaturizer",
     "ObservationNoiseProfile",
+    "OPTIONAL_DEPENDENCIES",
+    "OptionalDependency",
     "ReplicateNoiseModel",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
@@ -257,7 +266,9 @@ __all__ = [
     "identify_feature_types",
     "impute_missing_values",
     "interval_coverage",
+    "is_optional_dependency_available",
     "load_artifact",
+    "list_optional_dependencies",
     "log_experiment_result",
     "list_physics_equation_templates",
     "learning_curve",
@@ -279,6 +290,7 @@ __all__ = [
     "power_law_equation",
     "regression_metrics",
     "replace_missing_placeholders",
+    "require_optional_dependency",
     "rule_of_mixtures_equation",
     "save_artifact",
     "separate_features_target",

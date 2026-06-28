@@ -59,6 +59,8 @@ semantic-versioning conventions once the first public release is tagged.
 - CI/package-quality scaffolding.
 - Scikit-learn estimator compliance and pipeline tests covering official
   estimator checks, `GridSearchCV`, material featurizers, and GPR pipelines.
+- Optional-dependency helper registry with clear install messages and tests for
+  advanced fingerprinting backends.
 
 ### Changed
 

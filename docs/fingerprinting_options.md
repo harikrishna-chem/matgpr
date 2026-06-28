@@ -321,14 +321,14 @@ Recommended next wrappers:
 | `featurize_mendeleev_compositions` | `mendeleev` | Custom lightweight elemental-property descriptors |
 | `featurize_matminer_structures` | `matminer` | Larger published structure featurizer set |
 
-Keep optional wrappers import-safe. If an optional package is not installed,
-raise a clear message such as:
+Keep optional wrappers import-safe. Use `require_optional_dependency(...)` at
+the point of use so users get a clear install message without importing heavy
+packages during `import matgpr`:
 
 ```python
-ImportError(
-    "DScribe descriptors require the optional structures extra. "
-    "Install with `python -m pip install -e .[structures]`."
-)
+from matgpr import require_optional_dependency
+
+dscribe = require_optional_dependency("dscribe")
 ```
 
 ## Practical Selection Rules
