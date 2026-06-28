@@ -12,8 +12,8 @@ prediction accuracy.
 
 - Standard GPR baselines with scikit-learn and GPyTorch.
 - Physics-informed GPR models where a mechanistic equation enters the GP mean.
-- Physics-aware kernels such as Tanimoto similarity for molecular and polymer
-  fingerprints.
+- Physics-aware kernels such as Tanimoto similarity for molecular/polymer
+  fingerprints and element-fraction kernels for inorganic compositions.
 - Target-transform and physics-residual workflows for properties that are
   better modeled in transformed or baseline-corrected spaces.
 - Composition, molecule, and polymer fingerprints for materials datasets.

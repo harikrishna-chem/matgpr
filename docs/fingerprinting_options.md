@@ -57,13 +57,14 @@ Recommended options:
 | Option | Package | Use case |
 | --- | --- | --- |
 | matgpr composition descriptors | `pymatgen` | Fast baseline descriptors from elemental-property statistics |
+| matgpr element-fraction vectors | `pymatgen` | Direct inputs for composition-aware kernels |
 | matminer composition featurizers | `matminer` | Stronger published baseline descriptors |
 | custom elemental descriptors | `mendeleev` | When a domain-specific property table is needed |
 
 Current `matgpr` implementation:
 
 ```python
-from matgpr import CompositionFeaturizer, append_composition_fingerprints
+from matgpr import CompositionFeaturizer, append_composition_fingerprints, append_element_fractions
 
 model_data = append_composition_fingerprints(
     data,
@@ -76,6 +77,13 @@ composition_features = CompositionFeaturizer(
     errors="coerce",
     cache_dir="fingerprint_cache",
 ).fit_transform(data)
+
+element_fraction_features = append_element_fractions(
+    data,
+    formula_column="composition",
+    elements=("B", "C", "N", "O", "Al", "Si"),
+    errors="coerce",
+)
 ```
 
 Use `cache_dir` for repeated notebooks or cross-validation workflows. Cache
@@ -89,6 +97,8 @@ Best default for early GPR examples:
 2. Add process variables, measurement conditions, or physical descriptors.
 3. Compare against `matminer` composition featurizers when the baseline is
    stable.
+4. Use `append_element_fractions` when the model will use
+   `ElementFractionKernel`.
 
 ### 2. Inorganic Crystal Structures
 
@@ -256,6 +266,10 @@ Already implemented:
 - `composition_fingerprint`
 - `featurize_compositions`
 - `append_composition_fingerprints`
+- `default_element_symbols`
+- `element_fraction_fingerprint`
+- `featurize_element_fractions`
+- `append_element_fractions`
 - `canonicalize_molecule_smiles`
 - `canonicalize_polymer_smiles`
 - `fingerprint_smiles`

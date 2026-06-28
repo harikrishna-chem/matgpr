@@ -5,7 +5,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, Matern, RBF, WhiteKernel
 from sklearn.model_selection import GridSearchCV
 
-from .kernels import build_tanimoto_gpr_kernel
+from .kernels import build_element_fraction_gpr_kernel, build_tanimoto_gpr_kernel
 
 
 def build_sklearn_gpr_kernel(
@@ -35,8 +35,12 @@ def build_sklearn_gpr_kernel(
         return ConstantKernel(1.0) * Matern(length_scale=np.ones(n_features), nu=2.5) + WhiteKernel(noise_level)
     if normalized == "tanimoto":
         return build_tanimoto_gpr_kernel(noise_level=noise_level)
+    if normalized in {"element_fraction", "composition"}:
+        return build_element_fraction_gpr_kernel(noise_level=noise_level)
 
-    raise ValueError("name must be one of: rbf, matern, ard_rbf, ard_matern, tanimoto")
+    raise ValueError(
+        "name must be one of: rbf, matern, ard_rbf, ard_matern, tanimoto, element_fraction, composition"
+    )
 
 
 def build_sklearn_gpr_model(

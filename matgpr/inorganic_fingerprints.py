@@ -41,7 +41,7 @@ _ORBITAL_PATTERN = re.compile(r"(\d+)([spdf])(\d+)")
 
 @dataclass(frozen=True)
 class CompositionFingerprintResult:
-    """Result returned by ``featurize_compositions``.
+    """Result returned by composition featurization helpers.
 
     Attributes
     ----------
@@ -114,6 +114,112 @@ def composition_fingerprint(
                 property_name=property_name,
             )
     return features
+
+
+def default_element_symbols(max_atomic_number: int = 118) -> tuple[str, ...]:
+    """Return periodic-table element symbols up to ``max_atomic_number``."""
+    if not isinstance(max_atomic_number, int) or max_atomic_number < 1:
+        raise ValueError("max_atomic_number must be a positive integer")
+    if max_atomic_number > 118:
+        raise ValueError("max_atomic_number must be less than or equal to 118")
+    return tuple(_element_from_atomic_number(z).symbol for z in range(1, max_atomic_number + 1))
+
+
+def element_fraction_fingerprint(
+    formula: object,
+    *,
+    elements: Sequence[str] | None = None,
+) -> dict[str, float]:
+    """Create a fixed-length elemental-fraction vector for one formula.
+
+    Each output feature is named ``element_fraction_<symbol>``. If ``elements``
+    is omitted, the vector spans all elements up to atomic number 118. Passing a
+    smaller element list is useful for project-specific models, but every
+    element present in ``formula`` must be included in that list.
+    """
+    symbols = _validate_element_symbols(default_element_symbols() if elements is None else elements)
+    return _element_fraction_values(formula, symbols)
+
+
+def featurize_element_fractions(
+    formulas: Iterable[object],
+    *,
+    elements: Sequence[str] | None = None,
+    errors: str = "raise",
+    cache_dir: str | Path | None = None,
+) -> CompositionFingerprintResult:
+    """Featurize formulas as fixed element-fraction vectors.
+
+    Element-fraction vectors are the recommended inputs for
+    :class:`matgpr.ElementFractionKernel`. They preserve direct compositional
+    information, unlike statistical elemental-property descriptors.
+    """
+    if errors not in {"raise", "coerce"}:
+        raise ValueError("errors must be either 'raise' or 'coerce'")
+
+    symbols = _validate_element_symbols(default_element_symbols() if elements is None else elements)
+    feature_names = _element_fraction_feature_names(symbols)
+    cache_parameters = {"elements": list(symbols)}
+
+    rows: list[Mapping[str, float]] = []
+    failures: list[dict[str, object]] = []
+    cache_keys: list[str] = []
+    cache_hits: list[bool] = []
+
+    for index, formula in enumerate(formulas):
+        normalized_formula = clean_formula(formula)
+        cache_key = fingerprint_cache_key(
+            namespace="element_fraction",
+            value=normalized_formula,
+            parameters=cache_parameters,
+        )
+        cache_keys.append(cache_key)
+
+        try:
+            cached_features = _read_cached_feature_row(
+                cache_dir,
+                namespace="element_fraction",
+                cache_key=cache_key,
+                feature_names=feature_names,
+            )
+            if cached_features is not None:
+                rows.append(cached_features)
+                cache_hits.append(True)
+                continue
+
+            features = _element_fraction_values(formula, symbols)
+            rows.append(features)
+            cache_hits.append(False)
+            _write_cached_feature_row(
+                cache_dir,
+                namespace="element_fraction",
+                cache_key=cache_key,
+                input_value=normalized_formula,
+                features=features,
+                metadata=cache_parameters,
+            )
+        except Exception as exc:
+            if errors == "raise":
+                raise ValueError(
+                    f"Could not featurize element fractions at position {index}: {formula!r}"
+                ) from exc
+            failures.append(
+                {
+                    "index": index,
+                    "formula": formula,
+                    "cache_key": cache_key,
+                    "error": str(exc),
+                }
+            )
+            rows.append({name: np.nan for name in feature_names})
+            cache_hits.append(False)
+
+    return CompositionFingerprintResult(
+        features=pd.DataFrame(rows, columns=feature_names),
+        failed=pd.DataFrame(failures, columns=["index", "formula", "cache_key", "error"]),
+        cache_keys=pd.Series(cache_keys, name="element_fraction_cache_key"),
+        cache_hit=pd.Series(cache_hits, name="element_fraction_cache_hit"),
+    )
 
 
 def featurize_compositions(
@@ -233,6 +339,30 @@ def append_composition_fingerprints(
     return pd.concat([base, features], axis=1)
 
 
+def append_element_fractions(
+    data: pd.DataFrame,
+    *,
+    formula_column: str = "composition",
+    elements: Sequence[str] | None = None,
+    drop_formula_column: bool = False,
+    errors: str = "raise",
+    cache_dir: str | Path | None = None,
+) -> pd.DataFrame:
+    """Append element-fraction columns to a dataframe."""
+    if formula_column not in data.columns:
+        raise KeyError(f"Formula column '{formula_column}' not found")
+
+    result = featurize_element_fractions(
+        data[formula_column],
+        elements=elements,
+        errors=errors,
+        cache_dir=cache_dir,
+    )
+    features = result.features.set_index(data.index)
+    base = data.drop(columns=[formula_column]) if drop_formula_column else data.copy()
+    return pd.concat([base, features], axis=1)
+
+
 def _read_cached_feature_row(
     cache_dir: str | Path | None,
     *,
@@ -293,6 +423,18 @@ def _parse_composition(formula: object):
     return Composition(normalized)
 
 
+def _element_from_atomic_number(atomic_number: int):
+    try:
+        from pymatgen.core import Element
+    except ImportError as exc:
+        raise ImportError(
+            "pymatgen is required for inorganic composition fingerprints. "
+            "Install it with `conda install -c conda-forge pymatgen`."
+        ) from exc
+
+    return Element.from_Z(atomic_number)
+
+
 def _element(symbol: str):
     try:
         from pymatgen.core import Element
@@ -303,6 +445,41 @@ def _element(symbol: str):
         ) from exc
 
     return Element(symbol)
+
+
+def _validate_element_symbols(elements: Sequence[str]) -> tuple[str, ...]:
+    symbols = tuple(str(symbol).strip() for symbol in elements)
+    if not symbols:
+        raise ValueError("elements must contain at least one element symbol")
+    if any(not symbol for symbol in symbols):
+        raise ValueError("elements must contain non-empty element symbols")
+    if len(set(symbols)) != len(symbols):
+        raise ValueError("elements must not contain duplicate symbols")
+    for symbol in symbols:
+        _element(symbol)
+    return symbols
+
+
+def _element_fraction_values(formula: object, symbols: Sequence[str]) -> dict[str, float]:
+    composition = _parse_composition(formula)
+    element_amounts = composition.get_el_amt_dict()
+    total_amount = float(sum(element_amounts.values()))
+    if total_amount <= 0:
+        raise ValueError(f"Composition '{formula}' has no positive element amounts")
+
+    missing_symbols = sorted(set(element_amounts) - set(symbols))
+    if missing_symbols:
+        missing = ", ".join(missing_symbols)
+        raise ValueError(f"elements does not include symbols present in formula: {missing}")
+
+    return {
+        f"element_fraction_{symbol}": float(element_amounts.get(symbol, 0.0)) / total_amount
+        for symbol in symbols
+    }
+
+
+def _element_fraction_feature_names(elements: Sequence[str]) -> list[str]:
+    return [f"element_fraction_{symbol}" for symbol in elements]
 
 
 def _element_property(element, property_name: str) -> float:

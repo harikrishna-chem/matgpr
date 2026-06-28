@@ -28,6 +28,8 @@ semantic-versioning conventions once the first public release is tagged.
   Gaussian NLPD, standardized residuals, and uncertainty-error plots.
 - Physics-aware scikit-learn kernels, including Tanimoto fingerprint similarity
   and feature-subset additive/product kernel helpers.
+- Element-fraction composition vectors and composition-aware GPR kernels for
+  inorganic formula workflows.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent

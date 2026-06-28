@@ -7,12 +7,16 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, RBF, WhiteKernel
 
 from matgpr import (
+    ElementFractionKernel,
     FeatureSubsetKernel,
     TanimotoKernel,
     build_additive_kernel,
+    build_element_fraction_gpr_kernel,
     build_product_kernel,
     build_sklearn_gpr_kernel,
+    build_sklearn_gpr_model,
     build_tanimoto_gpr_kernel,
+    pairwise_composition_distance,
     pairwise_tanimoto_similarity,
 )
 
@@ -94,6 +98,93 @@ class TanimotoKernelTests(unittest.TestCase):
 
 
 class KernelCompositionTests(unittest.TestCase):
+    def test_pairwise_composition_distance_normalizes_element_counts(self):
+        x = np.array(
+            [
+                [4.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        )
+        y = np.array([[0.0, 1.0, 1.0]])
+
+        distance = pairwise_composition_distance(x, y, metric="l1")
+
+        expected = np.array([[1.6], [1.0]])
+        self.assertTrue(np.allclose(distance, expected))
+
+    def test_element_fraction_kernel_l1_gradient_and_validation(self):
+        x = np.array(
+            [
+                [4.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+            ]
+        )
+        kernel = ElementFractionKernel(length_scale=2.0, metric="l1")
+
+        value, gradient = kernel(x, eval_gradient=True)
+
+        expected_off_diagonal = np.exp(-0.6 / 2.0)
+        self.assertTrue(np.allclose(np.diag(value), [1.0, 1.0]))
+        self.assertAlmostEqual(value[0, 1], expected_off_diagonal)
+        self.assertEqual(gradient.shape, (2, 2, 1))
+        self.assertTrue(np.allclose(kernel.diag(x), [1.0, 1.0]))
+        self.assertFalse(kernel.is_stationary())
+
+        with self.assertRaises(ValueError):
+            kernel([[0.0, 0.0]])
+        with self.assertRaises(ValueError):
+            ElementFractionKernel(metric="cosine")(x)
+
+    def test_element_fraction_kernel_can_fit_sklearn_gpr(self):
+        x = np.array(
+            [
+                [4.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0],
+            ]
+        )
+        y = np.array([28.0, 32.0, 45.0, 40.0])
+        kernel = build_element_fraction_gpr_kernel(noise_level=1e-4)
+
+        model = GaussianProcessRegressor(kernel=kernel, optimizer=None, normalize_y=True)
+        model.fit(x, y)
+        mean, std = model.predict(x[:2], return_std=True)
+
+        self.assertEqual(mean.shape, (2,))
+        self.assertEqual(std.shape, (2,))
+        self.assertTrue(np.all(np.isfinite(mean)))
+        self.assertTrue(np.all(std >= 0.0))
+
+    def test_build_sklearn_composition_kernel(self):
+        kernel = build_sklearn_gpr_kernel("composition", noise_level=0.1)
+        direct = build_element_fraction_gpr_kernel(noise_level=0.1)
+
+        x = np.array([[4.0, 1.0], [1.0, 1.0]])
+        self.assertTrue(np.allclose(kernel(x), direct(x)))
+
+    def test_build_sklearn_element_fraction_model_optimizes(self):
+        x = np.array(
+            [
+                [4.0, 1.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 1.0],
+                [1.0, 0.0, 1.0],
+            ]
+        )
+        y = np.array([28.0, 32.0, 45.0, 40.0])
+        model = build_sklearn_gpr_model(
+            kernel="element_fraction",
+            n_restarts_optimizer=0,
+            random_state=0,
+        )
+
+        model.fit(x, y)
+        mean, std = model.predict(x[:2], return_std=True)
+
+        self.assertTrue(np.all(np.isfinite(mean)))
+        self.assertTrue(np.all(std >= 0.0))
+
     def test_feature_subset_kernel_applies_kernel_to_selected_columns(self):
         x = np.array(
             [

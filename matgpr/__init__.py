@@ -14,20 +14,27 @@ from .featurizers import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesF
 from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .kernels import (
+    ElementFractionKernel,
     FeatureSubsetKernel,
     TanimotoKernel,
     build_additive_kernel,
+    build_element_fraction_gpr_kernel,
     build_product_kernel,
     build_tanimoto_gpr_kernel,
+    pairwise_composition_distance,
     pairwise_tanimoto_similarity,
 )
 from .metrics import regression_metrics, train_test_regression_metrics
 from .inorganic_fingerprints import (
     CompositionFingerprintResult,
     append_composition_fingerprints,
+    append_element_fractions,
     clean_formula,
     composition_fingerprint,
+    default_element_symbols,
+    element_fraction_fingerprint,
     featurize_compositions,
+    featurize_element_fractions,
 )
 from .organic_fingerprints import (
     DEFAULT_RDKIT_DESCRIPTORS,
@@ -109,6 +116,7 @@ __all__ = [
     "CompositionFingerprintResult",
     "CompositionFeaturizer",
     "DEFAULT_RDKIT_DESCRIPTORS",
+    "ElementFractionKernel",
     "FINGERPRINT_CACHE_SCHEMA_VERSION",
     "PolymerSmilesFeaturizer",
     "SmilesFingerprintResult",
@@ -116,8 +124,10 @@ __all__ = [
     "StandardizedTargetTransform",
     "TanimotoKernel",
     "append_composition_fingerprints",
+    "append_element_fractions",
     "append_smiles_features",
     "build_additive_kernel",
+    "build_element_fraction_gpr_kernel",
     "build_product_kernel",
     "build_preprocessor",
     "build_scaler",
@@ -130,9 +140,12 @@ __all__ = [
     "calibration_curve",
     "clean_formula",
     "composition_fingerprint",
+    "default_element_symbols",
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",
+    "element_fraction_fingerprint",
     "featurize_compositions",
+    "featurize_element_fractions",
     "featurize_smiles",
     "filter_iqr_outliers",
     "fingerprint_smiles",
@@ -147,6 +160,7 @@ __all__ = [
     "log_experiment_result",
     "make_target_transform",
     "normalize_column_names",
+    "pairwise_composition_distance",
     "pairwise_tanimoto_similarity",
     "plot_correlation_matrix",
     "plot_distribution",

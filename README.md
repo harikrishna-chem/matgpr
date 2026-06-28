@@ -26,7 +26,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
   residuals.
 - Physics-aware kernels, including Tanimoto similarity for molecular and
-  polymer fingerprints.
+  polymer fingerprints and element-fraction kernels for inorganic
+  compositions.
 - Target transforms for log-scale targets, explicit standardization, and
   physics-residual modeling.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
@@ -46,7 +47,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 4. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
 5. Choose a kernel, including `TanimotoKernel` for molecular or polymer
-   fingerprints when appropriate.
+   fingerprints or `ElementFractionKernel` for elemental composition vectors.
 6. Optionally transform targets with `LogTargetTransform`,
    `StandardizedTargetTransform`, or `PhysicsResidualTransform`.
 7. Train a model with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
@@ -79,7 +80,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
 | `matgpr.featurizers` | `CompositionFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
-| `matgpr.kernels` | `TanimotoKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
+| `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
 | `matgpr.target_transforms` | `LogTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target transforms and physics-residual modeling |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |

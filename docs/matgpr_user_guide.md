@@ -47,6 +47,7 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    ElementFractionKernel,
     TanimotoKernel,
     FeatureSubsetKernel,
     build_additive_kernel,
@@ -115,7 +116,11 @@ For inorganic formulas, `matgpr` uses `pymatgen` to parse compositions and
 build statistical elemental-property descriptors.
 
 ```python
-from matgpr import append_composition_fingerprints, featurize_compositions
+from matgpr import (
+    append_composition_fingerprints,
+    append_element_fractions,
+    featurize_compositions,
+)
 
 data = append_composition_fingerprints(
     data,
@@ -129,6 +134,18 @@ The default descriptor set summarizes elemental properties with statistics such
 as minimum, maximum, range, fraction-weighted mean, absolute deviation, and
 standard deviation.
 
+For composition-aware kernels, create fixed element-fraction vectors instead of
+statistical descriptors:
+
+```python
+composition_vectors = append_element_fractions(
+    data,
+    formula_column="composition",
+    elements=("B", "C", "N", "O", "Al", "Si"),
+    errors="coerce",
+)
+```
+
 Useful functions:
 
 | Function | Purpose |
@@ -137,6 +154,10 @@ Useful functions:
 | `composition_fingerprint(formula)` | Featurizes one inorganic formula. |
 | `featurize_compositions(formulas, errors="raise")` | Featurizes many formulas and returns features plus failed rows. |
 | `append_composition_fingerprints(data, formula_column="composition")` | Appends descriptors to an existing dataframe. |
+| `default_element_symbols()` | Returns periodic-table symbols in atomic-number order. |
+| `element_fraction_fingerprint(formula, elements=...)` | Builds one fixed element-fraction vector. |
+| `featurize_element_fractions(formulas, elements=...)` | Builds element-fraction vectors for many formulas. |
+| `append_element_fractions(data, formula_column="composition")` | Appends element-fraction columns to a dataframe. |
 
 For scikit-learn-style workflows, use `CompositionFeaturizer`:
 
@@ -325,7 +346,7 @@ Available helper functions:
 
 | Function | Purpose |
 | --- | --- |
-| `build_sklearn_gpr_kernel(name="matern")` | Builds an RBF, Matern, ARD RBF, ARD Matern, or Tanimoto kernel. |
+| `build_sklearn_gpr_kernel(name="matern")` | Builds RBF, Matern, ARD, Tanimoto, or element-fraction composition kernels. |
 | `build_sklearn_gpr_model(...)` | Returns an unfitted `GaussianProcessRegressor`. |
 | `build_sklearn_gpr_grid_search(...)` | Returns a `GridSearchCV` over common GPR kernels and settings. |
 
@@ -414,7 +435,8 @@ metrics = regression_metrics(y_test, prediction.mean)
 Physics can also enter through the covariance function. The kernel controls
 which materials are considered similar. This is especially important for
 molecular and polymer fingerprints, where Euclidean distance is often less
-natural than overlap-based similarity.
+natural than overlap-based similarity, and for inorganic compositions where
+the amount of elemental substitution is physically meaningful.
 
 ### 6.1 Tanimoto Kernel for Fingerprints
 
@@ -446,7 +468,42 @@ y_test_pred, y_test_std = model.predict(X_test_fingerprints, return_std=True)
 For convenience, `build_sklearn_gpr_kernel("tanimoto")` returns the same
 Tanimoto-plus-noise structure.
 
-### 6.2 Mixed Fingerprint and Physics Kernels
+### 6.2 Element-Fraction Kernel for Inorganic Compositions
+
+Use `ElementFractionKernel` when rows are elemental composition vectors, such as
+the output of `featurize_element_fractions` or `append_element_fractions`.
+
+```python
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel
+
+from matgpr import ElementFractionKernel
+
+kernel = (
+    ConstantKernel(1.0)
+    * ElementFractionKernel(metric="l1", length_scale=1.0)
+    + WhiteKernel(noise_level=1.0)
+)
+
+model = GaussianProcessRegressor(
+    kernel=kernel,
+    normalize_y=True,
+    random_state=42,
+)
+
+model.fit(X_train_element_fractions, y_train)
+y_test_pred, y_test_std = model.predict(X_test_element_fractions, return_std=True)
+```
+
+The default `metric="l1"` compares the total fraction of elements that must be
+substituted to move from one composition to another. Use `metric="l2"` when a
+smoother Euclidean distance over the composition simplex is preferred.
+
+For convenience, `build_sklearn_gpr_kernel("composition")` and
+`build_sklearn_gpr_kernel("element_fraction")` return an element-fraction
+composition kernel with white noise.
+
+### 6.3 Mixed Fingerprint and Physics Kernels
 
 For mixed feature matrices, use `FeatureSubsetKernel` to apply different kernels
 to different column groups. This lets a fingerprint kernel act on molecular bits

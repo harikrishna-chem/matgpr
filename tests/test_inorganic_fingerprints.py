@@ -13,9 +13,13 @@ from matgpr.inorganic_fingerprints import (
     DEFAULT_COMPOSITION_STATISTICS,
     DEFAULT_ELEMENTAL_PROPERTIES,
     append_composition_fingerprints,
+    append_element_fractions,
     clean_formula,
     composition_fingerprint,
+    default_element_symbols,
+    element_fraction_fingerprint,
     featurize_compositions,
+    featurize_element_fractions,
 )
 
 
@@ -72,6 +76,47 @@ class InorganicFingerprintTests(unittest.TestCase):
         self.assertEqual(result.index.tolist(), [10, 20])
         self.assertIn("load", result.columns)
         self.assertIn("atomic_mass_fwm", result.columns)
+
+    def test_element_fraction_fingerprint_uses_fixed_element_basis(self):
+        features = element_fraction_fingerprint("B4C", elements=("B", "C", "N"))
+
+        self.assertAlmostEqual(features["element_fraction_B"], 0.8)
+        self.assertAlmostEqual(features["element_fraction_C"], 0.2)
+        self.assertEqual(features["element_fraction_N"], 0.0)
+
+    def test_featurize_element_fractions_and_failures(self):
+        result = featurize_element_fractions(
+            ["B4C", "4-Feb"],
+            elements=("B", "C"),
+            errors="coerce",
+        )
+
+        self.assertEqual(result.features.shape, (2, 2))
+        self.assertEqual(result.failed.shape[0], 1)
+        self.assertTrue(np.isnan(result.features.loc[1, "element_fraction_B"]))
+
+    def test_append_element_fractions_preserves_index(self):
+        data = pd.DataFrame(
+            {
+                "composition": ["B4C", "BN"],
+                "load": [0.49, 0.98],
+            },
+            index=[10, 20],
+        )
+
+        result = append_element_fractions(data, elements=("B", "C", "N"))
+
+        self.assertEqual(result.index.tolist(), [10, 20])
+        self.assertIn("load", result.columns)
+        self.assertAlmostEqual(result.loc[10, "element_fraction_B"], 0.8)
+        self.assertAlmostEqual(result.loc[20, "element_fraction_N"], 0.5)
+
+    def test_default_element_symbols_are_periodic_table_ordered(self):
+        symbols = default_element_symbols()
+
+        self.assertEqual(symbols[0], "H")
+        self.assertEqual(symbols[-1], "Og")
+        self.assertEqual(len(symbols), 118)
 
 
 if __name__ == "__main__":

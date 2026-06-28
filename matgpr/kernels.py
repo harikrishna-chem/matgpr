@@ -5,16 +5,101 @@ from operator import add, mul
 
 import numpy as np
 from sklearn.base import clone
-from sklearn.gaussian_process.kernels import ConstantKernel, Kernel, WhiteKernel
+from sklearn.gaussian_process.kernels import ConstantKernel, Hyperparameter, Kernel, WhiteKernel
 
 __all__ = [
+    "ElementFractionKernel",
     "FeatureSubsetKernel",
     "TanimotoKernel",
     "build_additive_kernel",
+    "build_element_fraction_gpr_kernel",
     "build_product_kernel",
     "build_tanimoto_gpr_kernel",
+    "pairwise_composition_distance",
     "pairwise_tanimoto_similarity",
 ]
+
+
+class ElementFractionKernel(Kernel):
+    """Kernel for elemental composition fraction or count vectors.
+
+    The kernel first projects non-negative element vectors onto the composition
+    simplex by normalizing each row to sum to one. It then compares normalized
+    compositions with either an L1 Laplacian kernel or an L2 RBF kernel.
+
+    The default L1 form is:
+
+    ``k(x, y) = exp(-sum_i |c_i - c'_i| / length_scale)``
+
+    where ``c`` and ``c'`` are element-fraction vectors. This is useful when
+    the physical idea of similarity is the amount of composition substitution
+    needed to move from one material to another.
+    """
+
+    def __init__(
+        self,
+        *,
+        length_scale: float = 1.0,
+        length_scale_bounds: tuple[float, float] | str = (1e-5, 1e5),
+        metric: str = "l1",
+        normalize: bool = True,
+        eps: float = 1e-12,
+    ):
+        self.length_scale = length_scale
+        self.length_scale_bounds = length_scale_bounds
+        self.metric = metric
+        self.normalize = normalize
+        self.eps = eps
+
+    @property
+    def hyperparameter_length_scale(self):
+        return Hyperparameter("length_scale", "numeric", self.length_scale_bounds)
+
+    def __call__(self, X, Y=None, eval_gradient: bool = False):
+        """Return the element-fraction composition kernel matrix."""
+        if eval_gradient and Y is not None:
+            raise ValueError("Gradient can only be evaluated when Y is None")
+
+        length_scale = _validate_length_scale(self.length_scale)
+        distance = pairwise_composition_distance(
+            X,
+            Y,
+            metric=self.metric,
+            normalize=self.normalize,
+            eps=self.eps,
+        )
+
+        if self.metric == "l1":
+            kernel = np.exp(-distance / length_scale)
+            log_gradient = kernel * distance / length_scale
+        elif self.metric == "l2":
+            kernel = np.exp(-0.5 * distance / length_scale**2)
+            log_gradient = kernel * distance / length_scale**2
+        else:
+            raise ValueError("metric must be either 'l1' or 'l2'")
+
+        if eval_gradient:
+            if self.hyperparameter_length_scale.fixed:
+                return kernel, np.empty((*kernel.shape, 0))
+            return kernel, log_gradient[:, :, None]
+        return kernel
+
+    def diag(self, X) -> np.ndarray:
+        """Return the diagonal of the kernel matrix."""
+        X = _normalize_composition_vectors(X, normalize=self.normalize, eps=self.eps, name="X")
+        return np.ones(X.shape[0])
+
+    def is_stationary(self) -> bool:
+        """Return whether the kernel is stationary."""
+        return False
+
+    def __repr__(self) -> str:
+        return (
+            "ElementFractionKernel("
+            f"length_scale={self.length_scale}, "
+            f"metric={self.metric!r}, "
+            f"normalize={self.normalize})"
+        )
 
 
 class TanimotoKernel(Kernel):
@@ -160,6 +245,63 @@ def pairwise_tanimoto_similarity(
     return similarity
 
 
+def pairwise_composition_distance(
+    X,
+    Y=None,
+    *,
+    metric: str = "l1",
+    normalize: bool = True,
+    eps: float = 1e-12,
+) -> np.ndarray:
+    """Return pairwise distances between non-negative composition vectors.
+
+    Parameters
+    ----------
+    X, Y
+        Two-dimensional arrays of elemental amount, count, or fraction vectors.
+        If ``Y`` is omitted, distances are calculated between rows of ``X``.
+    metric
+        ``"l1"`` returns the sum of absolute element-fraction differences.
+        ``"l2"`` returns squared Euclidean distance.
+    normalize
+        If ``True``, each row is normalized to sum to one before distances are
+        computed.
+    eps
+        Small threshold used to reject all-zero composition rows.
+    """
+    X = _normalize_composition_vectors(X, normalize=normalize, eps=eps, name="X")
+    Y = X if Y is None else _normalize_composition_vectors(Y, normalize=normalize, eps=eps, name="Y")
+    if X.shape[1] != Y.shape[1]:
+        raise ValueError("X and Y must have the same number of features")
+
+    difference = X[:, None, :] - Y[None, :, :]
+    if metric == "l1":
+        return np.sum(np.abs(difference), axis=2)
+    if metric == "l2":
+        return np.sum(difference * difference, axis=2)
+    raise ValueError("metric must be either 'l1' or 'l2'")
+
+
+def build_element_fraction_gpr_kernel(
+    *,
+    constant_value: float = 1.0,
+    length_scale: float = 1.0,
+    noise_level: float = 1.0,
+    metric: str = "l1",
+    normalize: bool = True,
+):
+    """Build a scikit-learn GPR kernel for element-fraction composition vectors."""
+    return (
+        ConstantKernel(constant_value)
+        * ElementFractionKernel(
+            length_scale=length_scale,
+            metric=metric,
+            normalize=normalize,
+        )
+        + WhiteKernel(noise_level=noise_level)
+    )
+
+
 def build_tanimoto_gpr_kernel(
     *,
     constant_value: float = 1.0,
@@ -205,6 +347,27 @@ def _select_columns(values, columns, name: str) -> np.ndarray:
     return array[:, column_indices]
 
 
+def _normalize_composition_vectors(
+    values,
+    *,
+    normalize: bool,
+    eps: float,
+    name: str,
+) -> np.ndarray:
+    array = _to_2d_float_array(values, name)
+    if eps <= 0:
+        raise ValueError("eps must be positive")
+    _validate_nonnegative(array, name)
+
+    if not normalize:
+        return array
+
+    row_sums = np.sum(array, axis=1)
+    if np.any(row_sums <= eps):
+        raise ValueError(f"{name} must not contain all-zero composition rows")
+    return array / row_sums[:, None]
+
+
 def _to_2d_float_array(values, name: str) -> np.ndarray:
     array = np.asarray(values, dtype=float)
     if array.ndim == 1:
@@ -221,3 +384,10 @@ def _to_2d_float_array(values, name: str) -> np.ndarray:
 def _validate_nonnegative(values: np.ndarray, name: str) -> None:
     if np.any(values < 0):
         raise ValueError(f"{name} must contain only non-negative values")
+
+
+def _validate_length_scale(length_scale: float) -> float:
+    value = float(length_scale)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError("length_scale must be a positive finite number")
+    return value
