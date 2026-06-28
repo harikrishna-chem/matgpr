@@ -26,6 +26,8 @@ semantic-versioning conventions once the first public release is tagged.
   reports, and cache keys in failed-row reports.
 - Predictive uncertainty diagnostics for interval coverage, calibration curves,
   Gaussian NLPD, standardized residuals, and uncertainty-error plots.
+- Target transforms for log-scale properties, explicit standardization, and
+  physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.

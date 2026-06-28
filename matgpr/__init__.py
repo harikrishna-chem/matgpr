@@ -38,6 +38,13 @@ from .sklearn_gpr import (
     build_sklearn_gpr_kernel,
     build_sklearn_gpr_model,
 )
+from .target_transforms import (
+    IdentityTargetTransform,
+    LogTargetTransform,
+    PhysicsResidualTransform,
+    StandardizedTargetTransform,
+    make_target_transform,
+)
 from .uncertainty import (
     calibration_curve,
     gaussian_nlpd,
@@ -84,9 +91,12 @@ __all__ = [
     "ExactGPRModel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
+    "IdentityTargetTransform",
+    "LogTargetTransform",
     "MatGPRRegressor",
     "PhysicsInformedMean",
     "PhysicsInformedGPRRegressor",
+    "PhysicsResidualTransform",
     "CompositionFingerprintResult",
     "CompositionFeaturizer",
     "DEFAULT_RDKIT_DESCRIPTORS",
@@ -94,6 +104,7 @@ __all__ = [
     "PolymerSmilesFeaturizer",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
+    "StandardizedTargetTransform",
     "append_composition_fingerprints",
     "append_smiles_features",
     "build_preprocessor",
@@ -121,6 +132,7 @@ __all__ = [
     "interval_coverage",
     "load_artifact",
     "log_experiment_result",
+    "make_target_transform",
     "normalize_column_names",
     "plot_correlation_matrix",
     "plot_distribution",

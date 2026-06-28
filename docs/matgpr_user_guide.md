@@ -47,6 +47,9 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    LogTargetTransform,
+    PhysicsResidualTransform,
+    StandardizedTargetTransform,
     build_sklearn_gpr_model,
     fit_gpytorch_gpr,
     regression_metrics,
@@ -403,7 +406,107 @@ metrics = regression_metrics(y_test, prediction.mean)
 | `std` | Predictive standard deviation in original target units. |
 | `lower`, `upper` | Confidence bounds when `confidence_level` is supplied. |
 
-## 6. Physics-Informed GPR
+## 6. Target Transforms and Physics Residuals
+
+Some materials properties are easier to model after a target transformation.
+Common examples include log diffusivity, log conductivity, Arrhenius-linearized
+rates, and residuals relative to a simple physics baseline.
+
+`matgpr` target transforms expose a small common interface:
+
+- `fit(y)` estimates transform parameters when needed.
+- `transform(y)` maps observed targets into model space.
+- `fit_transform(y)` does both steps.
+- `inverse_transform(y_transformed)` maps point values back to original units.
+- `inverse_prediction(prediction, ...)` maps predictive means, standard
+  deviations, and confidence bounds back to original units.
+
+### 6.1 Log Targets
+
+Use `LogTargetTransform` for positive targets such as diffusivity,
+conductivity, rate constants, and permeability-like properties. Predictive
+standard deviations are inverted using log-normal moments.
+
+```python
+from matgpr import LogTargetTransform, fit_gpytorch_gpr
+
+target_transform = LogTargetTransform(offset=0.0)
+y_train_model = target_transform.fit_transform(y_train)
+
+result = fit_gpytorch_gpr(
+    X_train_array,
+    y_train_model,
+    kernel="matern",
+    ard=True,
+    standardize_y=True,
+)
+
+prediction_model = result.predict(X_test_array, confidence_level=0.95)
+prediction = target_transform.inverse_prediction(prediction_model)
+```
+
+### 6.2 Standardized Targets
+
+`fit_gpytorch_gpr(..., standardize_y=True)` already standardizes internally.
+Use `StandardizedTargetTransform` when you need explicit control outside the
+model, for example when comparing multiple estimators with the same transformed
+target.
+
+```python
+target_transform = StandardizedTargetTransform()
+y_train_model = target_transform.fit_transform(y_train)
+
+result = fit_gpytorch_gpr(
+    X_train_array,
+    y_train_model,
+    standardize_y=False,
+)
+
+prediction_model = result.predict(X_test_array, confidence_level=0.95)
+prediction = target_transform.inverse_prediction(prediction_model)
+```
+
+### 6.3 Physics Residual Modeling
+
+Physics residual modeling is a simple alternative to changing the GP mean
+function. A baseline equation predicts the coarse physical trend, and GPR learns
+the residual:
+
+```text
+residual = measured_property - physics_baseline
+```
+
+```python
+from matgpr import PhysicsResidualTransform
+
+target_transform = PhysicsResidualTransform()
+
+baseline_train = physics_baseline(train_data)
+baseline_test = physics_baseline(test_data)
+
+y_train_residual = target_transform.fit_transform(
+    y_train,
+    baseline=baseline_train,
+)
+
+result = fit_gpytorch_gpr(
+    X_train_array,
+    y_train_residual,
+    kernel="matern",
+    ard=True,
+)
+
+residual_prediction = result.predict(X_test_array, confidence_level=0.95)
+prediction = target_transform.inverse_prediction(
+    residual_prediction,
+    baseline=baseline_test,
+)
+```
+
+This approach is useful when the physics baseline is not differentiable, lives
+outside PyTorch, comes from a lookup table, or should remain completely fixed.
+
+## 7. Physics-Informed GPR
 
 Physics-informed GPR introduces physics through the GP mean function. The GP
 then learns the residual between the physics equation and the observed data.
@@ -428,7 +531,7 @@ where:
 | `k(x, x')` | Kernel covariance over the full feature space. |
 | `sigma_n^2` | Learned observation noise. |
 
-### 6.1 How Physics Is Introduced
+### 7.1 How Physics Is Introduced
 
 In `matgpr`, physics is introduced with `PhysicsInformedMean`.
 
@@ -479,7 +582,7 @@ y_test_pred, y_test_std = model.predict(X_test_scaled, return_std=True)
 learned_parameters = model.learned_physics_parameters_
 ```
 
-### 6.2 Example 1: Arrhenius Mean Function
+### 7.2 Example 1: Arrhenius Mean Function
 
 For a temperature-dependent transport property:
 
@@ -552,7 +655,7 @@ features, but the Arrhenius equation should use temperature in Kelvin.
 `PhysicsInformedMean` converts selected scaled columns back to original units
 before evaluating the equation.
 
-### 6.3 Example 2: Degeneracy and Binding Mean Function
+### 7.3 Example 2: Degeneracy and Binding Mean Function
 
 For OPV-like materials, a simple physics-informed mean can encode the idea that
 larger degeneracy can improve accessible pathways, while stronger binding can
@@ -616,7 +719,7 @@ result = fit_gpytorch_gpr(
 )
 ```
 
-### 6.4 Learned vs Fixed Parameters
+### 7.4 Learned vs Fixed Parameters
 
 Use `learnable_parameters` when a parameter should be optimized from data:
 
@@ -657,7 +760,7 @@ After training, inspect learned values:
 result.model.mean_module.current_parameter_values()
 ```
 
-### 6.5 Practical Guidance for Physics Equations
+### 7.5 Practical Guidance for Physics Equations
 
 Good physics-informed mean functions should be:
 
@@ -670,9 +773,9 @@ Good physics-informed mean functions should be:
 Start with one or two physics terms. Add complexity only when learning curves,
 test-set metrics, and uncertainty calibration improve.
 
-## 7. Model Analysis
+## 8. Model Analysis
 
-### 7.1 Regression Metrics
+### 8.1 Regression Metrics
 
 ```python
 metrics = regression_metrics(y_test, prediction.mean)
@@ -699,7 +802,7 @@ metrics = train_test_regression_metrics(
 )
 ```
 
-### 7.2 Parity Plot With Uncertainty
+### 8.2 Parity Plot With Uncertainty
 
 ```python
 fig, ax = plot_parity(
@@ -716,7 +819,7 @@ fig, ax = plot_parity(
 )
 ```
 
-### 7.3 Uncertainty Diagnostics
+### 8.3 Uncertainty Diagnostics
 
 GPR models return a predictive mean and standard deviation. Use the standard
 regression metrics for point-prediction accuracy, then separately check whether
@@ -769,7 +872,7 @@ fig, ax, diagnostics = plot_uncertainty_vs_error(
 For tabular workflows, `calibration_curve(...)` returns the same coverage
 information as a dataframe, which is useful for reports and benchmark tables.
 
-### 7.4 Learning Curves
+### 8.4 Learning Curves
 
 For repeated train-size experiments, collect rows with columns such as
 `train_size`, `model`, and `test_R2`.
@@ -786,7 +889,7 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 7.5 90/10 Validation With 10-Fold Cross-Validation
+### 8.5 90/10 Validation With 10-Fold Cross-Validation
 
 After selecting the best model family from learning curves, use a conventional
 validation protocol before fitting the final production model:
@@ -847,7 +950,7 @@ cv_summary = (
 For small datasets, make sure each stratification bin has enough samples for
 10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
 
-### 7.6 PCA
+### 8.6 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -860,7 +963,7 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 7.7 SHAP Analysis
+### 8.7 SHAP Analysis
 
 `matgpr` does not require SHAP internally, but the example notebooks use SHAP
 for production-model interpretation. For compact tabular datasets, run SHAP on
@@ -905,7 +1008,7 @@ shap_importance = pd.DataFrame(
 For GPR, SHAP can be computationally expensive. For publication workflows,
 combine SHAP with domain checks, correlation analysis, and sensitivity plots.
 
-## 8. Save Models and Results
+## 9. Save Models and Results
 
 Save fitted preprocessors, models, or full pipelines:
 
@@ -933,7 +1036,7 @@ log_experiment_result(
 )
 ```
 
-## 9. Common Troubleshooting
+## 10. Common Troubleshooting
 
 ### Invalid Polymer SMILES
 
@@ -982,7 +1085,7 @@ For small materials datasets:
   kernel, and split.
 - Report both mean performance and standard deviation across splits.
 
-## 10. Minimal End-to-End Example
+## 11. Minimal End-to-End Example
 
 ```python
 import pandas as pd
