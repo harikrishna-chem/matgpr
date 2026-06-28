@@ -32,6 +32,8 @@ semantic-versioning conventions once the first public release is tagged.
   inorganic formula workflows.
 - Lightweight crystal-structure descriptors, a `StructureFeaturizer`, and
   structure-aware GPR kernels for global lattice/packing similarity.
+- Bounded target transforms for GPR workflows with finite physical output
+  limits.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent

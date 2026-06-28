@@ -7,6 +7,7 @@ import numpy as np
 from .gpytorch_gpr import GPyTorchPrediction
 
 __all__ = [
+    "BoundedTargetTransform",
     "IdentityTargetTransform",
     "LogTargetTransform",
     "PhysicsResidualTransform",
@@ -165,6 +166,112 @@ class LogTargetTransform:
 
 
 @dataclass
+class BoundedTargetTransform:
+    """Logit-transform targets constrained to a finite physical interval.
+
+    The transform is:
+
+    ``z = logit((y - lower_bound) / (upper_bound - lower_bound))``.
+
+    Predictive means and standard deviations are inverted with Gauss-Hermite
+    quadrature over the implied logistic-normal distribution. This is useful
+    for properties with known physical bounds, such as efficiencies,
+    fractions, probabilities, normalized phase fractions, or bounded scores.
+    """
+
+    lower_bound: float
+    upper_bound: float
+    n_quadrature_points: int = 20
+
+    def __post_init__(self) -> None:
+        self.lower_bound = float(self.lower_bound)
+        self.upper_bound = float(self.upper_bound)
+        if not np.isfinite(self.lower_bound) or not np.isfinite(self.upper_bound):
+            raise ValueError("Bounds must be finite")
+        if self.upper_bound <= self.lower_bound:
+            raise ValueError("upper_bound must be greater than lower_bound")
+        if not isinstance(self.n_quadrature_points, int) or self.n_quadrature_points < 3:
+            raise ValueError("n_quadrature_points must be an integer greater than or equal to 3")
+
+    def fit(self, y, **kwargs):
+        """Validate that targets are strictly inside the physical interval."""
+        self._validate_bounded_target(y, "y")
+        return self
+
+    def transform(self, y, **kwargs) -> np.ndarray:
+        """Return logit-transformed target values."""
+        values = self._validate_bounded_target(y, "y")
+        scaled = (values - self.lower_bound) / self._width
+        return np.log(scaled / (1.0 - scaled))
+
+    def fit_transform(self, y, **kwargs) -> np.ndarray:
+        """Fit the transform and return logit-transformed target values."""
+        self.fit(y, **kwargs)
+        return self.transform(y, **kwargs)
+
+    def inverse_transform(self, y_transformed, **kwargs) -> np.ndarray:
+        """Return logit-space values in the original bounded target scale."""
+        values = _to_1d_finite(y_transformed, "y_transformed")
+        return self.lower_bound + self._width * _sigmoid(values)
+
+    def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
+        """Return original-scale standard deviations from logistic-normal moments."""
+        mean = _to_1d_finite(mean_transformed, "mean_transformed")
+        std = _to_nonnegative_std(std_transformed)
+        _validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        _, original_std = self._logistic_normal_moments(mean, std)
+        return original_std
+
+    def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
+        """Return a bounded prediction object in the original target scale."""
+        mean = _to_1d_finite(prediction.mean, "prediction.mean")
+
+        std = None
+        if prediction.std is not None:
+            original_mean, std = self._logistic_normal_moments(mean, prediction.std)
+        else:
+            original_mean = self.inverse_transform(mean)
+
+        lower = None
+        if prediction.lower is not None:
+            lower = self.inverse_transform(prediction.lower)
+
+        upper = None
+        if prediction.upper is not None:
+            upper = self.inverse_transform(prediction.upper)
+
+        return GPyTorchPrediction(mean=original_mean, std=std, lower=lower, upper=upper)
+
+    @property
+    def _width(self) -> float:
+        return self.upper_bound - self.lower_bound
+
+    def _validate_bounded_target(self, y, name: str) -> np.ndarray:
+        values = _to_1d_finite(y, name)
+        if np.any(values <= self.lower_bound) or np.any(values >= self.upper_bound):
+            raise ValueError(f"{name} must be strictly between lower_bound and upper_bound")
+        return values
+
+    def _logistic_normal_moments(
+        self,
+        mean_transformed: np.ndarray,
+        std_transformed,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        mean = _to_1d_finite(mean_transformed, "mean_transformed")
+        std = _to_nonnegative_std(std_transformed)
+        _validate_same_length(mean, std, "mean_transformed", "std_transformed")
+
+        nodes, weights = np.polynomial.hermite.hermgauss(self.n_quadrature_points)
+        samples = mean[:, None] + np.sqrt(2.0) * std[:, None] * nodes[None, :]
+        original_samples = self.lower_bound + self._width * _sigmoid(samples)
+        normalized_weights = weights / np.sqrt(np.pi)
+        original_mean = original_samples @ normalized_weights
+        second_moment = (original_samples * original_samples) @ normalized_weights
+        variance = np.maximum(second_moment - original_mean * original_mean, 0.0)
+        return original_mean, np.sqrt(variance)
+
+
+@dataclass
 class PhysicsResidualTransform:
     """Model residuals relative to a physics baseline.
 
@@ -218,18 +325,21 @@ def make_target_transform(name: str, **kwargs):
     ----------
     name
         One of ``"identity"``, ``"standard"``, ``"standardized"``, ``"log"``,
-        ``"residual"``, or ``"physics_residual"``.
+        ``"positive"``, ``"bounded"``, ``"logit"``, ``"residual"``, or
+        ``"physics_residual"``.
     """
     normalized = name.lower().replace("-", "_")
     if normalized in {"identity", "none", "passthrough"}:
         return IdentityTargetTransform(**kwargs)
     if normalized in {"standard", "standardized", "zscore", "z_score"}:
         return StandardizedTargetTransform(**kwargs)
-    if normalized in {"log", "logarithmic"}:
+    if normalized in {"log", "logarithmic", "positive", "positivity"}:
         return LogTargetTransform(**kwargs)
+    if normalized in {"bounded", "bound", "logit"}:
+        return BoundedTargetTransform(**kwargs)
     if normalized in {"residual", "physics_residual"}:
         return PhysicsResidualTransform(**kwargs)
-    raise ValueError("name must be one of: identity, standard, log, residual")
+    raise ValueError("name must be one of: identity, standard, log, bounded, residual")
 
 
 def _inverse_prediction_with_arrays(transform, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
@@ -269,3 +379,12 @@ def _to_nonnegative_std(values) -> np.ndarray:
 def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
     if first.shape[0] != second.shape[0]:
         raise ValueError(f"{first_name} and {second_name} must have the same length")
+
+
+def _sigmoid(values: np.ndarray) -> np.ndarray:
+    result = np.empty_like(values, dtype=float)
+    positive = values >= 0
+    result[positive] = 1.0 / (1.0 + np.exp(-values[positive]))
+    exp_values = np.exp(values[~positive])
+    result[~positive] = exp_values / (1.0 + exp_values)
+    return result

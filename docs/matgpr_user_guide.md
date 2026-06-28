@@ -48,6 +48,7 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    BoundedTargetTransform,
     ElementFractionKernel,
     StructureFeatureKernel,
     TanimotoKernel,
@@ -610,7 +611,8 @@ feature blocks are similar.
 
 Some materials properties are easier to model after a target transformation.
 Common examples include log diffusivity, log conductivity, Arrhenius-linearized
-rates, and residuals relative to a simple physics baseline.
+rates, bounded efficiencies, and residuals relative to a simple physics
+baseline.
 
 `matgpr` target transforms expose a small common interface:
 
@@ -645,7 +647,40 @@ prediction_model = result.predict(X_test_array, confidence_level=0.95)
 prediction = target_transform.inverse_prediction(prediction_model)
 ```
 
-### 7.2 Standardized Targets
+### 7.2 Bounded Targets
+
+Use `BoundedTargetTransform` for targets with known finite physical limits,
+such as efficiencies, fractions, probabilities, normalized phase fractions, or
+bounded scores. The transform maps the target interval to an unconstrained
+logit scale before fitting GPR.
+
+```python
+from matgpr import BoundedTargetTransform, fit_gpytorch_gpr
+
+target_transform = BoundedTargetTransform(
+    lower_bound=0.0,
+    upper_bound=100.0,
+)
+y_train_model = target_transform.fit_transform(y_train)
+
+result = fit_gpytorch_gpr(
+    X_train_array,
+    y_train_model,
+    kernel="matern",
+    ard=True,
+)
+
+prediction_model = result.predict(X_test_array, confidence_level=0.95)
+prediction = target_transform.inverse_prediction(prediction_model)
+```
+
+`inverse_prediction` converts predictive intervals by applying the inverse
+logit transform to the interval bounds. Predictive means and standard
+deviations are estimated with Gauss-Hermite quadrature over the
+logistic-normal distribution, so uncertainty remains on the original bounded
+scale.
+
+### 7.3 Standardized Targets
 
 `fit_gpytorch_gpr(..., standardize_y=True)` already standardizes internally.
 Use `StandardizedTargetTransform` when you need explicit control outside the
@@ -666,7 +701,7 @@ prediction_model = result.predict(X_test_array, confidence_level=0.95)
 prediction = target_transform.inverse_prediction(prediction_model)
 ```
 
-### 7.3 Physics Residual Modeling
+### 7.4 Physics Residual Modeling
 
 Physics residual modeling is a simple alternative to changing the GP mean
 function. A baseline equation predicts the coarse physical trend, and GPR learns

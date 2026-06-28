@@ -10,8 +10,8 @@ types, and class methods.
 - [Featurizers](featurizers.md): scikit-learn-style materials transformers.
 - [Kernels](kernels.md): Tanimoto, element-fraction, structure-feature, and
   feature-subset kernel helpers.
-- [Target Transforms](target_transforms.md): log targets, standardization, and
-  physics-residual modeling helpers.
+- [Target Transforms](target_transforms.md): positive, bounded, standardized,
+  and physics-residual modeling helpers.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty

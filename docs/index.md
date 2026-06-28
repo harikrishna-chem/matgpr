@@ -16,7 +16,7 @@ prediction accuracy.
   fingerprints, element-fraction kernels for inorganic compositions, and
   structure-feature kernels for crystal geometry.
 - Target-transform and physics-residual workflows for properties that are
-  better modeled in transformed or baseline-corrected spaces.
+  positive, bounded, transformed, or baseline-corrected.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.

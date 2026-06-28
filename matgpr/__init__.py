@@ -70,6 +70,7 @@ from .sklearn_gpr import (
     build_sklearn_gpr_model,
 )
 from .target_transforms import (
+    BoundedTargetTransform,
     IdentityTargetTransform,
     LogTargetTransform,
     PhysicsResidualTransform,
@@ -147,6 +148,7 @@ __all__ = [
     "append_element_fractions",
     "append_smiles_features",
     "append_structure_fingerprints",
+    "BoundedTargetTransform",
     "build_additive_kernel",
     "build_element_fraction_gpr_kernel",
     "build_product_kernel",
