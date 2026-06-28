@@ -47,6 +47,9 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    TanimotoKernel,
+    FeatureSubsetKernel,
+    build_additive_kernel,
     LogTargetTransform,
     PhysicsResidualTransform,
     StandardizedTargetTransform,
@@ -322,7 +325,7 @@ Available helper functions:
 
 | Function | Purpose |
 | --- | --- |
-| `build_sklearn_gpr_kernel(name="matern")` | Builds an RBF, Matern, ARD RBF, or ARD Matern kernel. |
+| `build_sklearn_gpr_kernel(name="matern")` | Builds an RBF, Matern, ARD RBF, ARD Matern, or Tanimoto kernel. |
 | `build_sklearn_gpr_model(...)` | Returns an unfitted `GaussianProcessRegressor`. |
 | `build_sklearn_gpr_grid_search(...)` | Returns a `GridSearchCV` over common GPR kernels and settings. |
 
@@ -406,7 +409,68 @@ metrics = regression_metrics(y_test, prediction.mean)
 | `std` | Predictive standard deviation in original target units. |
 | `lower`, `upper` | Confidence bounds when `confidence_level` is supplied. |
 
-## 6. Target Transforms and Physics Residuals
+## 6. Physics-Aware Kernels
+
+Physics can also enter through the covariance function. The kernel controls
+which materials are considered similar. This is especially important for
+molecular and polymer fingerprints, where Euclidean distance is often less
+natural than overlap-based similarity.
+
+### 6.1 Tanimoto Kernel for Fingerprints
+
+Use `TanimotoKernel` for binary or non-negative count fingerprints, such as
+Morgan fingerprints from RDKit.
+
+```python
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel
+
+from matgpr import TanimotoKernel
+
+kernel = (
+    ConstantKernel(1.0)
+    * TanimotoKernel()
+    + WhiteKernel(noise_level=1.0)
+)
+
+model = GaussianProcessRegressor(
+    kernel=kernel,
+    normalize_y=True,
+    random_state=42,
+)
+
+model.fit(X_train_fingerprints, y_train)
+y_test_pred, y_test_std = model.predict(X_test_fingerprints, return_std=True)
+```
+
+For convenience, `build_sklearn_gpr_kernel("tanimoto")` returns the same
+Tanimoto-plus-noise structure.
+
+### 6.2 Mixed Fingerprint and Physics Kernels
+
+For mixed feature matrices, use `FeatureSubsetKernel` to apply different kernels
+to different column groups. This lets a fingerprint kernel act on molecular bits
+while a continuous kernel acts on physics descriptors.
+
+```python
+from sklearn.gaussian_process.kernels import RBF
+
+from matgpr import FeatureSubsetKernel, TanimotoKernel, build_additive_kernel
+
+fingerprint_columns = list(range(0, 2048))
+physics_columns = [2048, 2049]
+
+kernel = build_additive_kernel(
+    FeatureSubsetKernel(TanimotoKernel(), columns=fingerprint_columns),
+    FeatureSubsetKernel(RBF(length_scale=1.0), columns=physics_columns),
+)
+```
+
+Use additive kernels when different feature blocks contribute complementary
+effects. Use product kernels when similarity should be high only when both
+feature blocks are similar.
+
+## 7. Target Transforms and Physics Residuals
 
 Some materials properties are easier to model after a target transformation.
 Common examples include log diffusivity, log conductivity, Arrhenius-linearized
@@ -421,7 +485,7 @@ rates, and residuals relative to a simple physics baseline.
 - `inverse_prediction(prediction, ...)` maps predictive means, standard
   deviations, and confidence bounds back to original units.
 
-### 6.1 Log Targets
+### 7.1 Log Targets
 
 Use `LogTargetTransform` for positive targets such as diffusivity,
 conductivity, rate constants, and permeability-like properties. Predictive
@@ -445,7 +509,7 @@ prediction_model = result.predict(X_test_array, confidence_level=0.95)
 prediction = target_transform.inverse_prediction(prediction_model)
 ```
 
-### 6.2 Standardized Targets
+### 7.2 Standardized Targets
 
 `fit_gpytorch_gpr(..., standardize_y=True)` already standardizes internally.
 Use `StandardizedTargetTransform` when you need explicit control outside the
@@ -466,7 +530,7 @@ prediction_model = result.predict(X_test_array, confidence_level=0.95)
 prediction = target_transform.inverse_prediction(prediction_model)
 ```
 
-### 6.3 Physics Residual Modeling
+### 7.3 Physics Residual Modeling
 
 Physics residual modeling is a simple alternative to changing the GP mean
 function. A baseline equation predicts the coarse physical trend, and GPR learns
@@ -506,7 +570,7 @@ prediction = target_transform.inverse_prediction(
 This approach is useful when the physics baseline is not differentiable, lives
 outside PyTorch, comes from a lookup table, or should remain completely fixed.
 
-## 7. Physics-Informed GPR
+## 8. Physics-Informed GPR
 
 Physics-informed GPR introduces physics through the GP mean function. The GP
 then learns the residual between the physics equation and the observed data.
@@ -531,7 +595,7 @@ where:
 | `k(x, x')` | Kernel covariance over the full feature space. |
 | `sigma_n^2` | Learned observation noise. |
 
-### 7.1 How Physics Is Introduced
+### 8.1 How Physics Is Introduced
 
 In `matgpr`, physics is introduced with `PhysicsInformedMean`.
 
@@ -582,7 +646,7 @@ y_test_pred, y_test_std = model.predict(X_test_scaled, return_std=True)
 learned_parameters = model.learned_physics_parameters_
 ```
 
-### 7.2 Example 1: Arrhenius Mean Function
+### 8.2 Example 1: Arrhenius Mean Function
 
 For a temperature-dependent transport property:
 
@@ -655,7 +719,7 @@ features, but the Arrhenius equation should use temperature in Kelvin.
 `PhysicsInformedMean` converts selected scaled columns back to original units
 before evaluating the equation.
 
-### 7.3 Example 2: Degeneracy and Binding Mean Function
+### 8.3 Example 2: Degeneracy and Binding Mean Function
 
 For OPV-like materials, a simple physics-informed mean can encode the idea that
 larger degeneracy can improve accessible pathways, while stronger binding can
@@ -719,7 +783,7 @@ result = fit_gpytorch_gpr(
 )
 ```
 
-### 7.4 Learned vs Fixed Parameters
+### 8.4 Learned vs Fixed Parameters
 
 Use `learnable_parameters` when a parameter should be optimized from data:
 
@@ -760,7 +824,7 @@ After training, inspect learned values:
 result.model.mean_module.current_parameter_values()
 ```
 
-### 7.5 Practical Guidance for Physics Equations
+### 8.5 Practical Guidance for Physics Equations
 
 Good physics-informed mean functions should be:
 
@@ -773,9 +837,9 @@ Good physics-informed mean functions should be:
 Start with one or two physics terms. Add complexity only when learning curves,
 test-set metrics, and uncertainty calibration improve.
 
-## 8. Model Analysis
+## 9. Model Analysis
 
-### 8.1 Regression Metrics
+### 9.1 Regression Metrics
 
 ```python
 metrics = regression_metrics(y_test, prediction.mean)
@@ -802,7 +866,7 @@ metrics = train_test_regression_metrics(
 )
 ```
 
-### 8.2 Parity Plot With Uncertainty
+### 9.2 Parity Plot With Uncertainty
 
 ```python
 fig, ax = plot_parity(
@@ -819,7 +883,7 @@ fig, ax = plot_parity(
 )
 ```
 
-### 8.3 Uncertainty Diagnostics
+### 9.3 Uncertainty Diagnostics
 
 GPR models return a predictive mean and standard deviation. Use the standard
 regression metrics for point-prediction accuracy, then separately check whether
@@ -872,7 +936,7 @@ fig, ax, diagnostics = plot_uncertainty_vs_error(
 For tabular workflows, `calibration_curve(...)` returns the same coverage
 information as a dataframe, which is useful for reports and benchmark tables.
 
-### 8.4 Learning Curves
+### 9.4 Learning Curves
 
 For repeated train-size experiments, collect rows with columns such as
 `train_size`, `model`, and `test_R2`.
@@ -889,7 +953,7 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 8.5 90/10 Validation With 10-Fold Cross-Validation
+### 9.5 90/10 Validation With 10-Fold Cross-Validation
 
 After selecting the best model family from learning curves, use a conventional
 validation protocol before fitting the final production model:
@@ -950,7 +1014,7 @@ cv_summary = (
 For small datasets, make sure each stratification bin has enough samples for
 10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
 
-### 8.6 PCA
+### 9.6 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -963,7 +1027,7 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 8.7 SHAP Analysis
+### 9.7 SHAP Analysis
 
 `matgpr` does not require SHAP internally, but the example notebooks use SHAP
 for production-model interpretation. For compact tabular datasets, run SHAP on
@@ -1008,7 +1072,7 @@ shap_importance = pd.DataFrame(
 For GPR, SHAP can be computationally expensive. For publication workflows,
 combine SHAP with domain checks, correlation analysis, and sensitivity plots.
 
-## 9. Save Models and Results
+## 10. Save Models and Results
 
 Save fitted preprocessors, models, or full pipelines:
 
@@ -1036,7 +1100,7 @@ log_experiment_result(
 )
 ```
 
-## 10. Common Troubleshooting
+## 11. Common Troubleshooting
 
 ### Invalid Polymer SMILES
 
@@ -1085,7 +1149,7 @@ For small materials datasets:
   kernel, and split.
 - Report both mean performance and standard deviation across splits.
 
-## 11. Minimal End-to-End Example
+## 12. Minimal End-to-End Example
 
 ```python
 import pandas as pd

@@ -8,6 +8,7 @@ types, and class methods.
 
 - [Estimators](estimators.md): scikit-learn-style GPR estimator classes.
 - [Featurizers](featurizers.md): scikit-learn-style materials transformers.
+- [Kernels](kernels.md): Tanimoto and feature-subset kernel helpers.
 - [Target Transforms](target_transforms.md): log targets, standardization, and
   physics-residual modeling helpers.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and

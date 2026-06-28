@@ -13,6 +13,14 @@ from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
 from .featurizers import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer
 from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
 from .io_utils import load_artifact, log_experiment_result, save_artifact
+from .kernels import (
+    FeatureSubsetKernel,
+    TanimotoKernel,
+    build_additive_kernel,
+    build_product_kernel,
+    build_tanimoto_gpr_kernel,
+    pairwise_tanimoto_similarity,
+)
 from .metrics import regression_metrics, train_test_regression_metrics
 from .inorganic_fingerprints import (
     CompositionFingerprintResult,
@@ -89,6 +97,7 @@ except ImportError:
 __all__ = [
     "EquationMeanFunction",
     "ExactGPRModel",
+    "FeatureSubsetKernel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
     "IdentityTargetTransform",
@@ -105,13 +114,17 @@ __all__ = [
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
     "StandardizedTargetTransform",
+    "TanimotoKernel",
     "append_composition_fingerprints",
     "append_smiles_features",
+    "build_additive_kernel",
+    "build_product_kernel",
     "build_preprocessor",
     "build_scaler",
     "build_sklearn_gpr_grid_search",
     "build_sklearn_gpr_kernel",
     "build_sklearn_gpr_model",
+    "build_tanimoto_gpr_kernel",
     "canonicalize_molecule_smiles",
     "canonicalize_polymer_smiles",
     "calibration_curve",
@@ -134,6 +147,7 @@ __all__ = [
     "log_experiment_result",
     "make_target_transform",
     "normalize_column_names",
+    "pairwise_tanimoto_similarity",
     "plot_correlation_matrix",
     "plot_distribution",
     "plot_learning_curve",

@@ -61,6 +61,7 @@ nav:
       - Overview: api/index.md
       - Estimators: api/estimators.md
       - Featurizers: api/featurizers.md
+      - Kernels: api/kernels.md
       - Target Transforms: api/target_transforms.md
       - Physics-Informed GPR: api/gpytorch_gpr.md
       - Uncertainty: api/uncertainty.md
