@@ -33,6 +33,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Soft physics-constraint anchors for known limits and monotonic trends through
   virtual observations.
 - Exact RBF derivative-constrained GPR for slope-informed physics trends.
+- Physics-aware observation-noise profiles for mixed-source, replicate, and
+  heteroscedastic datasets.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -62,11 +64,13 @@ physics-informed mean functions and uncertainty-aware prediction.
 8. For known slope information, fit derivative-constrained models with
    `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, and
    `fit_derivative_constrained_gpr`.
-9. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+9. Optionally build per-row observation noise with `SourceNoiseModel`,
+   `ReplicateNoiseModel`, `FeatureNoiseModel`, and `combine_noise_profiles`.
+10. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-10. Evaluate point predictions with `regression_metrics` or
+11. Evaluate point predictions with `regression_metrics` or
    `train_test_regression_metrics`.
-11. Visualize results with `plot_parity`, `plot_learning_curve`,
+12. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
 
@@ -96,6 +100,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.target_transforms` | `LogTargetTransform`, `BoundedTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target constraints, transforms, and physics-residual modeling |
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
+| `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |

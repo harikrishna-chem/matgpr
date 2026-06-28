@@ -19,6 +19,7 @@ prediction accuracy.
   positive, bounded, transformed, or baseline-corrected.
 - Soft physics-constraint anchors for known limits and monotonic trends.
 - Derivative-constrained GPR for slope-informed physics trends.
+- Physics-aware observation-noise profiles for mixed-source and replicate data.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.

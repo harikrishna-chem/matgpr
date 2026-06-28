@@ -54,6 +54,10 @@ from matgpr import (
     DerivativeObservationSet,
     MonotonicDerivativeConstraint,
     fit_derivative_constrained_gpr,
+    SourceNoiseModel,
+    ReplicateNoiseModel,
+    FeatureNoiseModel,
+    combine_noise_profiles,
     BoundedTargetTransform,
     ElementFractionKernel,
     StructureFeatureKernel,
@@ -925,6 +929,108 @@ Important details:
 - Monotonic derivative observations are soft equality observations of the
   local slope; they encourage a trend near anchor points, but they still do not
   prove global monotonicity everywhere.
+
+### 8.2 Physics-Aware Noise Models
+
+Published materials datasets often mix measurements from different papers,
+instruments, simulation levels, replicate batches, or experimental regimes.
+Treating every row as equally noisy can make GPR over-trust uncertain sources.
+
+Physics-aware noise profiles define one observation noise standard deviation
+per row:
+
+```text
+y_i = f(x_i) + epsilon_i
+epsilon_i ~ Normal(0, sigma_i^2)
+alpha_i = sigma_i^2
+```
+
+`matgpr` stores these values in `ObservationNoiseProfile`. Use
+`profile.alpha` with scikit-learn GPR and `profile.noise_std` with
+`fit_derivative_constrained_gpr`.
+
+For source-dependent noise:
+
+```python
+from matgpr import SourceNoiseModel
+
+source_noise = SourceNoiseModel(
+    source_noise_std={
+        "experiment": 0.05,
+        "simulation": 0.20,
+        "literature_estimate": 0.50,
+    },
+    default_noise_std=0.30,
+    unknown="default",
+)
+
+source_profile = source_noise.profile(train_data["data_source"])
+```
+
+For replicate-aware noise:
+
+```python
+from matgpr import ReplicateNoiseModel
+
+replicate_noise = ReplicateNoiseModel(min_noise_std=0.02)
+replicate_profile = replicate_noise.fit_profile(
+    train_data["target_property"],
+    train_data["sample_id"],
+)
+```
+
+For feature-dependent heteroscedastic noise:
+
+```python
+from matgpr import FeatureNoiseModel
+
+feature_noise = FeatureNoiseModel(
+    noise_std_function=lambda X: 0.02 + 0.0001 * np.maximum(X[:, temperature_col] - 300.0, 0.0),
+    label="temperature_noise",
+)
+
+feature_profile = feature_noise.profile(X_train_array)
+```
+
+Independent noise components can be combined in quadrature:
+
+```python
+from matgpr import combine_noise_profiles, build_sklearn_gpr_model
+
+noise_profile = combine_noise_profiles(
+    source_profile,
+    replicate_profile,
+    feature_profile,
+)
+
+model = build_sklearn_gpr_model(
+    n_features=X_train_array.shape[1],
+    alpha=noise_profile.alpha,
+)
+model.fit(X_train_array, y_train)
+```
+
+For derivative-constrained GPR:
+
+```python
+result = fit_derivative_constrained_gpr(
+    X_train_array,
+    y_train,
+    derivative_observations,
+    value_noise_std=noise_profile.noise_std,
+)
+```
+
+Guidance:
+
+- Use source noise when rows come from different papers, instruments, or
+  simulation levels.
+- Use replicate noise when repeated measurements exist for the same material
+  or condition.
+- Use feature noise when uncertainty is known to grow in a physical regime,
+  such as high temperature, high load, low signal, or extreme composition.
+- Keep noise values in target units.
+- Report the assumed noise model when publishing model results.
 
 ## 9. Physics-Informed GPR
 

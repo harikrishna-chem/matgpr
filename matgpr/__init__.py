@@ -41,6 +41,14 @@ from .kernels import (
     pairwise_tanimoto_similarity,
 )
 from .metrics import regression_metrics, train_test_regression_metrics
+from .noise_models import (
+    FeatureNoiseModel,
+    ObservationNoiseProfile,
+    ReplicateNoiseModel,
+    SourceNoiseModel,
+    combine_noise_profiles,
+    constant_noise_profile,
+)
 from .inorganic_fingerprints import (
     CompositionFingerprintResult,
     append_composition_fingerprints,
@@ -159,9 +167,13 @@ __all__ = [
     "DEFAULT_STRUCTURE_FEATURES",
     "ElementFractionKernel",
     "FINGERPRINT_CACHE_SCHEMA_VERSION",
+    "FeatureNoiseModel",
     "PolymerSmilesFeaturizer",
+    "ObservationNoiseProfile",
+    "ReplicateNoiseModel",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
+    "SourceNoiseModel",
     "StandardizedTargetTransform",
     "StructureFeatureKernel",
     "StructureFeaturizer",
@@ -190,7 +202,9 @@ __all__ = [
     "clean_formula",
     "combine_virtual_observations",
     "combine_derivative_observations",
+    "combine_noise_profiles",
     "composition_fingerprint",
+    "constant_noise_profile",
     "default_element_symbols",
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",

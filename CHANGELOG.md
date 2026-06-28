@@ -38,6 +38,8 @@ semantic-versioning conventions once the first public release is tagged.
   virtual observations.
 - Exact RBF derivative-constrained GPR with function-value and derivative
   observations.
+- Physics-aware observation-noise profiles for source-dependent, replicate, and
+  feature-dependent uncertainty.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent

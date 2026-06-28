@@ -16,6 +16,8 @@ types, and class methods.
   known limits and monotonic trends.
 - [Derivative-Constrained GPR](derivative_gpr.md): exact RBF GPR with
   function-value and derivative observations.
+- [Noise Models](noise_models.md): source-dependent, replicate-aware, and
+  feature-dependent observation-noise profiles.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
