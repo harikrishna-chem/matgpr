@@ -178,12 +178,24 @@ If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
 Individual examples should also cite the original papers and datasets listed in
 their reports.
 
+## License
+
+`matgpr` is dual-licensed:
+
+- Community License: GNU Affero General Public License v3.0. See `LICENSE`.
+- Commercial License: available for proprietary or closed-source commercial
+  applications.
+
+For commercial licensing, contact:
+
+```text
+harikrishnasahu89@gmail.com
+```
+
 ## Contributing
 
 See `CONTRIBUTING.md` for development setup, contribution expectations, and the
-current licensing status. A final public `LICENSE` file has not been added yet
-because the academic/commercial licensing model is still being decided; see
-`docs/license_strategy.md`.
+current licensing status. See `docs/license_strategy.md` for licensing details.
 
 ## Examples
 

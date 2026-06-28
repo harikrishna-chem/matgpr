@@ -8,19 +8,22 @@ well-documented examples, and reproducible benchmarks.
 
 ## Current Licensing Status
 
-The final public license has not been selected yet. The current preferred
-direction is free academic/research use with a separate paid commercial license,
-citation expectations, and restrictions on redistribution/modification.
+`matgpr` is dual-licensed:
 
-Because the license model is still being finalized:
+- Community License: GNU Affero General Public License v3.0.
+- Commercial License: available for proprietary or closed-source commercial
+  applications by contacting `harikrishnasahu89@gmail.com`.
 
-- do not submit large external code contributions unless contribution terms
-  have been agreed in writing,
+Because the project has a dual-license model:
+
+- do not submit large external code contributions unless contribution and
+  relicensing terms have been agreed in writing,
 - small issue reports, documentation suggestions, and reproducibility feedback
   are welcome,
-- a final contribution policy will be added after the license decision is made.
+- a final contributor policy may be added before broader external contribution
+  intake.
 
-See `docs/license_strategy.md` for the current licensing notes.
+See `LICENSE`, `COMMERCIAL_LICENSE.md`, and `docs/license_strategy.md`.
 
 ## Development Setup
 

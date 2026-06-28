@@ -29,18 +29,22 @@ semantic-versioning conventions once the first public release is tagged.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent
   diffusivity, and spall strength.
 - User guide and fingerprinting-options guide.
-- MkDocs Material documentation site scaffold with GitHub Pages deployment
-  workflow and generated API-reference pages.
+- MkDocs Material documentation site scaffold with docs-build workflow and
+  generated API-reference pages.
 - License-strategy note for source-available/academic-use licensing decision.
+- Dual-license metadata and notices: AGPL-3.0 community license plus separate
+  commercial license availability.
 - CI/package-quality scaffolding.
 
 ### Changed
 
+- Documentation workflow now builds docs only and does not deploy GitHub Pages
+  while the repository remains private.
 - Heavy fingerprinting tools are organized as optional dependency extras.
 - New examples include 90/10 validation, 10-fold cross-validation, uncertainty
   parity plots, and production-model interpretation.
 
 ### Notes
 
-- A final public `LICENSE` file has not been added yet because the commercial
-  and academic-use licensing model is still being decided.
+- The community license is AGPL-3.0. Proprietary or closed-source commercial use
+  requires a separate commercial license.

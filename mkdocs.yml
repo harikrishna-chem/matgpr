@@ -66,4 +66,4 @@ nav:
       - Fingerprints: api/fingerprints.md
       - Data And Metrics: api/data.md
       - Visualization: api/visualization.md
-  - License Strategy: license_strategy.md
+  - Licensing: license_strategy.md

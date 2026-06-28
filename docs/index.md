@@ -54,3 +54,9 @@ python -m mkdocs serve
 If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
 Individual example reports also list the original papers and datasets that
 should be cited.
+
+## License
+
+`matgpr` is dual-licensed: AGPL-3.0 for community use, with a separate
+commercial license available for proprietary or closed-source commercial
+applications.

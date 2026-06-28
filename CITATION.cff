@@ -18,4 +18,4 @@ keywords:
   - physics-informed machine learning
   - Bayesian optimization
   - uncertainty quantification
-license: "LicenseRef-Proprietary-Source-Available"
+license: "AGPL-3.0-only"
