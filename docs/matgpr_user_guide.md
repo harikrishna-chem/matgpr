@@ -1376,7 +1376,80 @@ test-set metrics, and uncertainty calibration improve.
 
 ## 10. Model Analysis
 
-### 10.1 Regression Metrics
+### 10.1 Reusable Validation Workflows
+
+Use the validation helpers when you want notebook workflows to become
+reproducible package-level analysis.
+
+For one held-out split:
+
+```python
+from matgpr import evaluate_train_test_split
+
+
+validation = evaluate_train_test_split(
+    model,
+    X,
+    y,
+    test_size=0.10,
+    random_state=42,
+    model_name="physics-informed GPR",
+)
+
+metrics = validation.metrics_frame()
+predictions = validation.predictions
+```
+
+`predictions` contains `split`, `sample_position`, `sample_label`, `y_true`,
+`y_pred`, and optional `y_std`, so it can be passed directly to parity-plot
+code.
+
+For 10-fold cross-validation:
+
+```python
+from matgpr import cross_validate_regressor
+
+
+cv_result = cross_validate_regressor(
+    model,
+    X_train,
+    y_train,
+    cv=10,
+    random_state=43,
+    model_name="physics-informed GPR",
+)
+
+fold_metrics = cv_result.fold_metrics
+cv_summary = cv_result.summary(metric_columns=["test_RMSE", "test_R2", "test_r"])
+out_of_fold_predictions = cv_result.predictions
+```
+
+For repeated learning curves:
+
+```python
+from matgpr import repeated_learning_curve
+
+
+learning_curve = repeated_learning_curve(
+    model,
+    X,
+    y,
+    train_sizes=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
+    n_repeats=20,
+    test_size=0.30,
+    random_state=44,
+    model_name="physics-informed GPR",
+)
+
+learning_curve_rows = learning_curve.runs
+learning_curve_summary = learning_curve.summary(metric_columns=["test_RMSE", "test_R2"])
+```
+
+These utilities clone the estimator for each split, return train/test metrics,
+and include uncertainty diagnostics when the estimator supports
+`predict(..., return_std=True)`.
+
+### 10.2 Regression Metrics
 
 ```python
 metrics = regression_metrics(y_test, prediction.mean)
@@ -1403,7 +1476,7 @@ metrics = train_test_regression_metrics(
 )
 ```
 
-### 10.2 Parity Plot With Uncertainty
+### 10.3 Parity Plot With Uncertainty
 
 ```python
 fig, ax = plot_parity(
@@ -1420,7 +1493,7 @@ fig, ax = plot_parity(
 )
 ```
 
-### 10.3 Uncertainty Diagnostics
+### 10.4 Uncertainty Diagnostics
 
 GPR models return a predictive mean and standard deviation. Use the standard
 regression metrics for point-prediction accuracy, then separately check whether
@@ -1473,7 +1546,7 @@ fig, ax, diagnostics = plot_uncertainty_vs_error(
 For tabular workflows, `calibration_curve(...)` returns the same coverage
 information as a dataframe, which is useful for reports and benchmark tables.
 
-### 10.4 Learning Curves
+### 10.5 Learning Curves
 
 For repeated train-size experiments, collect rows with columns such as
 `train_size`, `model`, and `test_R2`.
@@ -1490,7 +1563,7 @@ fig, ax, summary = plot_learning_curve(
 
 For RMSE learning curves, set `metric_col="test_RMSE"`.
 
-### 10.5 90/10 Validation With 10-Fold Cross-Validation
+### 10.6 90/10 Validation With 10-Fold Cross-Validation
 
 After selecting the best model family from learning curves, use a conventional
 validation protocol before fitting the final production model:
@@ -1498,60 +1571,45 @@ validation protocol before fitting the final production model:
 1. Split the full dataset into 90 percent training and 10 percent held-out test.
 2. Run 10-fold cross-validation inside the 90 percent training partition.
 3. Refit the selected model on the full 90 percent training partition.
-4. Plot cross-validation statistics on the left and train/test parity with
-   uncertainty bars on the right.
+4. Plot cross-validation statistics and train/test parity with uncertainty bars.
 
-The exact fitting function depends on the notebook, but the structure should
-look like this:
+The reusable validation utilities keep this workflow compact:
 
 ```python
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
+from matgpr import cross_validate_regressor, evaluate_train_test_split
 
-N_CV_SPLITS = 10
 
-validation_train, validation_test = train_test_split(
-    model_data,
+train_idx, test_idx = train_test_split(
+    np.arange(len(y)),
     test_size=0.10,
     random_state=42,
-    stratify=target_strata(model_data, TARGET_COLUMN),
 )
 
-cv = StratifiedKFold(n_splits=N_CV_SPLITS, shuffle=True, random_state=43)
-cv_records = []
-
-for fold, (train_idx, val_idx) in enumerate(cv.split(validation_train, target_strata(validation_train, TARGET_COLUMN)), start=1):
-    fold_train = validation_train.iloc[train_idx].reset_index(drop=True)
-    fold_val = validation_train.iloc[val_idx].reset_index(drop=True)
-
-    fitted = fit_model(best_model_key, fold_train)
-    train_pred = predict_model(fitted, fold_train)
-    val_pred = predict_model(fitted, fold_val)
-
-    cv_records.append({"fold": fold, "split": "CV train", **regression_summary(fold_train[TARGET_COLUMN], train_pred.mean)})
-    cv_records.append({"fold": fold, "split": "CV validation", **regression_summary(fold_val[TARGET_COLUMN], val_pred.mean)})
-
-cv_results = pd.DataFrame(cv_records)
-cv_summary = (
-    cv_results
-    .groupby("split")
-    .agg(
-        rmse_mean=("rmse", "mean"),
-        rmse_std=("rmse", "std"),
-        r2_mean=("r2", "mean"),
-        r2_std=("r2", "std"),
-        mae_mean=("mae", "mean"),
-        mae_std=("mae", "std"),
-        r_mean=("r", "mean"),
-        r_std=("r", "std"),
-    )
-    .reset_index()
+cv_result = cross_validate_regressor(
+    model,
+    X.iloc[train_idx],
+    y.iloc[train_idx],
+    cv=10,
+    random_state=43,
 )
+
+validation = evaluate_train_test_split(
+    model,
+    X,
+    y,
+    train_indices=train_idx,
+    test_indices=test_idx,
+)
+
+cv_summary = cv_result.summary(metric_columns=["test_RMSE", "test_R2", "test_r"])
+parity_predictions = validation.predictions
 ```
 
-For small datasets, make sure each stratification bin has enough samples for
-10 folds. If not, reduce the number of bins while keeping `N_CV_SPLITS = 10`.
+For very small datasets, use a smaller `cv` value if each fold would contain
+too few validation samples.
 
-### 10.6 PCA
+### 10.7 PCA
 
 ```python
 from matgpr import fit_pca, summarize_pca, transform_pca, plot_pca_scree, plot_pca_scores
@@ -1564,7 +1622,7 @@ plot_pca_scree(pca)
 plot_pca_scores(train_scores, test_scores=test_scores)
 ```
 
-### 10.7 SHAP Analysis
+### 10.8 SHAP Analysis
 
 `matgpr` does not require SHAP internally, but the example notebooks use SHAP
 for production-model interpretation. For compact tabular datasets, run SHAP on

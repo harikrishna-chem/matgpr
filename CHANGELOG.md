@@ -42,6 +42,8 @@ semantic-versioning conventions once the first public release is tagged.
   feature-dependent uncertainty.
 - Reusable physics equation templates for Arrhenius, square-root-time,
   power-law, Hall-Petch, free-volume, and rule-of-mixtures mean functions.
+- Reusable validation workflows for train/test evaluation, cross-validation,
+  and repeated learning curves with report-ready metrics and predictions.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper example workflows for OPV, hardness, gas transport, solvent

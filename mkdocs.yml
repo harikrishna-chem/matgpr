@@ -68,6 +68,7 @@ nav:
       - Noise Models: api/noise_models.md
       - Physics Equation Templates: api/physics_equations.md
       - Physics-Informed GPR: api/gpytorch_gpr.md
+      - Validation: api/validation.md
       - Uncertainty: api/uncertainty.md
       - Fingerprints: api/fingerprints.md
       - Data And Metrics: api/data.md

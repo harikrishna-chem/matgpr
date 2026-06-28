@@ -37,6 +37,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Exact RBF derivative-constrained GPR for slope-informed physics trends.
 - Physics-aware observation-noise profiles for mixed-source, replicate, and
   heteroscedastic datasets.
+- Validation APIs for train/test evaluation, cross-validation summaries, and
+  repeated learning curves.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -72,8 +74,9 @@ physics-informed mean functions and uncertainty-aware prediction.
    `get_physics_equation_template`.
 11. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-12. Evaluate point predictions with `regression_metrics` or
-   `train_test_regression_metrics`.
+12. Evaluate models with `evaluate_train_test_split`,
+   `cross_validate_regressor`, `repeated_learning_curve`,
+   `regression_metrics`, or `train_test_regression_metrics`.
 13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
@@ -109,6 +112,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
+| `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `repeated_learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |

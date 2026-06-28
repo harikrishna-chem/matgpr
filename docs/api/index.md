@@ -19,9 +19,11 @@ types, and class methods.
 - [Noise Models](noise_models.md): source-dependent, replicate-aware, and
   feature-dependent observation-noise profiles.
 - [Physics Equation Templates](physics_equations.md): reusable Arrhenius,
-  power-law, Hall-Petch, free-volume, mixture, and OPV mean equations.
+  power-law, Hall-Petch, free-volume, and mixture mean equations.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
+- [Validation](validation.md): train/test evaluation, cross-validation, and
+  repeated learning-curve utilities.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
   diagnostics.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and

@@ -23,6 +23,8 @@ prediction accuracy.
 - Soft physics-constraint anchors for known limits and monotonic trends.
 - Derivative-constrained GPR for slope-informed physics trends.
 - Physics-aware observation-noise profiles for mixed-source and replicate data.
+- Reusable validation workflows for train/test splits, cross-validation, and
+  repeated learning curves.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.
