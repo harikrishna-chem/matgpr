@@ -11,6 +11,8 @@ from .optional_dependencies import require_optional_dependency
 _OUTPUT_COLUMNS = (
     "matgpr_candidate_index",
     "matgpr_rank",
+    "matgpr_feasible",
+    "matgpr_constraint_violations",
     "matgpr_predicted_mean",
     "matgpr_predicted_std",
     "matgpr_acquisition",
@@ -19,6 +21,8 @@ _OUTPUT_COLUMNS = (
 __all__ = [
     "BayesianOptimizationResult",
     "BoTorchSurrogate",
+    "CandidateConstraint",
+    "apply_candidate_constraints",
     "fit_botorch_surrogate",
     "rank_discrete_candidates",
     "suggest_next_experiments",
@@ -84,6 +88,147 @@ class BayesianOptimizationResult:
     acquisition_function: str
     maximize: bool
     top_k: int
+
+
+@dataclass(frozen=True)
+class CandidateConstraint:
+    """Finite-pool feasibility constraint for candidate materials.
+
+    Parameters
+    ----------
+    name
+        Short label used in violation reports.
+    column
+        Candidate dataframe column to evaluate. The column can come from
+        `candidate_data` or from `X_candidates` when it is a dataframe and no
+        separate `candidate_data` is supplied.
+    lower_bound
+        Optional numeric lower bound.
+    upper_bound
+        Optional numeric upper bound.
+    allowed_values
+        Optional categorical set of allowed values.
+    inclusive
+        If `True`, numeric bounds are inclusive. If `False`, they are strict.
+    allow_missing
+        If `True`, missing values satisfy the constraint. The default treats
+        missing values as infeasible.
+    """
+
+    name: str
+    column: str
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+    allowed_values: tuple[Any, ...] | None = None
+    inclusive: bool = True
+    allow_missing: bool = False
+
+    def __post_init__(self) -> None:
+        name = str(self.name).strip()
+        column = str(self.column).strip()
+        if not name:
+            raise ValueError("CandidateConstraint.name must be non-empty")
+        if not column:
+            raise ValueError("CandidateConstraint.column must be non-empty")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "column", column)
+        if (
+            self.lower_bound is None
+            and self.upper_bound is None
+            and self.allowed_values is None
+        ):
+            raise ValueError(
+                "CandidateConstraint requires at least one of lower_bound, "
+                "upper_bound, or allowed_values"
+            )
+        if self.allowed_values is not None and len(self.allowed_values) == 0:
+            raise ValueError("allowed_values must not be empty when provided")
+        if (
+            self.lower_bound is not None
+            and self.upper_bound is not None
+            and self.lower_bound > self.upper_bound
+        ):
+            raise ValueError("lower_bound must be <= upper_bound")
+
+    def evaluate(self, candidates: pd.DataFrame) -> pd.Series:
+        """Return a boolean feasibility mask for this constraint."""
+        if self.column not in candidates.columns:
+            raise ValueError(f"Constraint column {self.column!r} is missing")
+
+        values = candidates[self.column]
+        feasible = pd.Series(True, index=candidates.index, dtype=bool)
+
+        if self.lower_bound is not None or self.upper_bound is not None:
+            numeric = pd.to_numeric(values, errors="coerce")
+            if self.lower_bound is not None:
+                if self.inclusive:
+                    feasible &= numeric >= self.lower_bound
+                else:
+                    feasible &= numeric > self.lower_bound
+            if self.upper_bound is not None:
+                if self.inclusive:
+                    feasible &= numeric <= self.upper_bound
+                else:
+                    feasible &= numeric < self.upper_bound
+
+        if self.allowed_values is not None:
+            feasible &= values.isin(self.allowed_values)
+
+        if self.allow_missing:
+            feasible |= values.isna()
+        else:
+            feasible &= ~values.isna()
+
+        return feasible.fillna(False).astype(bool)
+
+
+def apply_candidate_constraints(
+    candidates: pd.DataFrame,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...],
+    *,
+    require_all: bool = True,
+    feasible_column: str = "matgpr_feasible",
+    violations_column: str = "matgpr_constraint_violations",
+) -> pd.DataFrame:
+    """Annotate a candidate table with finite-pool feasibility constraints.
+
+    Parameters
+    ----------
+    candidates
+        Candidate table to annotate.
+    constraints
+        One or more `CandidateConstraint` objects.
+    require_all
+        If `True`, candidates must satisfy every constraint. If `False`,
+        satisfying at least one constraint is enough.
+    feasible_column
+        Name of the boolean feasibility column to add.
+    violations_column
+        Name of the semicolon-separated violation-label column to add.
+    """
+    if not isinstance(candidates, pd.DataFrame):
+        raise TypeError("candidates must be a pandas DataFrame")
+    constraint_list = _as_constraint_tuple(constraints)
+    if not constraint_list:
+        raise ValueError("constraints must contain at least one CandidateConstraint")
+
+    evaluated = [(constraint, constraint.evaluate(candidates)) for constraint in constraint_list]
+    mask_frame = pd.DataFrame(
+        {constraint.name: mask.to_numpy(dtype=bool) for constraint, mask in evaluated},
+        index=candidates.index,
+    )
+    if require_all:
+        feasible = mask_frame.all(axis=1)
+    else:
+        feasible = mask_frame.any(axis=1)
+
+    result = candidates.copy()
+    result[feasible_column] = feasible.to_numpy(dtype=bool)
+    result[violations_column] = [
+        "; ".join(mask_frame.columns[~row.to_numpy(dtype=bool)])
+        for _, row in mask_frame.iterrows()
+    ]
+    return result
 
 
 def fit_botorch_surrogate(
@@ -191,6 +336,8 @@ def rank_discrete_candidates(
     top_k: int | None = None,
     beta: float = 0.2,
     candidate_data: pd.DataFrame | None = None,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraint_policy: str = "filter",
 ) -> pd.DataFrame:
     """Rank a finite pool of candidate materials using a BoTorch acquisition.
 
@@ -216,9 +363,16 @@ def rank_discrete_candidates(
     candidate_data
         Optional metadata dataframe to carry through to the ranked output, such
         as formulas, SMILES strings, synthesis conditions, or sample IDs.
+    constraints
+        Optional finite-pool feasibility constraints applied after candidate
+        metadata and acquisition scores are assembled.
+    constraint_policy
+        `"filter"` returns only feasible candidates. `"annotate"` keeps all
+        candidates and adds feasibility columns.
     """
     if top_k is not None and top_k < 1:
         raise ValueError("top_k must be at least 1 when provided")
+    constraint_policy = _validate_constraint_policy(constraint_policy)
 
     import torch
 
@@ -259,6 +413,10 @@ def rank_discrete_candidates(
     ranked["matgpr_predicted_mean"] = predicted_mean
     ranked["matgpr_predicted_std"] = std
     ranked["matgpr_acquisition"] = scores
+    if constraints is not None:
+        ranked = apply_candidate_constraints(ranked, constraints)
+        if constraint_policy == "filter":
+            ranked = ranked[ranked["matgpr_feasible"]].copy()
     ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
     ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
 
@@ -282,6 +440,8 @@ def suggest_next_experiments(
     beta: float = 0.2,
     fit_model: bool = True,
     device: str | None = None,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraint_policy: str = "filter",
 ) -> BayesianOptimizationResult:
     """Fit a surrogate and recommend the next materials to evaluate.
 
@@ -321,9 +481,15 @@ def suggest_next_experiments(
         If `True`, fit GP hyperparameters before ranking.
     device
         Optional torch device string.
+    constraints
+        Optional finite-pool feasibility constraints.
+    constraint_policy
+        `"filter"` recommends only feasible candidates. `"annotate"` ranks all
+        candidates and marks feasibility.
     """
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
+    constraint_policy = _validate_constraint_policy(constraint_policy)
 
     surrogate = fit_botorch_surrogate(
         X_train,
@@ -342,6 +508,8 @@ def suggest_next_experiments(
         top_k=None,
         beta=beta,
         candidate_data=candidate_data,
+        constraints=constraints,
+        constraint_policy=constraint_policy,
     )
     recommendations = ranked_candidates.head(top_k).reset_index(drop=True)
 
@@ -411,6 +579,38 @@ def _normalize_acquisition_name(name: str) -> str:
     if normalized not in aliases:
         raise ValueError(f"Unsupported acquisition_function: {name!r}")
     return aliases[normalized]
+
+
+def _validate_constraint_policy(policy: str) -> str:
+    normalized = policy.strip().lower()
+    if normalized not in {"filter", "annotate"}:
+        raise ValueError("constraint_policy must be 'filter' or 'annotate'")
+    return normalized
+
+
+def _as_constraint_tuple(
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...],
+) -> tuple[CandidateConstraint, ...]:
+    if isinstance(constraints, CandidateConstraint):
+        return (constraints,)
+    try:
+        constraint_tuple = tuple(constraints)
+    except TypeError as exc:
+        raise TypeError(
+            "constraints must be a CandidateConstraint or an iterable of "
+            "CandidateConstraint objects"
+        ) from exc
+    invalid = [
+        type(constraint).__name__
+        for constraint in constraint_tuple
+        if not isinstance(constraint, CandidateConstraint)
+    ]
+    if invalid:
+        raise TypeError(
+            "constraints must contain only CandidateConstraint objects; "
+            f"got {invalid}"
+        )
+    return constraint_tuple
 
 
 def _as_numeric_matrix(

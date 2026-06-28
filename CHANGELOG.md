@@ -63,6 +63,9 @@ semantic-versioning conventions once the first public release is tagged.
   advanced fingerprinting backends.
 - Optional BoTorch Bayesian-optimization helpers for fitting `SingleTaskGP`
   surrogates, ranking finite candidate pools, and suggesting next experiments.
+- Finite-pool Bayesian-optimization feasibility constraints for filtering or
+  annotating candidate recommendations by synthesis, processing, safety, or
+  other metadata limits.
 
 ### Changed
 

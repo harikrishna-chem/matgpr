@@ -75,6 +75,7 @@ from matgpr import (
     train_test_regression_metrics,
     uncertainty_diagnostics,
     calibration_curve,
+    CandidateConstraint,
     suggest_next_experiments,
     plot_parity,
     plot_learning_curve,
@@ -1766,11 +1767,43 @@ recommendations = bo_result.recommendations
 ranked_pool = bo_result.ranked_candidates
 ```
 
+Add finite-pool feasibility constraints when only part of the candidate library
+is experimentally realistic. Examples include synthesis-temperature windows,
+composition limits, solvent restrictions, safety filters, or equipment limits:
+
+```python
+constraints = [
+    CandidateConstraint(
+        name="temperature_window",
+        column="synthesis_temperature_c",
+        lower_bound=25.0,
+        upper_bound=120.0,
+    ),
+    CandidateConstraint(
+        name="allowed_solvent",
+        column="solvent_class",
+        allowed_values=("green", "water", "alcohol"),
+    ),
+]
+
+bo_result = suggest_next_experiments(
+    X_train=X_measured_features,
+    y_train=y_measured,
+    X_candidates=X_candidate_features,
+    candidate_data=candidate_metadata,
+    constraints=constraints,
+    constraint_policy="filter",
+    top_k=5,
+)
+```
+
 The returned tables include:
 
 | Column | Meaning |
 | --- | --- |
 | `matgpr_rank` | Candidate rank by acquisition value. |
+| `matgpr_feasible` | Whether the candidate satisfies the supplied constraints. |
+| `matgpr_constraint_violations` | Semicolon-separated labels for failed constraints. |
 | `matgpr_predicted_mean` | GP posterior mean in original target direction. |
 | `matgpr_predicted_std` | GP posterior standard deviation. |
 | `matgpr_acquisition` | Acquisition value used for ranking. |
@@ -1779,6 +1812,8 @@ Supported acquisition functions are `"log_expected_improvement"`,
 `"expected_improvement"`, `"probability_of_improvement"`, and
 `"upper_confidence_bound"`. Use `maximize=False` for targets where lower values
 are better, such as degradation rate, diffusion barrier, cost, or toxicity.
+Use `constraint_policy="annotate"` when you want to keep infeasible candidates
+in the ranked table for auditing rather than filtering them out.
 
 This workflow assumes the candidate list is already generated. It is best for
 materials informatics tasks where users have a realistic library of synthesizable

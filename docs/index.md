@@ -25,8 +25,8 @@ prediction accuracy.
 - Physics-aware observation-noise profiles for mixed-source and replicate data.
 - Reusable validation workflows for train/test splits, cross-validation, and
   configurable learning curves.
-- Optional BoTorch Bayesian optimization for ranking finite candidate pools and
-  selecting next experiments.
+- Optional BoTorch Bayesian optimization for ranking finite candidate pools,
+  applying feasibility constraints, and selecting next experiments.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.
