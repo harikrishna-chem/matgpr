@@ -30,6 +30,8 @@ prediction accuracy.
 - Optional BoTorch Bayesian optimization for ranking finite candidate pools,
   passing known observation noise, applying feasibility constraints, and
   selecting diverse next-experiment batches.
+- Multi-objective finite-pool selection with Pareto-front and weighted
+  scalarization utilities.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.

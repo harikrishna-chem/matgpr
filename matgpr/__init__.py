@@ -58,6 +58,13 @@ from .kernels import (
     pairwise_tanimoto_similarity,
 )
 from .metrics import regression_metrics, train_test_regression_metrics
+from .multi_objective import (
+    ObjectiveSpec,
+    pareto_front_mask,
+    rank_multi_objective_candidates,
+    scalarize_objectives,
+    select_pareto_front,
+)
 from .noise_models import (
     FeatureNoiseModel,
     ObservationNoiseProfile,
@@ -224,6 +231,7 @@ __all__ = [
     "ObservationNoiseProfile",
     "OPTIONAL_DEPENDENCIES",
     "OptionalDependency",
+    "ObjectiveSpec",
     "ReplicateNoiseModel",
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
@@ -303,6 +311,7 @@ __all__ = [
     "pairwise_composition_distance",
     "pairwise_structure_distance",
     "pairwise_tanimoto_similarity",
+    "pareto_front_mask",
     "plot_correlation_matrix",
     "plot_distribution",
     "plot_learning_curve",
@@ -315,13 +324,16 @@ __all__ = [
     "predict_gpytorch_gpr",
     "power_law_equation",
     "rank_discrete_candidates",
+    "rank_multi_objective_candidates",
     "regression_metrics",
     "replace_missing_placeholders",
     "require_optional_dependency",
     "rule_of_mixtures_equation",
     "save_artifact",
+    "scalarize_objectives",
     "separate_features_target",
     "select_diverse_batch",
+    "select_pareto_front",
     "split_train_test",
     "split_candidate_features",
     "standardized_residuals",

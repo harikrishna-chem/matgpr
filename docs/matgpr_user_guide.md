@@ -79,6 +79,9 @@ from matgpr import (
     build_composition_candidate_grid,
     exclude_existing_candidates,
     split_candidate_features,
+    ObjectiveSpec,
+    rank_multi_objective_candidates,
+    select_pareto_front,
     CandidateConstraint,
     select_diverse_batch,
     suggest_next_experiments,
@@ -1760,8 +1763,11 @@ from matgpr import (
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
     exclude_existing_candidates,
+    ObjectiveSpec,
     observation_noise_variance,
+    rank_multi_objective_candidates,
     select_diverse_batch,
+    select_pareto_front,
     split_candidate_features,
     suggest_next_experiments,
 )
@@ -1829,6 +1835,48 @@ bo_result = suggest_next_experiments(
 
 recommendations = bo_result.recommendations
 ranked_pool = bo_result.ranked_candidates
+```
+
+When the next experiment must balance multiple goals, include tradeoff columns
+such as cost, toxicity, synthesis difficulty, or degradation rate in
+`candidate_metadata`, then rank the finite pool with objective definitions.
+Each objective states which column to use, whether larger or smaller values are
+better, and how much weight it receives in the scalarized score:
+
+```python
+multi_objective_ranked = rank_multi_objective_candidates(
+    ranked_pool,
+    objectives=[
+        ObjectiveSpec(
+            name="performance",
+            column="matgpr_predicted_mean",
+            goal="maximize",
+            weight=0.6,
+        ),
+        ObjectiveSpec(
+            name="cost",
+            column="estimated_cost_usd_g",
+            goal="minimize",
+            weight=0.25,
+        ),
+        ObjectiveSpec(
+            name="toxicity",
+            column="toxicity_score",
+            goal="minimize",
+            weight=0.15,
+        ),
+    ],
+    top_k=10,
+)
+
+pareto_candidates = select_pareto_front(
+    multi_objective_ranked,
+    objectives=[
+        ObjectiveSpec("performance", "matgpr_predicted_mean", "maximize"),
+        ObjectiveSpec("cost", "estimated_cost_usd_g", "minimize"),
+        ObjectiveSpec("toxicity", "toxicity_score", "minimize"),
+    ],
+)
 ```
 
 When experimental rows have known measurement uncertainty, pass a target-noise

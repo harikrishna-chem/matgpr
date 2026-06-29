@@ -28,6 +28,8 @@ types, and class methods.
   composition, formulation, and processing-condition candidate pools.
 - [Bayesian Optimization](bayesian_optimization.md): optional BoTorch
   finite-pool candidate ranking for next-experiment selection.
+- [Multi-Objective Selection](multi_objective.md): Pareto-front and weighted
+  finite-pool ranking helpers.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
   diagnostics.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and
