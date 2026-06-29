@@ -11,6 +11,12 @@ from .bayesian_optimization import (
     select_diverse_batch,
     suggest_next_experiments,
 )
+from .candidate_generation import (
+    build_cartesian_candidate_grid,
+    build_composition_candidate_grid,
+    exclude_existing_candidates,
+    split_candidate_features,
+)
 from .data_cleaning import (
     drop_columns_by_missing_fraction,
     drop_duplicate_rows,
@@ -240,6 +246,8 @@ __all__ = [
     "apply_candidate_constraints",
     "BoundedTargetTransform",
     "build_additive_kernel",
+    "build_cartesian_candidate_grid",
+    "build_composition_candidate_grid",
     "build_element_fraction_gpr_kernel",
     "build_product_kernel",
     "build_preprocessor",
@@ -264,6 +272,7 @@ __all__ = [
     "drop_duplicate_rows",
     "element_fraction_fingerprint",
     "evaluate_train_test_split",
+    "exclude_existing_candidates",
     "featurize_compositions",
     "featurize_element_fractions",
     "featurize_smiles",
@@ -314,6 +323,7 @@ __all__ = [
     "separate_features_target",
     "select_diverse_batch",
     "split_train_test",
+    "split_candidate_features",
     "standardized_residuals",
     "structure_feature_names",
     "structure_fingerprint",

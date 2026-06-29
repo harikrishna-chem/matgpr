@@ -21,8 +21,8 @@ Most `matgpr` projects follow this pattern:
 7. Predict with uncertainty.
 8. Analyze RMSE, R2, Pearson r, parity plots, uncertainty calibration,
    learning curves, PCA, and feature effects.
-9. Optionally rank candidate materials for the next experiment with Bayesian
-   optimization.
+9. Optionally build finite candidate pools and rank next experiments with
+   Bayesian optimization.
 10. Save models, preprocessors, metrics, and plots.
 
 Core imports:
@@ -75,6 +75,10 @@ from matgpr import (
     train_test_regression_metrics,
     uncertainty_diagnostics,
     calibration_curve,
+    build_cartesian_candidate_grid,
+    build_composition_candidate_grid,
+    exclude_existing_candidates,
+    split_candidate_features,
     CandidateConstraint,
     select_diverse_batch,
     suggest_next_experiments,
@@ -1753,12 +1757,66 @@ same descriptor pipeline, then rank the candidates:
 ```python
 from matgpr import (
     CandidateConstraint,
+    build_cartesian_candidate_grid,
+    build_composition_candidate_grid,
+    exclude_existing_candidates,
     observation_noise_variance,
     select_diverse_batch,
+    split_candidate_features,
     suggest_next_experiments,
 )
+```
 
+Build candidate pools explicitly before ranking. Use Cartesian grids for
+processing conditions or formulation choices:
 
+```python
+process_candidates = build_cartesian_candidate_grid(
+    {
+        "temperature_c": [60, 80, 100],
+        "solvent": ["water", "ethanol"],
+        "annealing_time_min": [10, 30],
+    },
+    fixed_values={"campaign": "screen_1"},
+)
+```
+
+Use composition grids when the candidate space is an inorganic composition
+simplex. The generated table includes reduced formulas, number of components,
+and element-fraction columns:
+
+```python
+composition_candidates = build_composition_candidate_grid(
+    ["Al", "Co", "Ni"],
+    step=0.25,
+    min_components=2,
+    max_components=3,
+)
+```
+
+Remove rows that are already measured or already selected before BO:
+
+```python
+composition_candidates = exclude_existing_candidates(
+    composition_candidates,
+    measured_data,
+    key_columns=("formula",),
+)
+```
+
+After adding descriptors or selecting numeric fraction/process columns, split
+features from metadata:
+
+```python
+X_candidate_features, candidate_metadata = split_candidate_features(
+    composition_candidates,
+    feature_columns=("frac_Al", "frac_Co", "frac_Ni"),
+)
+```
+
+Then rank the finite pool:
+
+```python
 bo_result = suggest_next_experiments(
     X_train=X_measured_features,
     y_train=y_measured,
@@ -1887,9 +1945,9 @@ diverse_recommendations = select_diverse_batch(
 )
 ```
 
-This workflow assumes the candidate list is already generated. It is best for
-materials informatics tasks where users have a realistic library of synthesizable
-materials or feasible experimental conditions.
+These workflows are best for materials informatics tasks where users have a
+realistic library of synthesizable materials or feasible experimental
+conditions, either loaded from a file or generated as a finite candidate grid.
 
 ## 12. Save Models and Results
 

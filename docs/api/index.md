@@ -24,6 +24,8 @@ types, and class methods.
   mean-function utilities.
 - [Validation](validation.md): train/test evaluation, cross-validation, and
   configurable learning-curve utilities.
+- [Candidate Generation](candidate_generation.md): finite chemistry,
+  composition, formulation, and processing-condition candidate pools.
 - [Bayesian Optimization](bayesian_optimization.md): optional BoTorch
   finite-pool candidate ranking for next-experiment selection.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty

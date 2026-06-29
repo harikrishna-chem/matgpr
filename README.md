@@ -43,6 +43,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   heteroscedastic datasets.
 - Validation APIs for train/test evaluation, cross-validation summaries, and
   configurable learning curves.
+- Candidate-generation helpers for finite chemistry, composition,
+  formulation, and processing-condition pools.
 - Optional BoTorch Bayesian optimization helpers for ranking finite materials
   candidate pools, passing known observation noise, applying feasibility
   constraints, and selecting diverse next-experiment batches.
@@ -87,7 +89,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
-14. Optionally rank candidate materials for the next experiment with
+14. Optionally build finite candidate pools, then rank next experiments with
    `suggest_next_experiments` after installing the `bo` extra.
 
 ## Documentation
@@ -122,6 +124,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
+| `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `observation_noise_variance`, `select_diverse_batch`, `fit_botorch_surrogate`, `rank_discrete_candidates`, `CandidateConstraint` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
