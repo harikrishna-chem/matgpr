@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from .multi_objective import ObjectiveSpec, pareto_front_mask
 from .optional_dependencies import require_optional_dependency
 
 _OUTPUT_COLUMNS = (
@@ -26,11 +30,16 @@ __all__ = [
     "BayesianOptimizationResult",
     "BoTorchSurrogate",
     "CandidateConstraint",
+    "MultiObjectiveBayesianOptimizationResult",
+    "MultiObjectiveBoTorchSurrogate",
     "apply_candidate_constraints",
     "fit_botorch_surrogate",
+    "fit_multi_objective_botorch_surrogate",
     "observation_noise_variance",
     "rank_discrete_candidates",
+    "rank_multi_objective_discrete_candidates",
     "select_diverse_batch",
+    "suggest_multi_objective_next_experiments",
     "suggest_next_experiments",
 ]
 
@@ -96,6 +105,84 @@ class BayesianOptimizationResult:
     surrogate: BoTorchSurrogate
     acquisition_function: str
     maximize: bool
+    top_k: int
+
+
+@dataclass(frozen=True)
+class MultiObjectiveBoTorchSurrogate:
+    """Fitted independent BoTorch surrogates for multi-objective BO.
+
+    Each objective is modeled by an independent `SingleTaskGP` and combined
+    with BoTorch's `ModelListGP`. Minimize-type objectives are negated
+    internally so all acquisition functions operate in maximization space.
+
+    Parameters
+    ----------
+    model
+        Fitted BoTorch `ModelListGP`.
+    train_X
+        Training features as a torch tensor.
+    train_y
+        Observed targets in original objective directions and units.
+    objective_y
+        Targets transformed to BoTorch maximization space.
+    objective_names
+        Stable objective names used in output column labels.
+    objective_directions
+        One direction per objective: `"maximize"` or `"minimize"`.
+    objective_signs
+        Numeric signs used to convert original targets to maximization space.
+    reference_point
+        Hypervolume reference point in BoTorch maximization space.
+    reference_point_original
+        Same reference point in original objective directions and units.
+    feature_names
+        Feature names when `X_train` was provided as a pandas dataframe.
+    noise_variance
+        Known observation-noise variance matrix passed to BoTorch, if provided.
+    """
+
+    model: Any
+    train_X: Any
+    train_y: Any
+    objective_y: Any
+    objective_names: tuple[str, ...]
+    objective_directions: tuple[str, ...]
+    objective_signs: Any
+    reference_point: Any
+    reference_point_original: Any
+    feature_names: tuple[str, ...] | None = None
+    noise_variance: Any | None = None
+
+
+@dataclass(frozen=True)
+class MultiObjectiveBayesianOptimizationResult:
+    """Result from finite-pool multi-objective Bayesian optimization.
+
+    Parameters
+    ----------
+    recommendations
+        Top-ranked candidates to evaluate next.
+    ranked_candidates
+        Full candidate table sorted by hypervolume-improvement acquisition.
+    surrogate
+        Fitted multi-objective BoTorch surrogate and associated metadata.
+    acquisition_function
+        Multi-objective acquisition function used for ranking.
+    objective_names
+        Objective names used for prediction columns.
+    objective_directions
+        Optimization direction for each objective.
+    top_k
+        Number of recommendations requested.
+    """
+
+    recommendations: pd.DataFrame
+    ranked_candidates: pd.DataFrame
+    surrogate: MultiObjectiveBoTorchSurrogate
+    acquisition_function: str
+    objective_names: tuple[str, ...]
+    objective_directions: tuple[str, ...]
     top_k: int
 
 
@@ -529,6 +616,146 @@ def fit_botorch_surrogate(
     )
 
 
+def fit_multi_objective_botorch_surrogate(
+    X_train: pd.DataFrame | np.ndarray,
+    y_train: pd.DataFrame | np.ndarray,
+    *,
+    objective_directions: str | Sequence[str] = "maximize",
+    objective_names: Sequence[str] | None = None,
+    reference_point: Sequence[float] | np.ndarray | pd.Series | None = None,
+    noise_variance: float | np.ndarray | pd.DataFrame | None = None,
+    normalize_features: bool = True,
+    standardize_targets: bool = True,
+    fit_model: bool = True,
+    device: str | None = None,
+) -> MultiObjectiveBoTorchSurrogate:
+    """Fit independent BoTorch GP surrogates for multi-objective BO.
+
+    Parameters
+    ----------
+    X_train
+        Numeric training features with shape `(n_samples, n_features)`.
+    y_train
+        Numeric target matrix with shape `(n_samples, n_objectives)`. At least
+        two objectives are required.
+    objective_directions
+        Either one direction applied to every objective or one direction per
+        objective. Use `"maximize"` for objectives where larger values are
+        better and `"minimize"` for objectives where smaller values are better.
+    objective_names
+        Optional objective names used in output columns. If omitted, dataframe
+        column names are used when available.
+    reference_point
+        Optional hypervolume reference point in original objective units and
+        directions. If omitted, a conservative point worse than the observed
+        training targets is estimated.
+    noise_variance
+        Optional known observation-noise variance. Provide a scalar, a vector
+        with one variance per training row, or a matrix with one column per
+        objective.
+    normalize_features
+        If `True`, use BoTorch's `Normalize` input transform for each GP.
+    standardize_targets
+        If `True`, use BoTorch's `Standardize` outcome transform for each GP.
+    fit_model
+        If `True`, optimize GP hyperparameters with `fit_gpytorch_mll`.
+    device
+        Optional torch device string such as `"cpu"` or `"cuda"`.
+    """
+    require_optional_dependency("botorch")
+    import torch
+    from gpytorch.mlls import SumMarginalLogLikelihood
+
+    from botorch.fit import fit_gpytorch_mll
+    from botorch.models import SingleTaskGP
+    from botorch.models.model_list_gp_regression import ModelListGP
+    from botorch.models.transforms.input import Normalize
+    from botorch.models.transforms.outcome import Standardize
+
+    train_array, feature_names, _ = _as_numeric_matrix(X_train, name="X_train")
+    target_array, inferred_names = _as_target_matrix(
+        y_train,
+        expected_length=train_array.shape[0],
+        name="y_train",
+    )
+    objective_names = _resolve_objective_names(
+        objective_names,
+        inferred_names=inferred_names,
+        n_objectives=target_array.shape[1],
+    )
+    directions, signs = _resolve_objective_directions(
+        objective_directions,
+        n_objectives=target_array.shape[1],
+    )
+    objective_array = target_array * signs.reshape(1, -1)
+    ref_array, ref_original = _resolve_reference_point(
+        reference_point,
+        objective_array=objective_array,
+        signs=signs,
+    )
+
+    torch_device = torch.device(device) if device is not None else None
+    train_X = _to_tensor(torch, train_array, device=torch_device)
+    train_y_original = _to_tensor(torch, target_array, device=torch_device)
+    train_Y = _to_tensor(torch, objective_array, device=torch_device)
+    reference_tensor = _to_tensor(torch, ref_array, device=torch_device)
+    reference_original_tensor = _to_tensor(torch, ref_original, device=torch_device)
+    signs_tensor = _to_tensor(torch, signs, device=torch_device)
+
+    noise_tensor = None
+    noise_array = None
+    if noise_variance is not None:
+        noise_array = _as_noise_variance_matrix(
+            noise_variance,
+            expected_length=train_array.shape[0],
+            n_objectives=target_array.shape[1],
+        )
+        noise_tensor = _to_tensor(torch, noise_array, device=torch_device)
+
+    models = []
+    for objective_index in range(target_array.shape[1]):
+        model_kwargs: dict[str, Any] = {}
+        if noise_array is not None:
+            model_kwargs["train_Yvar"] = _to_tensor(
+                torch,
+                noise_array[:, [objective_index]],
+                device=torch_device,
+            )
+        if normalize_features:
+            model_kwargs["input_transform"] = Normalize(d=train_X.shape[-1])
+        if standardize_targets:
+            model_kwargs["outcome_transform"] = Standardize(m=1)
+        models.append(
+            SingleTaskGP(
+                train_X=train_X,
+                train_Y=train_Y[:, [objective_index]],
+                **model_kwargs,
+            )
+        )
+
+    model = ModelListGP(*models)
+    if torch_device is not None:
+        model = model.to(torch_device)
+
+    if fit_model:
+        mll = SumMarginalLogLikelihood(model.likelihood, model)
+        fit_gpytorch_mll(mll)
+
+    return MultiObjectiveBoTorchSurrogate(
+        model=model,
+        train_X=train_X,
+        train_y=train_y_original,
+        objective_y=train_Y,
+        objective_names=objective_names,
+        objective_directions=directions,
+        objective_signs=signs_tensor,
+        reference_point=reference_tensor,
+        reference_point_original=reference_original_tensor,
+        feature_names=feature_names,
+        noise_variance=noise_tensor,
+    )
+
+
 def rank_discrete_candidates(
     surrogate: BoTorchSurrogate,
     X_candidates: pd.DataFrame | np.ndarray,
@@ -615,6 +842,102 @@ def rank_discrete_candidates(
     ranked["matgpr_predicted_mean"] = predicted_mean
     ranked["matgpr_predicted_std"] = std
     ranked["matgpr_acquisition"] = scores
+    if constraints is not None:
+        ranked = apply_candidate_constraints(ranked, constraints)
+        if constraint_policy == "filter":
+            ranked = ranked[ranked["matgpr_feasible"]].copy()
+    ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
+    ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
+
+    if top_k is not None:
+        return ranked.head(top_k).reset_index(drop=True)
+    return ranked
+
+
+def rank_multi_objective_discrete_candidates(
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    X_candidates: pd.DataFrame | np.ndarray,
+    *,
+    acquisition_function: str = "q_log_expected_hypervolume_improvement",
+    top_k: int | None = None,
+    candidate_data: pd.DataFrame | None = None,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraint_policy: str = "filter",
+    mc_samples: int = 128,
+    sampler_seed: int | None = 42,
+) -> pd.DataFrame:
+    """Rank a finite pool with multi-objective hypervolume improvement.
+
+    The returned table is sorted by acquisition value and includes posterior
+    mean and standard-deviation columns for every objective in original units.
+    Acquisition functions operate in BoTorch maximization space, so
+    minimize-type objectives are handled by the fitted surrogate.
+    """
+    if top_k is not None and top_k < 1:
+        raise ValueError("top_k must be at least 1 when provided")
+    constraint_policy = _validate_constraint_policy(constraint_policy)
+    mc_samples = _validate_mc_samples(mc_samples)
+
+    import torch
+
+    candidate_array, _, candidate_index = _as_numeric_matrix(
+        X_candidates,
+        name="X_candidates",
+    )
+    if candidate_array.shape[1] != surrogate.train_X.shape[-1]:
+        raise ValueError(
+            "X_candidates must have the same number of features as X_train "
+            f"({candidate_array.shape[1]} != {surrogate.train_X.shape[-1]})"
+        )
+    ranked = _candidate_frame(
+        X_candidates=X_candidates,
+        candidate_data=candidate_data,
+        candidate_index=candidate_index,
+    )
+
+    candidate_X = _to_tensor(
+        torch,
+        candidate_array,
+        device=surrogate.train_X.device,
+    )
+    acquisition = _build_multi_objective_acquisition_function(
+        acquisition_function,
+        surrogate=surrogate,
+        mc_samples=mc_samples,
+        sampler_seed=sampler_seed,
+    )
+
+    surrogate.model.eval()
+    with torch.no_grad():
+        scores = acquisition(candidate_X.unsqueeze(-2)).detach().cpu().numpy().reshape(-1)
+        posterior = surrogate.model.posterior(candidate_X)
+        objective_mean = posterior.mean.detach().cpu()
+        std = posterior.variance.clamp_min(0.0).sqrt().detach().cpu().numpy()
+
+    signs = surrogate.objective_signs.detach().cpu()
+    predicted_mean = (objective_mean * signs).numpy()
+    objective_columns = []
+    for objective_index, objective_name in enumerate(surrogate.objective_names):
+        slug = _slugify_objective_name(objective_name)
+        mean_column = f"matgpr_predicted_mean_{slug}"
+        std_column = f"matgpr_predicted_std_{slug}"
+        ranked[mean_column] = predicted_mean[:, objective_index]
+        ranked[std_column] = std[:, objective_index]
+        objective_columns.append(mean_column)
+
+    ranked["matgpr_acquisition"] = scores
+    ranked["matgpr_predicted_pareto_front"] = pareto_front_mask(
+        ranked,
+        [
+            ObjectiveSpec(
+                name=surrogate.objective_names[index],
+                column=column,
+                goal=surrogate.objective_directions[index],
+            )
+            for index, column in enumerate(objective_columns)
+        ],
+    ).to_numpy(dtype=bool)
+
     if constraints is not None:
         ranked = apply_candidate_constraints(ranked, constraints)
         if constraint_policy == "filter":
@@ -751,6 +1074,88 @@ def suggest_next_experiments(
     )
 
 
+def suggest_multi_objective_next_experiments(
+    X_train: pd.DataFrame | np.ndarray,
+    y_train: pd.DataFrame | np.ndarray,
+    X_candidates: pd.DataFrame | np.ndarray,
+    *,
+    objective_directions: str | Sequence[str] = "maximize",
+    objective_names: Sequence[str] | None = None,
+    reference_point: Sequence[float] | np.ndarray | pd.Series | None = None,
+    candidate_data: pd.DataFrame | None = None,
+    top_k: int = 5,
+    acquisition_function: str = "q_log_expected_hypervolume_improvement",
+    noise_variance: float | np.ndarray | pd.DataFrame | None = None,
+    normalize_features: bool = True,
+    standardize_targets: bool = True,
+    fit_model: bool = True,
+    device: str | None = None,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraint_policy: str = "filter",
+    batch_selection: str = "top",
+    batch_feature_columns: list[str] | tuple[str, ...] | None = None,
+    diversity_weight: float = 0.25,
+    min_batch_distance: float | None = None,
+    mc_samples: int = 128,
+    sampler_seed: int | None = 42,
+) -> MultiObjectiveBayesianOptimizationResult:
+    """Fit multi-objective surrogates and recommend finite-pool candidates.
+
+    Use this when a next experiment must trade off two or more measured
+    objectives, such as maximizing conductivity while minimizing degradation
+    rate, toxicity, synthesis cost, or processing burden.
+    """
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
+    constraint_policy = _validate_constraint_policy(constraint_policy)
+    batch_selection = _validate_batch_selection(batch_selection)
+
+    surrogate = fit_multi_objective_botorch_surrogate(
+        X_train,
+        y_train,
+        objective_directions=objective_directions,
+        objective_names=objective_names,
+        reference_point=reference_point,
+        noise_variance=noise_variance,
+        normalize_features=normalize_features,
+        standardize_targets=standardize_targets,
+        fit_model=fit_model,
+        device=device,
+    )
+    ranked_candidates = rank_multi_objective_discrete_candidates(
+        surrogate,
+        X_candidates,
+        acquisition_function=acquisition_function,
+        top_k=None,
+        candidate_data=candidate_data,
+        constraints=constraints,
+        constraint_policy=constraint_policy,
+        mc_samples=mc_samples,
+        sampler_seed=sampler_seed,
+    )
+    if batch_selection == "diverse":
+        recommendations = select_diverse_batch(
+            ranked_candidates,
+            top_k=top_k,
+            feature_columns=batch_feature_columns,
+            diversity_weight=diversity_weight,
+            min_distance=min_batch_distance,
+            return_all=False,
+        )
+    else:
+        recommendations = ranked_candidates.head(top_k).reset_index(drop=True)
+
+    return MultiObjectiveBayesianOptimizationResult(
+        recommendations=recommendations,
+        ranked_candidates=ranked_candidates,
+        surrogate=surrogate,
+        acquisition_function=acquisition_function,
+        objective_names=surrogate.objective_names,
+        objective_directions=surrogate.objective_directions,
+        top_k=top_k,
+    )
+
+
 def _build_acquisition_function(
     name: str,
     *,
@@ -805,6 +1210,88 @@ def _build_acquisition_function(
     )
 
 
+def _build_multi_objective_acquisition_function(
+    name: str,
+    *,
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    mc_samples: int,
+    sampler_seed: int | None,
+) -> Any:
+    normalized = _normalize_multi_objective_acquisition_name(name)
+    import torch
+    from botorch.sampling.normal import SobolQMCNormalSampler
+
+    sampler = SobolQMCNormalSampler(
+        sample_shape=torch.Size([mc_samples]),
+        seed=sampler_seed,
+    )
+    if normalized == "q_log_expected_hypervolume_improvement":
+        from botorch.acquisition.multi_objective.logei import (
+            qLogExpectedHypervolumeImprovement,
+        )
+        from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+            NondominatedPartitioning,
+        )
+
+        partitioning = NondominatedPartitioning(
+            ref_point=surrogate.reference_point,
+            Y=surrogate.objective_y,
+        )
+        return qLogExpectedHypervolumeImprovement(
+            model=surrogate.model,
+            ref_point=surrogate.reference_point,
+            partitioning=partitioning,
+            sampler=sampler,
+        )
+    if normalized == "q_log_noisy_expected_hypervolume_improvement":
+        from botorch.acquisition.multi_objective.logei import (
+            qLogNoisyExpectedHypervolumeImprovement,
+        )
+
+        return qLogNoisyExpectedHypervolumeImprovement(
+            model=surrogate.model,
+            ref_point=surrogate.reference_point,
+            X_baseline=surrogate.train_X,
+            sampler=sampler,
+        )
+    if normalized == "q_expected_hypervolume_improvement":
+        from botorch.acquisition.multi_objective.monte_carlo import (
+            qExpectedHypervolumeImprovement,
+        )
+        from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+            NondominatedPartitioning,
+        )
+
+        partitioning = NondominatedPartitioning(
+            ref_point=surrogate.reference_point,
+            Y=surrogate.objective_y,
+        )
+        return qExpectedHypervolumeImprovement(
+            model=surrogate.model,
+            ref_point=surrogate.reference_point,
+            partitioning=partitioning,
+            sampler=sampler,
+        )
+    if normalized == "q_noisy_expected_hypervolume_improvement":
+        from botorch.acquisition.multi_objective.monte_carlo import (
+            qNoisyExpectedHypervolumeImprovement,
+        )
+
+        return qNoisyExpectedHypervolumeImprovement(
+            model=surrogate.model,
+            ref_point=surrogate.reference_point,
+            X_baseline=surrogate.train_X,
+            sampler=sampler,
+        )
+    raise ValueError(
+        "acquisition_function must be one of "
+        "'q_log_expected_hypervolume_improvement', "
+        "'q_log_noisy_expected_hypervolume_improvement', "
+        "'q_expected_hypervolume_improvement', or "
+        "'q_noisy_expected_hypervolume_improvement'"
+    )
+
+
 def _normalize_acquisition_name(name: str) -> str:
     normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
     aliases = {
@@ -840,6 +1327,49 @@ def _normalize_acquisition_name(name: str) -> str:
     return aliases[normalized]
 
 
+def _normalize_multi_objective_acquisition_name(name: str) -> str:
+    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "ehvi": "q_expected_hypervolume_improvement",
+        "qehvi": "q_expected_hypervolume_improvement",
+        "q_ehvi": "q_expected_hypervolume_improvement",
+        "expected_hypervolume_improvement": "q_expected_hypervolume_improvement",
+        "q_expected_hypervolume_improvement": "q_expected_hypervolume_improvement",
+        "nehvi": "q_noisy_expected_hypervolume_improvement",
+        "qnehvi": "q_noisy_expected_hypervolume_improvement",
+        "q_nehvi": "q_noisy_expected_hypervolume_improvement",
+        "noisy_expected_hypervolume_improvement": (
+            "q_noisy_expected_hypervolume_improvement"
+        ),
+        "q_noisy_expected_hypervolume_improvement": (
+            "q_noisy_expected_hypervolume_improvement"
+        ),
+        "log_ehvi": "q_log_expected_hypervolume_improvement",
+        "logehvi": "q_log_expected_hypervolume_improvement",
+        "qlogehvi": "q_log_expected_hypervolume_improvement",
+        "q_log_ehvi": "q_log_expected_hypervolume_improvement",
+        "log_expected_hypervolume_improvement": (
+            "q_log_expected_hypervolume_improvement"
+        ),
+        "q_log_expected_hypervolume_improvement": (
+            "q_log_expected_hypervolume_improvement"
+        ),
+        "log_nehvi": "q_log_noisy_expected_hypervolume_improvement",
+        "lognehvi": "q_log_noisy_expected_hypervolume_improvement",
+        "qlognehvi": "q_log_noisy_expected_hypervolume_improvement",
+        "q_log_nehvi": "q_log_noisy_expected_hypervolume_improvement",
+        "log_noisy_expected_hypervolume_improvement": (
+            "q_log_noisy_expected_hypervolume_improvement"
+        ),
+        "q_log_noisy_expected_hypervolume_improvement": (
+            "q_log_noisy_expected_hypervolume_improvement"
+        ),
+    }
+    if normalized not in aliases:
+        raise ValueError(f"Unsupported multi-objective acquisition_function: {name!r}")
+    return aliases[normalized]
+
+
 def _validate_constraint_policy(policy: str) -> str:
     normalized = policy.strip().lower()
     if normalized not in {"filter", "annotate"}:
@@ -852,6 +1382,15 @@ def _validate_batch_selection(batch_selection: str) -> str:
     if normalized not in {"top", "diverse"}:
         raise ValueError("batch_selection must be 'top' or 'diverse'")
     return normalized
+
+
+def _validate_mc_samples(mc_samples: int) -> int:
+    if isinstance(mc_samples, bool) or not isinstance(mc_samples, Integral):
+        raise TypeError("mc_samples must be an integer")
+    mc_samples = int(mc_samples)
+    if mc_samples < 1:
+        raise ValueError("mc_samples must be at least 1")
+    return mc_samples
 
 
 def _as_constraint_tuple(
@@ -1151,6 +1690,140 @@ def _as_target_vector(
     return array
 
 
+def _as_target_matrix(
+    values: pd.DataFrame | np.ndarray,
+    *,
+    expected_length: int,
+    name: str,
+) -> tuple[np.ndarray, tuple[str, ...] | None]:
+    if isinstance(values, pd.DataFrame):
+        non_numeric = [
+            str(column)
+            for column in values.columns
+            if not pd.api.types.is_numeric_dtype(values[column])
+        ]
+        if non_numeric:
+            raise ValueError(
+                f"{name} must contain only numeric columns; non-numeric columns: "
+                f"{non_numeric}"
+            )
+        array = values.to_numpy(dtype=float)
+        objective_names = tuple(str(column) for column in values.columns)
+    else:
+        array = np.asarray(values, dtype=float)
+        objective_names = None
+
+    if array.ndim != 2:
+        raise ValueError(f"{name} must be a 2D numeric array or dataframe")
+    if array.shape[0] != expected_length:
+        raise ValueError(
+            f"{name} rows must match X_train rows "
+            f"({array.shape[0]} != {expected_length})"
+        )
+    if array.shape[1] < 2:
+        raise ValueError(f"{name} must contain at least two objectives")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} contains NaN or infinite values")
+    return array, objective_names
+
+
+def _resolve_objective_names(
+    objective_names: Sequence[str] | None,
+    *,
+    inferred_names: tuple[str, ...] | None,
+    n_objectives: int,
+) -> tuple[str, ...]:
+    if objective_names is None:
+        if inferred_names is not None:
+            names = inferred_names
+        else:
+            names = tuple(f"objective_{index}" for index in range(n_objectives))
+    else:
+        names = tuple(str(name).strip() for name in objective_names)
+
+    if len(names) != n_objectives:
+        raise ValueError(
+            "objective_names length must match number of objectives "
+            f"({len(names)} != {n_objectives})"
+        )
+    if any(not name for name in names):
+        raise ValueError("objective_names must be non-empty")
+    if len(set(names)) != len(names):
+        raise ValueError("objective_names must be unique")
+    slugs = [_slugify_objective_name(name) for name in names]
+    if len(set(slugs)) != len(slugs):
+        raise ValueError("objective_names must produce unique output column names")
+    return names
+
+
+def _resolve_objective_directions(
+    objective_directions: str | Sequence[str],
+    *,
+    n_objectives: int,
+) -> tuple[tuple[str, ...], np.ndarray]:
+    if isinstance(objective_directions, str):
+        directions = tuple([_normalize_objective_direction(objective_directions)] * n_objectives)
+    else:
+        directions = tuple(_normalize_objective_direction(direction) for direction in objective_directions)
+
+    if len(directions) != n_objectives:
+        raise ValueError(
+            "objective_directions length must match number of objectives "
+            f"({len(directions)} != {n_objectives})"
+        )
+    signs = np.asarray([1.0 if direction == "maximize" else -1.0 for direction in directions])
+    return directions, signs
+
+
+def _normalize_objective_direction(direction: str) -> str:
+    normalized = str(direction).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "max": "maximize",
+        "maximize": "maximize",
+        "higher": "maximize",
+        "higher_is_better": "maximize",
+        "min": "minimize",
+        "minimize": "minimize",
+        "lower": "minimize",
+        "lower_is_better": "minimize",
+    }
+    if normalized not in aliases:
+        raise ValueError("objective_directions must contain 'maximize' or 'minimize'")
+    return aliases[normalized]
+
+
+def _resolve_reference_point(
+    reference_point: Sequence[float] | np.ndarray | pd.Series | None,
+    *,
+    objective_array: np.ndarray,
+    signs: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    if reference_point is None:
+        minima = np.min(objective_array, axis=0)
+        ranges = np.ptp(objective_array, axis=0)
+        fallback = np.maximum(np.abs(minima) * 0.01, 1e-6)
+        margins = np.where(ranges > 0.0, 0.1 * ranges, fallback)
+        reference_objective = minima - margins
+        reference_original = reference_objective * signs
+    else:
+        reference_original = np.asarray(reference_point, dtype=float).reshape(-1)
+        if reference_original.shape[0] != objective_array.shape[1]:
+            raise ValueError(
+                "reference_point length must match number of objectives "
+                f"({reference_original.shape[0]} != {objective_array.shape[1]})"
+            )
+        if not np.all(np.isfinite(reference_original)):
+            raise ValueError("reference_point contains NaN or infinite values")
+        reference_objective = reference_original * signs
+
+    if np.any(reference_objective >= np.max(objective_array, axis=0)):
+        raise ValueError(
+            "reference_point must be worse than at least one observed value for "
+            "every objective"
+        )
+    return reference_objective.astype(float), reference_original.astype(float)
+
+
 def _as_noise_variance(
     value: float | np.ndarray | pd.Series,
     *,
@@ -1173,8 +1846,51 @@ def _as_noise_variance(
     return array
 
 
+def _as_noise_variance_matrix(
+    value: float | np.ndarray | pd.DataFrame,
+    *,
+    expected_length: int,
+    n_objectives: int,
+) -> np.ndarray:
+    if isinstance(value, pd.DataFrame):
+        array = value.to_numpy(dtype=float)
+    else:
+        array = np.asarray(value, dtype=float)
+
+    if array.ndim == 0:
+        array = np.full((expected_length, n_objectives), float(array))
+    elif array.ndim == 1:
+        array = array.reshape(-1)
+        if array.shape[0] != expected_length:
+            raise ValueError(
+                "1D noise_variance length must match X_train rows "
+                f"({array.shape[0]} != {expected_length})"
+            )
+        array = np.repeat(array.reshape(-1, 1), n_objectives, axis=1)
+    elif array.ndim == 2:
+        if array.shape != (expected_length, n_objectives):
+            raise ValueError(
+                "2D noise_variance shape must match "
+                f"({expected_length}, {n_objectives}); got {array.shape}"
+            )
+    else:
+        raise ValueError("noise_variance must be a scalar, vector, or 2D matrix")
+
+    if not np.all(np.isfinite(array)):
+        raise ValueError("noise_variance contains NaN or infinite values")
+    if np.any(array < 0.0):
+        raise ValueError("noise_variance must contain non-negative variances")
+    return array
+
+
 def _to_tensor(torch_module: Any, array: np.ndarray, *, device: Any | None = None) -> Any:
     return torch_module.as_tensor(array, dtype=torch_module.double, device=device)
+
+
+def _slugify_objective_name(value: str) -> str:
+    slug = re.sub(r"[^0-9a-zA-Z]+", "_", value.strip().lower())
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug or "objective"
 
 
 def _candidate_frame(

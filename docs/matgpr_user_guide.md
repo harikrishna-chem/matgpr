@@ -84,6 +84,7 @@ from matgpr import (
     select_pareto_front,
     CandidateConstraint,
     select_diverse_batch,
+    suggest_multi_objective_next_experiments,
     suggest_next_experiments,
     log_bo_recommendations,
     log_selected_experiments,
@@ -1773,6 +1774,7 @@ from matgpr import (
     select_diverse_batch,
     select_pareto_front,
     split_candidate_features,
+    suggest_multi_objective_next_experiments,
     suggest_next_experiments,
     log_bo_recommendations,
     log_selected_experiments,
@@ -1886,6 +1888,38 @@ pareto_candidates = select_pareto_front(
     ],
 )
 ```
+
+When two or more objectives are measured outcomes, use BoTorch multi-objective
+Bayesian optimization. `matgpr` fits one independent GP per objective, converts
+minimize-type objectives into BoTorch maximization space internally, and ranks
+candidates by expected hypervolume improvement:
+
+```python
+multi_bo_result = suggest_multi_objective_next_experiments(
+    X_train=X_measured_features,
+    y_train=measured_data[["conductivity_s_cm", "degradation_rate"]],
+    X_candidates=X_candidate_features,
+    objective_directions=("maximize", "minimize"),
+    candidate_data=candidate_metadata,
+    reference_point=(0.0, 1.0),
+    top_k=5,
+    acquisition_function="q_log_expected_hypervolume_improvement",
+)
+
+multi_objective_recommendations = multi_bo_result.recommendations
+```
+
+The optional `reference_point` is provided in original objective units and
+directions. For example, the second value above is a worse degradation rate.
+If omitted, `matgpr` estimates a conservative reference point from the observed
+training objectives. Recommendation tables include `matgpr_acquisition`,
+`matgpr_predicted_pareto_front`, and one mean/std pair per objective, such as
+`matgpr_predicted_mean_conductivity_s_cm` and
+`matgpr_predicted_std_degradation_rate`. Supported multi-objective acquisition
+functions are `"q_log_expected_hypervolume_improvement"`,
+`"q_log_noisy_expected_hypervolume_improvement"`,
+`"q_expected_hypervolume_improvement"`, and
+`"q_noisy_expected_hypervolume_improvement"`.
 
 When experimental rows have known measurement uncertainty, pass a target-noise
 variance vector to the BoTorch surrogate. The variance should be in squared

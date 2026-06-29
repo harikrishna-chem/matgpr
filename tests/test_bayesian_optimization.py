@@ -12,11 +12,15 @@ from matgpr import (
     BayesianOptimizationResult,
     BoTorchSurrogate,
     CandidateConstraint,
+    MultiObjectiveBayesianOptimizationResult,
     apply_candidate_constraints,
     fit_botorch_surrogate,
+    fit_multi_objective_botorch_surrogate,
     observation_noise_variance,
     rank_discrete_candidates,
+    rank_multi_objective_discrete_candidates,
     select_diverse_batch,
+    suggest_multi_objective_next_experiments,
     suggest_next_experiments,
 )
 
@@ -249,6 +253,27 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("optional dependency `botorch`", message)
         self.assertIn("matgpr[bo]", message)
 
+    def test_multi_objective_botorch_missing_dependency_has_clear_install_message(self):
+        with patch(
+            "matgpr.optional_dependencies.importlib.import_module",
+            side_effect=ImportError("missing botorch"),
+        ):
+            with self.assertRaises(ImportError) as context:
+                fit_multi_objective_botorch_surrogate(
+                    pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
+                    pd.DataFrame(
+                        {
+                            "performance": [0.0, 1.0, 0.5],
+                            "cost": [4.0, 3.0, 2.0],
+                        }
+                    ),
+                )
+
+        message = str(context.exception)
+        self.assertIn("BoTorch Bayesian optimization", message)
+        self.assertIn("optional dependency `botorch`", message)
+        self.assertIn("matgpr[bo]", message)
+
     def test_rank_discrete_candidates_validates_feature_count_before_botorch_use(self):
         fake_train_X = types.SimpleNamespace(shape=(3, 2))
         surrogate = BoTorchSurrogate(
@@ -263,6 +288,18 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         with self.assertRaises(ValueError) as context:
             rank_discrete_candidates(
+                surrogate,
+                pd.DataFrame({"only_one_feature": [0.5, 1.5]}),
+            )
+
+        self.assertIn("same number of features", str(context.exception))
+
+    def test_rank_multi_objective_candidates_validates_feature_count_before_botorch_use(self):
+        fake_train_X = types.SimpleNamespace(shape=(3, 2))
+        surrogate = types.SimpleNamespace(train_X=fake_train_X)
+
+        with self.assertRaises(ValueError) as context:
+            rank_multi_objective_discrete_candidates(
                 surrogate,
                 pd.DataFrame({"only_one_feature": [0.5, 1.5]}),
             )
@@ -339,6 +376,22 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             suggest_next_experiments(
                 pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
                 pd.Series([0.0, 1.0, 0.5]),
+                pd.DataFrame({"x": [0.25, 0.75]}),
+                batch_selection="clustered",
+            )
+
+        self.assertIn("batch_selection", str(context.exception))
+
+    def test_suggest_multi_objective_next_experiments_rejects_invalid_batch_selection_before_botorch_use(self):
+        with self.assertRaises(ValueError) as context:
+            suggest_multi_objective_next_experiments(
+                pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
+                pd.DataFrame(
+                    {
+                        "performance": [0.0, 1.0, 0.5],
+                        "cost": [4.0, 3.0, 2.0],
+                    }
+                ),
                 pd.DataFrame({"x": [0.25, 0.75]}),
                 batch_selection="clustered",
             )
@@ -427,6 +480,84 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertEqual(result.recommendations.shape[0], 1)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_suggest_multi_objective_next_experiments_ranks_candidate_pool(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.3, 0.7, 1.0]})
+        y_train = pd.DataFrame(
+            {
+                "performance": [0.1, 0.4, 0.8, 1.0],
+                "cost": [4.0, 2.5, 2.0, 3.0],
+            }
+        )
+        X_candidates = pd.DataFrame({"x": [0.15, 0.55, 0.9]})
+        candidate_data = pd.DataFrame({"material_id": ["a", "b", "c"]})
+
+        result = suggest_multi_objective_next_experiments(
+            X_train,
+            y_train,
+            X_candidates,
+            objective_directions=("maximize", "minimize"),
+            candidate_data=candidate_data,
+            top_k=2,
+            acquisition_function="q_log_expected_hypervolume_improvement",
+            fit_model=False,
+            mc_samples=16,
+            sampler_seed=7,
+        )
+
+        self.assertIsInstance(result, MultiObjectiveBayesianOptimizationResult)
+        self.assertEqual(result.recommendations.shape[0], 2)
+        self.assertEqual(result.ranked_candidates.shape[0], 3)
+        self.assertEqual(result.objective_names, ("performance", "cost"))
+        self.assertEqual(result.objective_directions, ("maximize", "minimize"))
+        self.assertIn("matgpr_predicted_mean_performance", result.recommendations.columns)
+        self.assertIn("matgpr_predicted_std_cost", result.recommendations.columns)
+        self.assertIn("matgpr_predicted_pareto_front", result.ranked_candidates.columns)
+        self.assertIn("matgpr_acquisition", result.recommendations.columns)
+        self.assertIn("material_id", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_multi_objective_surrogate_stores_noise_and_reference_point(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.DataFrame(
+            {
+                "strength": [1.0, 2.0, 3.0],
+                "toxicity": [0.5, 0.4, 0.8],
+            }
+        )
+        noise = pd.DataFrame(
+            {
+                "strength_noise": [0.01, 0.01, 0.02],
+                "toxicity_noise": [0.001, 0.002, 0.003],
+            }
+        )
+
+        surrogate = fit_multi_objective_botorch_surrogate(
+            X_train,
+            y_train,
+            objective_directions=("maximize", "minimize"),
+            reference_point=(0.0, 1.0),
+            noise_variance=noise,
+            fit_model=False,
+        )
+
+        self.assertEqual(surrogate.objective_names, ("strength", "toxicity"))
+        self.assertIsNotNone(surrogate.noise_variance)
+        np.testing.assert_allclose(
+            surrogate.noise_variance.detach().cpu().numpy(),
+            [[0.01, 0.001], [0.01, 0.002], [0.02, 0.003]],
+        )
+        np.testing.assert_allclose(
+            surrogate.reference_point_original.detach().cpu().numpy(),
+            [0.0, 1.0],
+        )
 
 
 if __name__ == "__main__":
