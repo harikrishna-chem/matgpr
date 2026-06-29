@@ -13,6 +13,10 @@ _OUTPUT_COLUMNS = (
     "matgpr_rank",
     "matgpr_feasible",
     "matgpr_constraint_violations",
+    "matgpr_batch_selected",
+    "matgpr_batch_order",
+    "matgpr_batch_score",
+    "matgpr_diversity_distance",
     "matgpr_predicted_mean",
     "matgpr_predicted_std",
     "matgpr_acquisition",
@@ -25,6 +29,7 @@ __all__ = [
     "apply_candidate_constraints",
     "fit_botorch_surrogate",
     "rank_discrete_candidates",
+    "select_diverse_batch",
     "suggest_next_experiments",
 ]
 
@@ -229,6 +234,115 @@ def apply_candidate_constraints(
         for _, row in mask_frame.iterrows()
     ]
     return result
+
+
+def select_diverse_batch(
+    candidates: pd.DataFrame,
+    *,
+    top_k: int,
+    score_column: str = "matgpr_acquisition",
+    feature_columns: list[str] | tuple[str, ...] | None = None,
+    diversity_weight: float = 0.25,
+    min_distance: float | None = None,
+    higher_is_better: bool = True,
+    standardize_features: bool = True,
+    return_all: bool = False,
+) -> pd.DataFrame:
+    """Select a diversity-aware batch from a ranked candidate table.
+
+    This helper is useful when several high-acquisition candidates are nearly
+    identical in descriptor space, but the next experimental batch should cover
+    a broader region of the candidate pool.
+
+    Parameters
+    ----------
+    candidates
+        Candidate table containing an acquisition or utility score.
+    top_k
+        Maximum number of candidates to select.
+    score_column
+        Column used as the primary utility score.
+    feature_columns
+        Numeric columns used to compute diversity distances. If omitted,
+        numeric candidate columns other than reserved `matgpr_*` output columns
+        and `score_column` are used.
+    diversity_weight
+        Weight applied to the normalized distance from already selected
+        candidates. Set to `0.0` for ordinary score-only top-k selection.
+    min_distance
+        Optional minimum distance from the already selected batch. If this
+        cannot be satisfied, fewer than `top_k` candidates are returned.
+    higher_is_better
+        If `True`, larger scores are preferred. If `False`, lower scores are
+        preferred.
+    standardize_features
+        If `True`, standardize diversity features before computing distances.
+    return_all
+        If `True`, return the full candidate table with batch annotations.
+        Otherwise return only selected candidates in batch order.
+    """
+    if not isinstance(candidates, pd.DataFrame):
+        raise TypeError("candidates must be a pandas DataFrame")
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
+    if diversity_weight < 0.0:
+        raise ValueError("diversity_weight must be non-negative")
+    if min_distance is not None and min_distance < 0.0:
+        raise ValueError("min_distance must be non-negative when provided")
+    if score_column not in candidates.columns:
+        raise ValueError(f"score_column {score_column!r} is missing")
+
+    result = candidates.copy()
+    result["matgpr_batch_selected"] = False
+    result["matgpr_batch_order"] = pd.Series(pd.NA, index=result.index, dtype="Int64")
+    result["matgpr_batch_score"] = np.nan
+    result["matgpr_diversity_distance"] = np.nan
+
+    if result.empty:
+        return result.reset_index(drop=True)
+
+    score_values = _as_finite_numeric_vector(result[score_column], name=score_column)
+    effective_scores = score_values if higher_is_better else -score_values
+    normalized_scores = _normalize_vector(effective_scores)
+
+    if diversity_weight == 0.0 and min_distance is None:
+        selected_positions = _top_score_positions(effective_scores, top_k)
+        selection_scores = normalized_scores[selected_positions]
+        diversity_distances = np.full(len(selected_positions), np.nan)
+    else:
+        selected_positions, selection_scores, diversity_distances = _greedy_diverse_positions(
+            result,
+            top_k=top_k,
+            score_column=score_column,
+            feature_columns=feature_columns,
+            normalized_scores=normalized_scores,
+            diversity_weight=diversity_weight,
+            min_distance=min_distance,
+            standardize_features=standardize_features,
+        )
+
+    for order, (position, selection_score, distance) in enumerate(
+        zip(selected_positions, selection_scores, diversity_distances),
+        start=1,
+    ):
+        label = result.index[position]
+        result.loc[label, "matgpr_batch_selected"] = True
+        result.loc[label, "matgpr_batch_order"] = order
+        result.loc[label, "matgpr_batch_score"] = selection_score
+        result.loc[label, "matgpr_diversity_distance"] = distance
+
+    if return_all:
+        return result.sort_values(
+            ["matgpr_batch_selected", "matgpr_batch_order"],
+            ascending=[False, True],
+            na_position="last",
+        ).reset_index(drop=True)
+
+    return (
+        result[result["matgpr_batch_selected"]]
+        .sort_values("matgpr_batch_order")
+        .reset_index(drop=True)
+    )
 
 
 def fit_botorch_surrogate(
@@ -442,6 +556,10 @@ def suggest_next_experiments(
     device: str | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    batch_selection: str = "top",
+    batch_feature_columns: list[str] | tuple[str, ...] | None = None,
+    diversity_weight: float = 0.25,
+    min_batch_distance: float | None = None,
 ) -> BayesianOptimizationResult:
     """Fit a surrogate and recommend the next materials to evaluate.
 
@@ -486,10 +604,22 @@ def suggest_next_experiments(
     constraint_policy
         `"filter"` recommends only feasible candidates. `"annotate"` ranks all
         candidates and marks feasibility.
+    batch_selection
+        `"top"` returns the highest-acquisition candidates. `"diverse"` uses
+        greedy diversity-aware batch selection.
+    batch_feature_columns
+        Numeric columns in the ranked candidate table used for diversity-aware
+        batch selection.
+    diversity_weight
+        Diversity weight used when `batch_selection="diverse"`.
+    min_batch_distance
+        Optional minimum descriptor-space distance between selected batch
+        members when `batch_selection="diverse"`.
     """
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
     constraint_policy = _validate_constraint_policy(constraint_policy)
+    batch_selection = _validate_batch_selection(batch_selection)
 
     surrogate = fit_botorch_surrogate(
         X_train,
@@ -511,7 +641,17 @@ def suggest_next_experiments(
         constraints=constraints,
         constraint_policy=constraint_policy,
     )
-    recommendations = ranked_candidates.head(top_k).reset_index(drop=True)
+    if batch_selection == "diverse":
+        recommendations = select_diverse_batch(
+            ranked_candidates,
+            top_k=top_k,
+            feature_columns=batch_feature_columns,
+            diversity_weight=diversity_weight,
+            min_distance=min_batch_distance,
+            return_all=False,
+        )
+    else:
+        recommendations = ranked_candidates.head(top_k).reset_index(drop=True)
 
     return BayesianOptimizationResult(
         recommendations=recommendations,
@@ -588,6 +728,13 @@ def _validate_constraint_policy(policy: str) -> str:
     return normalized
 
 
+def _validate_batch_selection(batch_selection: str) -> str:
+    normalized = batch_selection.strip().lower()
+    if normalized not in {"top", "diverse"}:
+        raise ValueError("batch_selection must be 'top' or 'diverse'")
+    return normalized
+
+
 def _as_constraint_tuple(
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...],
 ) -> tuple[CandidateConstraint, ...]:
@@ -611,6 +758,167 @@ def _as_constraint_tuple(
             f"got {invalid}"
         )
     return constraint_tuple
+
+
+def _as_finite_numeric_vector(values: pd.Series, *, name: str) -> np.ndarray:
+    numeric = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+    if numeric.ndim != 1:
+        raise ValueError(f"{name} must be one-dimensional")
+    if not np.all(np.isfinite(numeric)):
+        raise ValueError(f"{name} contains NaN or infinite values")
+    return numeric
+
+
+def _normalize_vector(values: np.ndarray) -> np.ndarray:
+    value_range = float(np.max(values) - np.min(values))
+    if value_range == 0.0:
+        return np.ones_like(values, dtype=float)
+    return (values - np.min(values)) / value_range
+
+
+def _top_score_positions(effective_scores: np.ndarray, top_k: int) -> np.ndarray:
+    positions = np.arange(effective_scores.shape[0])
+    order = np.lexsort((positions, -effective_scores))
+    return order[: min(top_k, effective_scores.shape[0])]
+
+
+def _greedy_diverse_positions(
+    candidates: pd.DataFrame,
+    *,
+    top_k: int,
+    score_column: str,
+    feature_columns: list[str] | tuple[str, ...] | None,
+    normalized_scores: np.ndarray,
+    diversity_weight: float,
+    min_distance: float | None,
+    standardize_features: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    feature_matrix, resolved_features = _candidate_diversity_matrix(
+        candidates,
+        score_column=score_column,
+        feature_columns=feature_columns,
+        standardize_features=standardize_features,
+    )
+    if feature_matrix.shape[0] != normalized_scores.shape[0]:
+        raise ValueError("feature matrix rows must match candidates")
+    if len(resolved_features) == 0:
+        raise ValueError("at least one diversity feature is required")
+
+    selected: list[int] = []
+    selection_scores: list[float] = []
+    diversity_distances: list[float] = []
+    remaining = np.ones(feature_matrix.shape[0], dtype=bool)
+    min_distances = np.full(feature_matrix.shape[0], np.inf, dtype=float)
+
+    while len(selected) < top_k and np.any(remaining):
+        eligible = remaining.copy()
+        if selected and min_distance is not None:
+            eligible &= min_distances >= min_distance
+        if not np.any(eligible):
+            break
+
+        if selected:
+            finite_distances = np.where(np.isfinite(min_distances), min_distances, 0.0)
+            distance_scale = float(np.max(finite_distances[eligible]))
+            if distance_scale > 0.0:
+                normalized_distances = finite_distances / distance_scale
+            else:
+                normalized_distances = np.zeros_like(finite_distances)
+            candidate_scores = normalized_scores + diversity_weight * normalized_distances
+        else:
+            candidate_scores = normalized_scores.copy()
+
+        candidate_scores[~eligible] = -np.inf
+        chosen = _argmax_stable(candidate_scores)
+        if chosen is None:
+            break
+
+        selected.append(chosen)
+        selection_scores.append(float(candidate_scores[chosen]))
+        if len(selected) == 1:
+            diversity_distances.append(np.nan)
+        else:
+            diversity_distances.append(float(min_distances[chosen]))
+
+        remaining[chosen] = False
+        distances = np.linalg.norm(feature_matrix - feature_matrix[chosen], axis=1)
+        min_distances = np.minimum(min_distances, distances)
+
+    return (
+        np.asarray(selected, dtype=int),
+        np.asarray(selection_scores, dtype=float),
+        np.asarray(diversity_distances, dtype=float),
+    )
+
+
+def _candidate_diversity_matrix(
+    candidates: pd.DataFrame,
+    *,
+    score_column: str,
+    feature_columns: list[str] | tuple[str, ...] | None,
+    standardize_features: bool,
+) -> tuple[np.ndarray, tuple[str, ...]]:
+    resolved_features = _resolve_diversity_feature_columns(
+        candidates,
+        score_column=score_column,
+        feature_columns=feature_columns,
+    )
+    feature_frame = candidates.loc[:, list(resolved_features)]
+    non_numeric = [
+        str(column)
+        for column in resolved_features
+        if not pd.api.types.is_numeric_dtype(feature_frame[column])
+    ]
+    if non_numeric:
+        raise ValueError(f"diversity feature columns must be numeric: {non_numeric}")
+    matrix = feature_frame.to_numpy(dtype=float)
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError("diversity feature columns contain NaN or infinite values")
+    if standardize_features and matrix.shape[0] > 0:
+        means = matrix.mean(axis=0)
+        scales = matrix.std(axis=0)
+        scales[scales == 0.0] = 1.0
+        matrix = (matrix - means) / scales
+    return matrix, resolved_features
+
+
+def _resolve_diversity_feature_columns(
+    candidates: pd.DataFrame,
+    *,
+    score_column: str,
+    feature_columns: list[str] | tuple[str, ...] | None,
+) -> tuple[str, ...]:
+    if feature_columns is not None:
+        resolved = tuple(str(column) for column in feature_columns)
+        missing = [column for column in resolved if column not in candidates.columns]
+        if missing:
+            raise ValueError(f"diversity feature columns are missing: {missing}")
+        if len(resolved) == 0:
+            raise ValueError("feature_columns must contain at least one column")
+        return resolved
+
+    excluded = set(_OUTPUT_COLUMNS)
+    excluded.add(score_column)
+    inferred = tuple(
+        str(column)
+        for column in candidates.columns
+        if str(column) not in excluded and pd.api.types.is_numeric_dtype(candidates[column])
+    )
+    if not inferred:
+        raise ValueError(
+            "No numeric diversity feature columns could be inferred. Provide "
+            "feature_columns explicitly or include numeric candidate descriptors."
+        )
+    return inferred
+
+
+def _argmax_stable(values: np.ndarray) -> int | None:
+    finite = np.isfinite(values)
+    if not np.any(finite):
+        return None
+    positions = np.arange(values.shape[0])
+    order = np.lexsort((positions, -values))
+    return int(order[0])
 
 
 def _as_numeric_matrix(

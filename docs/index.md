@@ -26,7 +26,8 @@ prediction accuracy.
 - Reusable validation workflows for train/test splits, cross-validation, and
   configurable learning curves.
 - Optional BoTorch Bayesian optimization for ranking finite candidate pools,
-  applying feasibility constraints, and selecting next experiments.
+  applying feasibility constraints, and selecting diverse next-experiment
+  batches.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.

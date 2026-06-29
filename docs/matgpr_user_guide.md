@@ -76,6 +76,7 @@ from matgpr import (
     uncertainty_diagnostics,
     calibration_curve,
     CandidateConstraint,
+    select_diverse_batch,
     suggest_next_experiments,
     plot_parity,
     plot_learning_curve,
@@ -1750,7 +1751,7 @@ For finite candidate lists, featurize measured rows and candidate rows with the
 same descriptor pipeline, then rank the candidates:
 
 ```python
-from matgpr import suggest_next_experiments
+from matgpr import CandidateConstraint, select_diverse_batch, suggest_next_experiments
 
 
 bo_result = suggest_next_experiments(
@@ -1814,6 +1815,36 @@ Supported acquisition functions are `"log_expected_improvement"`,
 are better, such as degradation rate, diffusion barrier, cost, or toxicity.
 Use `constraint_policy="annotate"` when you want to keep infeasible candidates
 in the ranked table for auditing rather than filtering them out.
+
+When selecting several experiments at once, use diversity-aware batch selection
+to avoid near-duplicate candidates:
+
+```python
+bo_result = suggest_next_experiments(
+    X_train=X_measured_features,
+    y_train=y_measured,
+    X_candidates=X_candidate_features,
+    candidate_data=candidate_metadata_with_descriptors,
+    top_k=5,
+    batch_selection="diverse",
+    batch_feature_columns=("band_gap_ev", "formation_energy_ev_atom"),
+    diversity_weight=0.5,
+)
+
+diverse_recommendations = bo_result.recommendations
+```
+
+You can also apply the batch selector directly to an already ranked candidate
+table:
+
+```python
+diverse_recommendations = select_diverse_batch(
+    bo_result.ranked_candidates,
+    top_k=5,
+    feature_columns=("band_gap_ev", "formation_energy_ev_atom"),
+    diversity_weight=0.5,
+)
+```
 
 This workflow assumes the candidate list is already generated. It is best for
 materials informatics tasks where users have a realistic library of synthesizable

@@ -7,6 +7,7 @@ from .bayesian_optimization import (
     apply_candidate_constraints,
     fit_botorch_surrogate,
     rank_discrete_candidates,
+    select_diverse_batch,
     suggest_next_experiments,
 )
 from .data_cleaning import (
@@ -309,6 +310,7 @@ __all__ = [
     "rule_of_mixtures_equation",
     "save_artifact",
     "separate_features_target",
+    "select_diverse_batch",
     "split_train_test",
     "standardized_residuals",
     "structure_feature_names",

@@ -15,6 +15,7 @@ from matgpr import (
     apply_candidate_constraints,
     fit_botorch_surrogate,
     rank_discrete_candidates,
+    select_diverse_batch,
     suggest_next_experiments,
 )
 
@@ -85,6 +86,81 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             ],
         )
 
+    def test_select_diverse_batch_can_return_score_only_top_k(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["a", "b", "c"],
+                "matgpr_acquisition": [0.8, 1.0, 0.9],
+            }
+        )
+
+        batch = select_diverse_batch(
+            candidates,
+            top_k=2,
+            diversity_weight=0.0,
+        )
+
+        self.assertEqual(batch["material_id"].tolist(), ["b", "c"])
+        self.assertEqual(batch["matgpr_batch_order"].tolist(), [1, 2])
+        self.assertTrue(batch["matgpr_batch_selected"].all())
+
+    def test_select_diverse_batch_prefers_distant_candidates_when_weighted(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["near_best", "near_duplicate", "medium", "far"],
+                "matgpr_acquisition": [1.0, 0.99, 0.92, 0.85],
+                "descriptor_x": [0.0, 0.02, 5.0, 10.0],
+            }
+        )
+
+        batch = select_diverse_batch(
+            candidates,
+            top_k=2,
+            feature_columns=("descriptor_x",),
+            diversity_weight=1.0,
+            standardize_features=False,
+        )
+
+        self.assertEqual(batch["material_id"].tolist(), ["near_best", "far"])
+        self.assertGreater(batch["matgpr_diversity_distance"].iloc[1], 9.0)
+
+    def test_select_diverse_batch_min_distance_can_return_smaller_batch(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["a", "b", "c"],
+                "matgpr_acquisition": [1.0, 0.95, 0.90],
+                "descriptor_x": [0.0, 0.1, 0.2],
+            }
+        )
+
+        batch = select_diverse_batch(
+            candidates,
+            top_k=3,
+            feature_columns=("descriptor_x",),
+            min_distance=1.0,
+            standardize_features=False,
+        )
+
+        self.assertEqual(batch["material_id"].tolist(), ["a"])
+
+    def test_select_diverse_batch_can_return_full_annotated_table(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["a", "b", "c"],
+                "matgpr_acquisition": [1.0, 0.9, 0.8],
+            }
+        )
+
+        annotated = select_diverse_batch(
+            candidates,
+            top_k=2,
+            diversity_weight=0.0,
+            return_all=True,
+        )
+
+        self.assertEqual(annotated["matgpr_batch_selected"].tolist(), [True, True, False])
+        self.assertEqual(annotated["material_id"].tolist(), ["a", "b", "c"])
+
     def test_botorch_missing_dependency_has_clear_install_message(self):
         with patch(
             "matgpr.optional_dependencies.importlib.import_module",
@@ -136,6 +212,35 @@ class BayesianOptimizationApiTests(unittest.TestCase):
                 CandidateConstraint(name="missing_column", column="y", lower_bound=0.0),
             )
 
+    def test_select_diverse_batch_validation_errors_are_explicit(self):
+        candidates = pd.DataFrame(
+            {
+                "matgpr_acquisition": [1.0, 0.9],
+                "descriptor": [0.0, 1.0],
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            select_diverse_batch(candidates, top_k=0)
+        with self.assertRaises(ValueError):
+            select_diverse_batch(candidates, top_k=1, diversity_weight=-0.1)
+        with self.assertRaises(ValueError):
+            select_diverse_batch(candidates, top_k=1, min_distance=-1.0)
+        with self.assertRaises(ValueError):
+            select_diverse_batch(candidates.drop(columns=["matgpr_acquisition"]), top_k=1)
+        with self.assertRaises(ValueError):
+            select_diverse_batch(
+                candidates,
+                top_k=1,
+                feature_columns=("missing_descriptor",),
+            )
+        with self.assertRaises(ValueError):
+            select_diverse_batch(
+                pd.DataFrame({"matgpr_acquisition": [1.0], "label": ["not_numeric"]}),
+                top_k=1,
+                feature_columns=("label",),
+            )
+
     def test_rank_discrete_candidates_rejects_invalid_constraint_policy_before_botorch_use(self):
         fake_train_X = types.SimpleNamespace(shape=(3, 1))
         surrogate = BoTorchSurrogate(
@@ -156,6 +261,17 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             )
 
         self.assertIn("constraint_policy", str(context.exception))
+
+    def test_suggest_next_experiments_rejects_invalid_batch_selection_before_botorch_use(self):
+        with self.assertRaises(ValueError) as context:
+            suggest_next_experiments(
+                pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
+                pd.Series([0.0, 1.0, 0.5]),
+                pd.DataFrame({"x": [0.25, 0.75]}),
+                batch_selection="clustered",
+            )
+
+        self.assertIn("batch_selection", str(context.exception))
 
     @unittest.skipUnless(
         importlib.util.find_spec("botorch") is not None,

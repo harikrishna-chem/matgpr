@@ -66,6 +66,7 @@ semantic-versioning conventions once the first public release is tagged.
 - Finite-pool Bayesian-optimization feasibility constraints for filtering or
   annotating candidate recommendations by synthesis, processing, safety, or
   other metadata limits.
+- Diversity-aware finite-pool batch selection for next-experiment campaigns.
 
 ### Changed
 
