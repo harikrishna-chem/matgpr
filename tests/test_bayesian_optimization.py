@@ -14,6 +14,7 @@ from matgpr import (
     CandidateConstraint,
     apply_candidate_constraints,
     fit_botorch_surrogate,
+    observation_noise_variance,
     rank_discrete_candidates,
     select_diverse_batch,
     suggest_next_experiments,
@@ -21,6 +22,77 @@ from matgpr import (
 
 
 class BayesianOptimizationApiTests(unittest.TestCase):
+    def test_observation_noise_variance_from_reported_uncertainty_columns(self):
+        data = pd.DataFrame(
+            {
+                "target_variance": [0.0, 0.04],
+                "target_std": [0.1, 0.2],
+                "target_sem": [0.01, 0.02],
+            }
+        )
+
+        variance = observation_noise_variance(
+            data,
+            variance_column="target_variance",
+            min_variance=1e-6,
+        )
+        std_variance = observation_noise_variance(data, std_column="target_std")
+        sem_variance = observation_noise_variance(data, sem_column="target_sem")
+
+        np.testing.assert_allclose(variance.to_numpy(), [1e-6, 0.04])
+        np.testing.assert_allclose(std_variance.to_numpy(), [0.01, 0.04])
+        np.testing.assert_allclose(sem_variance.to_numpy(), [0.0001, 0.0004])
+        self.assertEqual(variance.name, "matgpr_noise_variance")
+
+    def test_observation_noise_variance_from_replicate_groups(self):
+        data = pd.DataFrame(
+            {
+                "material_id": ["a", "a", "b", "b", "c"],
+                "conductivity": [1.0, 1.2, 2.0, 2.4, 5.0],
+            }
+        )
+
+        variance = observation_noise_variance(
+            data,
+            replicate_group_column="material_id",
+            target_column="conductivity",
+        )
+
+        np.testing.assert_allclose(
+            variance.to_numpy(),
+            [0.02, 0.02, 0.08, 0.08, 0.05],
+            rtol=1e-12,
+        )
+
+    def test_observation_noise_variance_validation_errors_are_explicit(self):
+        data = pd.DataFrame(
+            {
+                "target_variance": [0.01, 0.02],
+                "target_std": [0.1, -0.2],
+                "group": ["a", "b"],
+                "target": [1.0, 2.0],
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            observation_noise_variance(data)
+        with self.assertRaises(ValueError):
+            observation_noise_variance(
+                data,
+                variance_column="target_variance",
+                std_column="target_std",
+            )
+        with self.assertRaises(ValueError):
+            observation_noise_variance(data, std_column="target_std")
+        with self.assertRaises(ValueError):
+            observation_noise_variance(data, replicate_group_column="group")
+        with self.assertRaises(ValueError):
+            observation_noise_variance(
+                data,
+                replicate_group_column="missing_group",
+                target_column="target",
+            )
+
     def test_candidate_constraints_annotate_feasibility_and_violations(self):
         candidates = pd.DataFrame(
             {
@@ -303,6 +375,57 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("material_id", result.recommendations.columns)
         self.assertIn("matgpr_predicted_mean", result.recommendations.columns)
         self.assertIn("matgpr_predicted_std", result.recommendations.columns)
+        self.assertIn("matgpr_acquisition", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_fit_botorch_surrogate_stores_known_noise_variance(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.Series([0.0, 0.4, 1.0])
+        noise = observation_noise_variance(
+            pd.DataFrame({"target_std": [0.1, 0.2, 0.3]}),
+            std_column="target_std",
+        )
+
+        surrogate = fit_botorch_surrogate(
+            X_train,
+            y_train,
+            noise_variance=noise,
+            fit_model=False,
+        )
+
+        self.assertIsNotNone(surrogate.noise_variance)
+        np.testing.assert_allclose(
+            surrogate.noise_variance.detach().cpu().numpy().reshape(-1),
+            [0.01, 0.04, 0.09],
+        )
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_suggest_next_experiments_supports_noisy_expected_improvement(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.Series([0.0, 0.4, 1.0])
+        X_candidates = pd.DataFrame({"x": [0.25, 0.75]})
+        noise = observation_noise_variance(
+            pd.DataFrame({"target_std": [0.1, 0.1, 0.1]}),
+            std_column="target_std",
+        )
+
+        result = suggest_next_experiments(
+            X_train,
+            y_train,
+            X_candidates,
+            noise_variance=noise,
+            acquisition_function="log_noisy_expected_improvement",
+            top_k=1,
+            fit_model=False,
+        )
+
+        self.assertEqual(result.recommendations.shape[0], 1)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
 
 

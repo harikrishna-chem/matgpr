@@ -1751,7 +1751,12 @@ For finite candidate lists, featurize measured rows and candidate rows with the
 same descriptor pipeline, then rank the candidates:
 
 ```python
-from matgpr import CandidateConstraint, select_diverse_batch, suggest_next_experiments
+from matgpr import (
+    CandidateConstraint,
+    observation_noise_variance,
+    select_diverse_batch,
+    suggest_next_experiments,
+)
 
 
 bo_result = suggest_next_experiments(
@@ -1766,6 +1771,39 @@ bo_result = suggest_next_experiments(
 
 recommendations = bo_result.recommendations
 ranked_pool = bo_result.ranked_candidates
+```
+
+When experimental rows have known measurement uncertainty, pass a target-noise
+variance vector to the BoTorch surrogate. The variance should be in squared
+target units. It can come from a reported variance column, a standard-deviation
+column, a standard-error column, or replicate measurements:
+
+```python
+noise_variance = observation_noise_variance(
+    measured_data,
+    std_column="conductivity_std",
+)
+
+bo_result = suggest_next_experiments(
+    X_train=X_measured_features,
+    y_train=y_measured,
+    X_candidates=X_candidate_features,
+    candidate_data=candidate_metadata,
+    noise_variance=noise_variance,
+    acquisition_function="log_noisy_expected_improvement",
+    top_k=5,
+)
+```
+
+For replicate measurements, use a stable group label such as material ID,
+composition ID, formulation ID, or experiment condition ID:
+
+```python
+noise_variance = observation_noise_variance(
+    measured_data,
+    replicate_group_column="material_id",
+    target_column="conductivity_s_cm",
+)
 ```
 
 Add finite-pool feasibility constraints when only part of the candidate library
@@ -1810,11 +1848,14 @@ The returned tables include:
 | `matgpr_acquisition` | Acquisition value used for ranking. |
 
 Supported acquisition functions are `"log_expected_improvement"`,
-`"expected_improvement"`, `"probability_of_improvement"`, and
-`"upper_confidence_bound"`. Use `maximize=False` for targets where lower values
-are better, such as degradation rate, diffusion barrier, cost, or toxicity.
-Use `constraint_policy="annotate"` when you want to keep infeasible candidates
-in the ranked table for auditing rather than filtering them out.
+`"log_noisy_expected_improvement"`, `"expected_improvement"`,
+`"noisy_expected_improvement"`, `"probability_of_improvement"`, and
+`"upper_confidence_bound"`. Prefer the log variants for numerical stability.
+Use the noisy variants when the surrogate was fit with known observation noise.
+Use `maximize=False` for targets where lower values are better, such as
+degradation rate, diffusion barrier, cost, or toxicity. Use
+`constraint_policy="annotate"` when you want to keep infeasible candidates in
+the ranked table for auditing rather than filtering them out.
 
 When selecting several experiments at once, use diversity-aware batch selection
 to avoid near-duplicate candidates:

@@ -28,6 +28,7 @@ __all__ = [
     "CandidateConstraint",
     "apply_candidate_constraints",
     "fit_botorch_surrogate",
+    "observation_noise_variance",
     "rank_discrete_candidates",
     "select_diverse_batch",
     "suggest_next_experiments",
@@ -56,6 +57,8 @@ class BoTorchSurrogate:
         Best observed target in BoTorch maximization space.
     feature_names
         Feature names when `X_train` was provided as a pandas dataframe.
+    noise_variance
+        Known observation-noise variance passed to BoTorch, if provided.
     """
 
     model: Any
@@ -65,6 +68,7 @@ class BoTorchSurrogate:
     maximize: bool
     best_observed_objective: float
     feature_names: tuple[str, ...] | None = None
+    noise_variance: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -345,6 +349,86 @@ def select_diverse_batch(
     )
 
 
+def observation_noise_variance(
+    data: pd.DataFrame,
+    *,
+    variance_column: str | None = None,
+    std_column: str | None = None,
+    sem_column: str | None = None,
+    replicate_group_column: str | None = None,
+    target_column: str | None = None,
+    min_variance: float = 1e-12,
+    ddof: int = 1,
+) -> pd.Series:
+    """Build known observation-noise variances for BoTorch GPR.
+
+    This helper converts common experimental uncertainty formats into the
+    per-training-row variance vector expected by `fit_botorch_surrogate` and
+    `suggest_next_experiments`.
+
+    Provide exactly one source of known noise:
+
+    - `variance_column`: target variance in squared target units.
+    - `std_column`: target standard deviation in target units.
+    - `sem_column`: standard error of the mean in target units.
+    - `replicate_group_column` with `target_column`: estimate replicate-group
+      target variance from repeated measurements.
+
+    Replicate groups with too few rows to estimate variance receive the pooled
+    replicate variance when available, otherwise `min_variance`.
+    """
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame")
+    if not np.isfinite(min_variance) or min_variance < 0.0:
+        raise ValueError("min_variance must be a finite non-negative value")
+    if ddof < 0:
+        raise ValueError("ddof must be non-negative")
+
+    replicate_requested = replicate_group_column is not None or target_column is not None
+    source_count = sum(
+        value is not None
+        for value in (
+            variance_column,
+            std_column,
+            sem_column,
+        )
+    ) + int(replicate_requested)
+    if source_count != 1:
+        raise ValueError(
+            "Provide exactly one observation-noise source: variance_column, "
+            "std_column, sem_column, or replicate_group_column with target_column"
+        )
+    if replicate_requested and (replicate_group_column is None or target_column is None):
+        raise ValueError(
+            "replicate_group_column and target_column must be provided together"
+        )
+
+    if variance_column is not None:
+        variance = _nonnegative_numeric_column(
+            data,
+            variance_column,
+            label="variance_column",
+        )
+    elif std_column is not None:
+        std = _nonnegative_numeric_column(data, std_column, label="std_column")
+        variance = std**2
+    elif sem_column is not None:
+        sem = _nonnegative_numeric_column(data, sem_column, label="sem_column")
+        variance = sem**2
+    else:
+        variance = _replicate_group_variance(
+            data,
+            group_column=str(replicate_group_column),
+            target_column=str(target_column),
+            min_variance=min_variance,
+            ddof=ddof,
+        )
+
+    variance = variance.astype(float).clip(lower=min_variance)
+    variance.name = "matgpr_noise_variance"
+    return variance
+
+
 def fit_botorch_surrogate(
     X_train: pd.DataFrame | np.ndarray,
     y_train: pd.Series | np.ndarray,
@@ -408,16 +492,18 @@ def fit_botorch_surrogate(
     train_y_original = _to_tensor(torch, target_array.reshape(-1, 1), device=torch_device)
 
     model_kwargs: dict[str, Any] = {}
+    noise_tensor = None
     if noise_variance is not None:
         noise_array = _as_noise_variance(
             noise_variance,
             expected_length=train_array.shape[0],
         )
-        model_kwargs["train_Yvar"] = _to_tensor(
+        noise_tensor = _to_tensor(
             torch,
             noise_array.reshape(-1, 1),
             device=torch_device,
         )
+        model_kwargs["train_Yvar"] = noise_tensor
     if normalize_features:
         model_kwargs["input_transform"] = Normalize(d=train_X.shape[-1])
     if standardize_target:
@@ -439,6 +525,7 @@ def fit_botorch_surrogate(
         maximize=maximize,
         best_observed_objective=float(train_Y.max().detach().cpu().item()),
         feature_names=feature_names,
+        noise_variance=noise_tensor,
     )
 
 
@@ -467,7 +554,8 @@ def rank_discrete_candidates(
         Numeric candidate features with shape `(n_candidates, n_features)`.
     acquisition_function
         Acquisition function name. Supported values are
-        `"log_expected_improvement"`, `"expected_improvement"`,
+        `"log_expected_improvement"`, `"log_noisy_expected_improvement"`,
+        `"expected_improvement"`, `"noisy_expected_improvement"`,
         `"upper_confidence_bound"`, and `"probability_of_improvement"`.
     top_k
         Optional number of rows to return after ranking. If omitted, all
@@ -677,12 +765,26 @@ def _build_acquisition_function(
             model=surrogate.model,
             best_f=surrogate.best_observed_objective,
         )
+    if normalized == "log_noisy_expected_improvement":
+        from botorch.acquisition.logei import qLogNoisyExpectedImprovement
+
+        return qLogNoisyExpectedImprovement(
+            model=surrogate.model,
+            X_baseline=surrogate.train_X,
+        )
     if normalized == "expected_improvement":
         from botorch.acquisition.analytic import ExpectedImprovement
 
         return ExpectedImprovement(
             model=surrogate.model,
             best_f=surrogate.best_observed_objective,
+        )
+    if normalized == "noisy_expected_improvement":
+        from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
+
+        return qNoisyExpectedImprovement(
+            model=surrogate.model,
+            X_baseline=surrogate.train_X,
         )
     if normalized == "probability_of_improvement":
         from botorch.acquisition.analytic import ProbabilityOfImprovement
@@ -697,7 +799,8 @@ def _build_acquisition_function(
         return UpperConfidenceBound(model=surrogate.model, beta=beta)
     raise ValueError(
         "acquisition_function must be one of "
-        "'log_expected_improvement', 'expected_improvement', "
+        "'log_expected_improvement', 'log_noisy_expected_improvement', "
+        "'expected_improvement', 'noisy_expected_improvement', "
         "'probability_of_improvement', or 'upper_confidence_bound'"
     )
 
@@ -708,8 +811,24 @@ def _normalize_acquisition_name(name: str) -> str:
         "logei": "log_expected_improvement",
         "log_ei": "log_expected_improvement",
         "log_expected_improvement": "log_expected_improvement",
+        "lognei": "log_noisy_expected_improvement",
+        "log_noisy_ei": "log_noisy_expected_improvement",
+        "log_nei": "log_noisy_expected_improvement",
+        "log_noisy_expected_improvement": "log_noisy_expected_improvement",
+        "q_log_nei": "log_noisy_expected_improvement",
+        "q_log_noisy_expected_improvement": "log_noisy_expected_improvement",
+        "qlognoisyexpectedimprovement": "log_noisy_expected_improvement",
+        "qlognei": "log_noisy_expected_improvement",
+        "qlog_noisy_expected_improvement": "log_noisy_expected_improvement",
         "ei": "expected_improvement",
         "expected_improvement": "expected_improvement",
+        "nei": "noisy_expected_improvement",
+        "noisy_ei": "noisy_expected_improvement",
+        "noisy_expected_improvement": "noisy_expected_improvement",
+        "q_nei": "noisy_expected_improvement",
+        "qnoisyexpectedimprovement": "noisy_expected_improvement",
+        "qnei": "noisy_expected_improvement",
+        "q_noisy_expected_improvement": "noisy_expected_improvement",
         "pi": "probability_of_improvement",
         "probability_improvement": "probability_of_improvement",
         "probability_of_improvement": "probability_of_improvement",
@@ -758,6 +877,62 @@ def _as_constraint_tuple(
             f"got {invalid}"
         )
     return constraint_tuple
+
+
+def _numeric_column(data: pd.DataFrame, column: str, *, label: str) -> pd.Series:
+    if column not in data.columns:
+        raise ValueError(f"{label} {column!r} is missing")
+    numeric = pd.to_numeric(data[column], errors="coerce")
+    values = numeric.to_numpy(dtype=float)
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{label} {column!r} contains missing, non-numeric, or infinite values")
+    return pd.Series(values, index=data.index, name=column)
+
+
+def _nonnegative_numeric_column(data: pd.DataFrame, column: str, *, label: str) -> pd.Series:
+    numeric = _numeric_column(data, column, label=label)
+    if (numeric < 0.0).any():
+        raise ValueError(f"{label} {column!r} must contain non-negative values")
+    return numeric
+
+
+def _replicate_group_variance(
+    data: pd.DataFrame,
+    *,
+    group_column: str,
+    target_column: str,
+    min_variance: float,
+    ddof: int,
+) -> pd.Series:
+    if group_column not in data.columns:
+        raise ValueError(f"replicate_group_column {group_column!r} is missing")
+    if data[group_column].isna().any():
+        raise ValueError(f"replicate_group_column {group_column!r} contains missing values")
+
+    target = _numeric_column(data, target_column, label="target_column")
+    frame = pd.DataFrame(
+        {
+            "target": target.to_numpy(dtype=float),
+            "group": data[group_column].to_numpy(dtype=object),
+        }
+    )
+    variance_values = np.full(data.shape[0], np.nan, dtype=float)
+    replicate_variances: list[float] = []
+
+    for _, group_frame in frame.groupby("group", sort=False, dropna=False):
+        values = group_frame["target"].to_numpy(dtype=float)
+        if values.shape[0] > ddof:
+            group_variance = float(np.var(values, ddof=ddof))
+            if np.isfinite(group_variance):
+                replicate_variances.append(group_variance)
+        else:
+            group_variance = np.nan
+        variance_values[group_frame.index.to_numpy(dtype=int)] = group_variance
+
+    fallback_variance = (
+        float(np.mean(replicate_variances)) if replicate_variances else min_variance
+    )
+    return pd.Series(variance_values, index=data.index, dtype=float).fillna(fallback_variance)
 
 
 def _as_finite_numeric_vector(values: pd.Series, *, name: str) -> np.ndarray:
