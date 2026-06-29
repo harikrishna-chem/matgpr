@@ -35,6 +35,14 @@ from .derivative_gpr import (
     fit_derivative_constrained_gpr,
 )
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
+from .experiment_logging import (
+    append_closed_loop_records,
+    load_closed_loop_log,
+    log_bo_recommendations,
+    log_observations,
+    log_selected_experiments,
+    summarize_closed_loop_log,
+)
 from .featurizers import (
     CompositionFeaturizer,
     PolymerSmilesFeaturizer,
@@ -247,6 +255,7 @@ __all__ = [
     "append_element_fractions",
     "append_smiles_features",
     "append_structure_fingerprints",
+    "append_closed_loop_records",
     "append_virtual_observations",
     "arrhenius_rate_equation",
     "arrhenius_sqrt_time_equation",
@@ -301,8 +310,12 @@ __all__ = [
     "interval_coverage",
     "is_optional_dependency_available",
     "load_artifact",
+    "load_closed_loop_log",
     "list_optional_dependencies",
+    "log_bo_recommendations",
     "log_experiment_result",
+    "log_observations",
+    "log_selected_experiments",
     "list_physics_equation_templates",
     "learning_curve",
     "make_target_transform",
@@ -339,6 +352,7 @@ __all__ = [
     "standardized_residuals",
     "structure_feature_names",
     "structure_fingerprint",
+    "summarize_closed_loop_log",
     "summarize_missingness",
     "summarize_numeric_columns",
     "suggest_next_experiments",

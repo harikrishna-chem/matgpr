@@ -72,6 +72,7 @@ nav:
       - Candidate Generation: api/candidate_generation.md
       - Bayesian Optimization: api/bayesian_optimization.md
       - Multi-Objective Selection: api/multi_objective.md
+      - Experiment Logging: api/experiment_logging.md
       - Uncertainty: api/uncertainty.md
       - Fingerprints: api/fingerprints.md
       - Data And Metrics: api/data.md

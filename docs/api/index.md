@@ -30,6 +30,8 @@ types, and class methods.
   finite-pool candidate ranking for next-experiment selection.
 - [Multi-Objective Selection](multi_objective.md): Pareto-front and weighted
   finite-pool ranking helpers.
+- [Experiment Logging](experiment_logging.md): closed-loop recommendation,
+  selection, observation, and campaign-summary logs.
 - [Uncertainty](uncertainty.md): coverage, calibration, NLPD, and uncertainty
   diagnostics.
 - [Fingerprints](fingerprints.md): lower-level composition, SMILES, polymer, and

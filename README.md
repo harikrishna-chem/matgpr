@@ -50,6 +50,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   constraints, and selecting diverse next-experiment batches.
 - Multi-objective finite-pool selection with Pareto-front and weighted
   scalarization utilities.
+- Closed-loop experiment logging for BO recommendations, selected experiments,
+  measured observations, and campaign summaries.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -91,8 +93,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
-14. Optionally build finite candidate pools, then rank next experiments with
-   `suggest_next_experiments` after installing the `bo` extra.
+14. Optionally build finite candidate pools, rank next experiments with
+   `suggest_next_experiments`, and log closed-loop campaigns.
 
 ## Documentation
 
@@ -129,6 +131,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `observation_noise_variance`, `select_diverse_batch`, `fit_botorch_surrogate`, `rank_discrete_candidates`, `CandidateConstraint` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
+| `matgpr.experiment_logging` | `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign audit trails |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |

@@ -85,6 +85,10 @@ from matgpr import (
     CandidateConstraint,
     select_diverse_batch,
     suggest_next_experiments,
+    log_bo_recommendations,
+    log_selected_experiments,
+    log_observations,
+    summarize_closed_loop_log,
     plot_parity,
     plot_learning_curve,
     plot_uncertainty_calibration,
@@ -1770,6 +1774,10 @@ from matgpr import (
     select_pareto_front,
     split_candidate_features,
     suggest_next_experiments,
+    log_bo_recommendations,
+    log_selected_experiments,
+    log_observations,
+    summarize_closed_loop_log,
 )
 ```
 
@@ -1990,6 +1998,51 @@ diverse_recommendations = select_diverse_batch(
     top_k=5,
     feature_columns=("band_gap_ev", "formation_energy_ev_atom"),
     diversity_weight=0.5,
+)
+```
+
+Log each closed-loop step so recommendations, selected experiments, and
+measured outcomes can be audited across campaign iterations:
+
+```python
+log_path = "results/bo_campaign_log.csv"
+
+log_bo_recommendations(
+    bo_result.recommendations,
+    path=log_path,
+    campaign_id="conductivity_screen",
+    iteration=0,
+    model_name="physics_informed_gpr",
+    acquisition_function=bo_result.acquisition_function,
+)
+
+selected_experiments = diverse_recommendations.head(3)
+log_selected_experiments(
+    selected_experiments,
+    path=log_path,
+    campaign_id="conductivity_screen",
+    iteration=0,
+    selection_policy="diverse_top_3",
+)
+
+new_measurements = pd.DataFrame(
+    {
+        "candidate_id": selected_experiments["candidate_id"],
+        "conductivity_s_cm": [0.18, 0.24, 0.21],
+    }
+)
+log_observations(
+    new_measurements,
+    path=log_path,
+    campaign_id="conductivity_screen",
+    iteration=1,
+    target_column="conductivity_s_cm",
+)
+
+campaign_summary = summarize_closed_loop_log(
+    log_path,
+    campaign_id="conductivity_screen",
+    target_column="conductivity_s_cm",
 )
 ```
 
