@@ -30,9 +30,14 @@ from .bo_benchmarking import (
     summarize_bo_benchmark,
 )
 from .candidate_generation import (
+    CandidatePoolDiagnostics,
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
     exclude_existing_candidates,
+    summarize_candidate_category_coverage,
+    summarize_candidate_duplicates,
+    summarize_candidate_feature_coverage,
+    summarize_candidate_pool,
     split_candidate_features,
 )
 from .data_cleaning import (
@@ -241,6 +246,7 @@ __all__ = [
     "BoTorchSurrogate",
     "CandidateConstraint",
     "CandidateDuplicatePolicy",
+    "CandidatePoolDiagnostics",
     "CandidateTrustRegion",
     "DerivativeConstrainedGPRPrediction",
     "DerivativeConstrainedGPRResult",
@@ -402,6 +408,10 @@ __all__ = [
     "summarize_numeric_columns",
     "suggest_multi_objective_next_experiments",
     "suggest_next_experiments",
+    "summarize_candidate_category_coverage",
+    "summarize_candidate_duplicates",
+    "summarize_candidate_feature_coverage",
+    "summarize_candidate_pool",
     "summarize_pca",
     "train_gpytorch_gpr",
     "train_test_regression_metrics",

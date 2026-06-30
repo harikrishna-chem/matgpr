@@ -79,6 +79,9 @@ from matgpr import (
     build_composition_candidate_grid,
     exclude_existing_candidates,
     split_candidate_features,
+    summarize_candidate_category_coverage,
+    summarize_candidate_feature_coverage,
+    summarize_candidate_pool,
     ObjectiveSpec,
     rank_multi_objective_candidates,
     select_pareto_front,
@@ -1776,6 +1779,9 @@ from matgpr import (
     build_composition_candidate_grid,
     compare_bo_strategies,
     exclude_existing_candidates,
+    summarize_candidate_category_coverage,
+    summarize_candidate_feature_coverage,
+    summarize_candidate_pool,
     ObjectiveSpec,
     observation_noise_variance,
     rank_multi_objective_candidates,
@@ -1823,6 +1829,23 @@ composition_candidates = build_composition_candidate_grid(
 )
 ```
 
+Audit candidate pools before BO. The pool diagnostics report descriptor
+completeness, duplicate keys, numeric feature ranges, and categorical metadata
+diversity:
+
+```python
+candidate_diagnostics = summarize_candidate_pool(
+    composition_candidates,
+    feature_columns=("frac_Al", "frac_Co", "frac_Ni"),
+    categorical_columns=("formula",),
+    key_columns=("formula",),
+)
+
+candidate_diagnostics.overview_frame()
+candidate_diagnostics.numeric_feature_frame()
+candidate_diagnostics.duplicate_key_frame()
+```
+
 Remove rows that are already measured or already selected before BO:
 
 ```python
@@ -1830,6 +1853,23 @@ composition_candidates = exclude_existing_candidates(
     composition_candidates,
     measured_data,
     key_columns=("formula",),
+)
+```
+
+Check whether the finite pool covers the measured feature space. This helps
+identify extrapolative BO campaigns before acquisition values are trusted:
+
+```python
+feature_coverage = summarize_candidate_feature_coverage(
+    composition_candidates,
+    measured_data,
+    feature_columns=("frac_Al", "frac_Co", "frac_Ni"),
+)
+
+category_coverage = summarize_candidate_category_coverage(
+    process_candidates,
+    measured_data,
+    categorical_columns=("solvent",),
 )
 ```
 

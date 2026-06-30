@@ -45,6 +45,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,
   formulation, and processing-condition pools.
+- Candidate-pool diagnostics for descriptor completeness, duplicate keys,
+  numeric feature coverage, and categorical search-space coverage.
 - Optional BoTorch Bayesian optimization helpers for single- and
   multi-objective finite materials candidate pools, known observation noise,
   feasibility constraints, trust regions, duplicate avoidance, and diverse or
@@ -100,8 +102,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, BO progress plots, or the
    PCA plotting helpers.
-14. Optionally build finite candidate pools, rank next experiments with
-   `suggest_next_experiments`, and log closed-loop campaigns.
+14. Optionally build and audit finite candidate pools, rank next experiments
+   with `suggest_next_experiments`, and log closed-loop campaigns.
 
 ## Documentation
 
@@ -135,7 +137,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
-| `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
+| `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `summarize_candidate_pool`, `summarize_candidate_feature_coverage`, `summarize_candidate_category_coverage`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders and diagnostics for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.bo_benchmarking` | `BOBenchmarkStrategy`, `simulate_bo_strategy`, `compare_bo_strategies`, `summarize_bo_benchmark` | Offline finite-pool BO strategy benchmarks |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
