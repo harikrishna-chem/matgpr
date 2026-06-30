@@ -2,6 +2,7 @@
 
 from .bayesian_optimization import (
     BayesianOptimizationResult,
+    BORecommendationAudit,
     BoTorchSurrogate,
     CandidateConstraint,
     CandidateDuplicatePolicy,
@@ -20,6 +21,7 @@ from .bayesian_optimization import (
     select_sequential_multi_objective_batch,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
+    summarize_bo_recommendation_audit,
 )
 from .bo_benchmarking import (
     BOBenchmarkComparison,
@@ -243,6 +245,7 @@ __all__ = [
     "BOBenchmarkComparison",
     "BOBenchmarkResult",
     "BOBenchmarkStrategy",
+    "BORecommendationAudit",
     "BoTorchSurrogate",
     "CandidateConstraint",
     "CandidateDuplicatePolicy",
@@ -408,6 +411,7 @@ __all__ = [
     "summarize_numeric_columns",
     "suggest_multi_objective_next_experiments",
     "suggest_next_experiments",
+    "summarize_bo_recommendation_audit",
     "summarize_candidate_category_coverage",
     "summarize_candidate_duplicates",
     "summarize_candidate_feature_coverage",

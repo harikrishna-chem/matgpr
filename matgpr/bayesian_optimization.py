@@ -28,6 +28,7 @@ _OUTPUT_COLUMNS = (
 
 __all__ = [
     "BayesianOptimizationResult",
+    "BORecommendationAudit",
     "BoTorchSurrogate",
     "CandidateConstraint",
     "CandidateDuplicatePolicy",
@@ -46,6 +47,7 @@ __all__ = [
     "select_sequential_multi_objective_batch",
     "suggest_multi_objective_next_experiments",
     "suggest_next_experiments",
+    "summarize_bo_recommendation_audit",
 ]
 
 
@@ -189,6 +191,109 @@ class MultiObjectiveBayesianOptimizationResult:
     objective_names: tuple[str, ...]
     objective_directions: tuple[str, ...]
     top_k: int
+
+
+@dataclass(frozen=True)
+class BORecommendationAudit:
+    """Report-ready audit tables for finite-pool BO recommendations.
+
+    Parameters
+    ----------
+    overview
+        One-row summary of recommendation count, candidate filtering, scoring,
+        uncertainty, feasibility, trust-region, duplicate, and batch-selection
+        status.
+    recommendations
+        Compact per-recommendation table with ranks, score columns, policy
+        columns, and an explanatory note for each recommended candidate.
+    score_summary
+        Numeric score/prediction summary comparing recommended candidates with
+        the full ranked candidate table.
+    policy_summary
+        Constraint, trust-region, duplicate, and batch-selection audit counts.
+    """
+
+    overview: pd.DataFrame
+    recommendations: pd.DataFrame
+    score_summary: pd.DataFrame
+    policy_summary: pd.DataFrame
+
+    def overview_frame(self) -> pd.DataFrame:
+        """Return a copy of the one-row overview table."""
+        return self.overview.copy()
+
+    def recommendation_frame(self) -> pd.DataFrame:
+        """Return a copy of the per-recommendation audit table."""
+        return self.recommendations.copy()
+
+    def score_summary_frame(self) -> pd.DataFrame:
+        """Return a copy of the score and prediction summary table."""
+        return self.score_summary.copy()
+
+    def policy_summary_frame(self) -> pd.DataFrame:
+        """Return a copy of the policy audit summary table."""
+        return self.policy_summary.copy()
+
+
+def summarize_bo_recommendation_audit(
+    recommendations: BayesianOptimizationResult | MultiObjectiveBayesianOptimizationResult | pd.DataFrame,
+    *,
+    ranked_candidates: pd.DataFrame | None = None,
+    candidate_count: int | None = None,
+    identifier_columns: Sequence[str] | None = None,
+) -> BORecommendationAudit:
+    """Summarize why finite-pool BO candidates were recommended.
+
+    Use this after `suggest_next_experiments`,
+    `suggest_multi_objective_next_experiments`, or a custom ranked candidate
+    table. The audit summarizes acquisition scores, posterior uncertainty,
+    feasibility constraints, trust-region status, duplicate filtering, and
+    batch-selection annotations without requiring another BoTorch call.
+    """
+    recommendation_frame, ranked_frame, metadata = _coerce_bo_audit_inputs(
+        recommendations,
+        ranked_candidates=ranked_candidates,
+    )
+    candidate_count = _resolve_audit_candidate_count(candidate_count, ranked_frame)
+    identifier_columns = _resolve_audit_identifier_columns(
+        recommendation_frame,
+        identifier_columns,
+    )
+    score_columns = _bo_audit_score_columns(recommendation_frame, ranked_frame)
+    std_columns = [column for column in score_columns if column.startswith("matgpr_predicted_std")]
+
+    recommendation_audit = _bo_recommendation_audit_frame(
+        recommendation_frame,
+        ranked_frame=ranked_frame,
+        identifier_columns=identifier_columns,
+        score_columns=score_columns,
+        std_columns=std_columns,
+    )
+    score_summary = _bo_score_summary(
+        recommendation_frame,
+        ranked_frame,
+        score_columns=score_columns,
+    )
+    policy_summary = _bo_policy_summary(
+        recommendation_frame,
+        ranked_frame=ranked_frame,
+        candidate_count=candidate_count,
+    )
+    overview = _bo_audit_overview(
+        recommendation_frame,
+        ranked_frame=ranked_frame,
+        candidate_count=candidate_count,
+        metadata=metadata,
+        score_summary=score_summary,
+        policy_summary=policy_summary,
+        std_columns=std_columns,
+    )
+    return BORecommendationAudit(
+        overview=overview,
+        recommendations=recommendation_audit,
+        score_summary=score_summary,
+        policy_summary=policy_summary,
+    )
 
 
 @dataclass(frozen=True)
@@ -1592,6 +1697,608 @@ def suggest_multi_objective_next_experiments(
         objective_directions=surrogate.objective_directions,
         top_k=top_k,
     )
+
+
+def _coerce_bo_audit_inputs(
+    recommendations: BayesianOptimizationResult | MultiObjectiveBayesianOptimizationResult | pd.DataFrame,
+    *,
+    ranked_candidates: pd.DataFrame | None,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+    metadata: dict[str, Any] = {}
+    if isinstance(recommendations, BayesianOptimizationResult):
+        recommendation_frame = recommendations.recommendations.copy()
+        ranked_frame = recommendations.ranked_candidates.copy()
+        metadata = {
+            "matgpr_acquisition_function": recommendations.acquisition_function,
+            "matgpr_top_k": recommendations.top_k,
+            "matgpr_objective_mode": "single_objective",
+            "matgpr_maximize": recommendations.maximize,
+        }
+        if ranked_candidates is not None:
+            ranked_frame = _validate_audit_frame(ranked_candidates, name="ranked_candidates")
+    elif isinstance(recommendations, MultiObjectiveBayesianOptimizationResult):
+        recommendation_frame = recommendations.recommendations.copy()
+        ranked_frame = recommendations.ranked_candidates.copy()
+        metadata = {
+            "matgpr_acquisition_function": recommendations.acquisition_function,
+            "matgpr_top_k": recommendations.top_k,
+            "matgpr_objective_mode": "multi_objective",
+            "matgpr_objective_names": "; ".join(recommendations.objective_names),
+            "matgpr_objective_directions": "; ".join(recommendations.objective_directions),
+        }
+        if ranked_candidates is not None:
+            ranked_frame = _validate_audit_frame(ranked_candidates, name="ranked_candidates")
+    else:
+        recommendation_frame = _validate_audit_frame(recommendations, name="recommendations")
+        ranked_frame = (
+            recommendation_frame.copy()
+            if ranked_candidates is None
+            else _validate_audit_frame(ranked_candidates, name="ranked_candidates")
+        )
+        metadata = {
+            "matgpr_acquisition_function": pd.NA,
+            "matgpr_top_k": recommendation_frame.shape[0],
+            "matgpr_objective_mode": "dataframe",
+        }
+    return recommendation_frame, ranked_frame, metadata
+
+
+def _validate_audit_frame(frame: pd.DataFrame, *, name: str) -> pd.DataFrame:
+    if not isinstance(frame, pd.DataFrame):
+        raise TypeError(f"{name} must be a pandas DataFrame")
+    return frame.copy()
+
+
+def _resolve_audit_candidate_count(
+    candidate_count: int | None,
+    ranked_candidates: pd.DataFrame,
+) -> int:
+    if candidate_count is None:
+        return int(ranked_candidates.shape[0])
+    if isinstance(candidate_count, bool) or not isinstance(candidate_count, Integral):
+        raise TypeError("candidate_count must be an integer when provided")
+    candidate_count = int(candidate_count)
+    if candidate_count < ranked_candidates.shape[0]:
+        raise ValueError("candidate_count must be >= number of ranked candidates")
+    return candidate_count
+
+
+def _resolve_audit_identifier_columns(
+    recommendations: pd.DataFrame,
+    identifier_columns: Sequence[str] | None,
+) -> tuple[str, ...]:
+    if identifier_columns is not None:
+        if isinstance(identifier_columns, str):
+            identifier_columns = (identifier_columns,)
+        columns = tuple(str(column).strip() for column in identifier_columns)
+        if not columns or any(not column for column in columns):
+            raise ValueError("identifier_columns must contain non-empty names")
+        missing = [column for column in columns if column not in recommendations.columns]
+        if missing:
+            raise ValueError(f"identifier_columns are missing: {missing}")
+        return columns
+
+    inferred = []
+    hints = ("id", "formula", "smiles", "name", "material", "candidate")
+    for column in recommendations.columns:
+        if column.startswith("matgpr_"):
+            continue
+        lower = column.lower()
+        if any(hint in lower for hint in hints):
+            inferred.append(column)
+        elif not pd.api.types.is_numeric_dtype(recommendations[column]):
+            inferred.append(column)
+    return tuple(dict.fromkeys(inferred))
+
+
+def _bo_audit_score_columns(
+    recommendations: pd.DataFrame,
+    ranked_candidates: pd.DataFrame,
+) -> tuple[str, ...]:
+    all_columns = tuple(dict.fromkeys([*recommendations.columns, *ranked_candidates.columns]))
+    preferred = [
+        "matgpr_acquisition",
+        "matgpr_predicted_mean",
+        "matgpr_predicted_std",
+        "matgpr_batch_score",
+        "matgpr_diversity_distance",
+        "matgpr_trust_region_distance",
+        "matgpr_duplicate_distance",
+    ]
+    dynamic = [
+        column
+        for column in all_columns
+        if column.startswith("matgpr_predicted_mean_")
+        or column.startswith("matgpr_predicted_std_")
+    ]
+    ordered = []
+    for column in (*preferred, *dynamic):
+        if column in all_columns and column not in ordered:
+            ordered.append(column)
+    return tuple(
+        column
+        for column in ordered
+        if _column_has_numeric_values(recommendations, ranked_candidates, column)
+    )
+
+
+def _column_has_numeric_values(
+    recommendations: pd.DataFrame,
+    ranked_candidates: pd.DataFrame,
+    column: str,
+) -> bool:
+    for frame in (recommendations, ranked_candidates):
+        if column not in frame.columns:
+            continue
+        values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+        if np.isfinite(values).any():
+            return True
+    return False
+
+
+def _bo_recommendation_audit_frame(
+    recommendations: pd.DataFrame,
+    *,
+    ranked_frame: pd.DataFrame,
+    identifier_columns: Sequence[str],
+    score_columns: Sequence[str],
+    std_columns: Sequence[str],
+) -> pd.DataFrame:
+    base_columns = [
+        column
+        for column in (
+            "matgpr_rank",
+            "matgpr_batch_selected",
+            "matgpr_batch_order",
+            "matgpr_feasible",
+            "matgpr_constraint_violations",
+            "matgpr_in_trust_region",
+            "matgpr_is_duplicate",
+            "matgpr_duplicate_reason",
+            "matgpr_predicted_pareto_front",
+        )
+        if column in recommendations.columns
+    ]
+    selected_columns = list(dict.fromkeys([*identifier_columns, *base_columns, *score_columns]))
+    audit = recommendations.loc[:, selected_columns].copy() if selected_columns else pd.DataFrame(index=recommendations.index)
+    audit.insert(0, "matgpr_recommendation_order", np.arange(1, recommendations.shape[0] + 1))
+
+    if "matgpr_acquisition" in recommendations.columns and "matgpr_acquisition" in ranked_frame.columns:
+        audit["matgpr_acquisition_percentile"] = _percentile_against_reference(
+            recommendations["matgpr_acquisition"],
+            ranked_frame["matgpr_acquisition"],
+            higher_is_better=True,
+        )
+
+    if std_columns:
+        recommended_uncertainty = _mean_numeric_columns(recommendations, std_columns)
+        ranked_uncertainty = _mean_numeric_columns(ranked_frame, std_columns)
+        audit["matgpr_mean_predicted_std"] = recommended_uncertainty
+        audit["matgpr_uncertainty_percentile"] = _percentile_against_reference(
+            recommended_uncertainty,
+            ranked_uncertainty,
+            higher_is_better=True,
+        )
+
+    audit["matgpr_audit_note"] = [
+        _bo_recommendation_note(row)
+        for _, row in recommendations.iterrows()
+    ]
+    return audit.reset_index(drop=True)
+
+
+def _percentile_against_reference(
+    values: pd.Series | np.ndarray,
+    reference: pd.Series | np.ndarray,
+    *,
+    higher_is_better: bool,
+) -> np.ndarray:
+    value_array = pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=float)
+    reference_array = pd.to_numeric(pd.Series(reference), errors="coerce").to_numpy(dtype=float)
+    reference_array = reference_array[np.isfinite(reference_array)]
+    percentiles = np.full(value_array.shape[0], np.nan, dtype=float)
+    if reference_array.size == 0:
+        return percentiles
+    for index, value in enumerate(value_array):
+        if not np.isfinite(value):
+            continue
+        if higher_is_better:
+            percentiles[index] = float(np.mean(reference_array <= value))
+        else:
+            percentiles[index] = float(np.mean(reference_array >= value))
+    return percentiles
+
+
+def _mean_numeric_columns(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
+    present = [column for column in columns if column in frame.columns]
+    if not present:
+        return pd.Series(np.nan, index=frame.index, dtype=float)
+    numeric = frame.loc[:, present].apply(pd.to_numeric, errors="coerce")
+    return numeric.mean(axis=1)
+
+
+def _bo_recommendation_note(row: pd.Series) -> str:
+    parts: list[str] = []
+    if "matgpr_rank" in row and not pd.isna(row["matgpr_rank"]):
+        parts.append(f"rank {int(row['matgpr_rank'])}")
+    if "matgpr_acquisition" in row and not pd.isna(row["matgpr_acquisition"]):
+        parts.append(f"acquisition {_format_audit_number(row['matgpr_acquisition'])}")
+
+    mean_columns = [column for column in row.index if column.startswith("matgpr_predicted_mean")]
+    std_columns = [column for column in row.index if column.startswith("matgpr_predicted_std")]
+    if mean_columns:
+        parts.append("mean " + _format_prediction_columns(row, mean_columns, "matgpr_predicted_mean"))
+    if std_columns:
+        parts.append("uncertainty " + _format_prediction_columns(row, std_columns, "matgpr_predicted_std"))
+
+    if "matgpr_feasible" in row:
+        if _is_true(row["matgpr_feasible"]):
+            parts.append("feasible")
+        else:
+            violations = row.get("matgpr_constraint_violations", "")
+            detail = f": {violations}" if isinstance(violations, str) and violations else ""
+            parts.append(f"constraint violation{detail}")
+
+    if "matgpr_in_trust_region" in row:
+        if _is_true(row["matgpr_in_trust_region"]):
+            text = "inside trust region"
+        else:
+            text = "outside trust region"
+        if "matgpr_trust_region_distance" in row and not pd.isna(row["matgpr_trust_region_distance"]):
+            text += f" (distance {_format_audit_number(row['matgpr_trust_region_distance'])})"
+        parts.append(text)
+
+    if "matgpr_is_duplicate" in row:
+        if _is_true(row["matgpr_is_duplicate"]):
+            reason = row.get("matgpr_duplicate_reason", "")
+            detail = f": {reason}" if isinstance(reason, str) and reason else ""
+            parts.append(f"duplicate{detail}")
+        else:
+            parts.append("not duplicate")
+
+    if "matgpr_batch_selected" in row and _is_true(row["matgpr_batch_selected"]):
+        if "matgpr_batch_order" in row and not pd.isna(row["matgpr_batch_order"]):
+            parts.append(f"batch order {int(row['matgpr_batch_order'])}")
+        else:
+            parts.append("batch selected")
+
+    if "matgpr_predicted_pareto_front" in row and _is_true(row["matgpr_predicted_pareto_front"]):
+        parts.append("predicted Pareto-front candidate")
+
+    return "; ".join(parts) if parts else "recommended from ranked candidate table"
+
+
+def _format_prediction_columns(row: pd.Series, columns: Sequence[str], prefix: str) -> str:
+    values = []
+    for column in columns:
+        value = row[column]
+        if pd.isna(value):
+            continue
+        label = column.removeprefix(prefix).strip("_") or "target"
+        values.append(f"{label}={_format_audit_number(value)}")
+    return ", ".join(values) if values else "not available"
+
+
+def _format_audit_number(value: Any) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return str(value)
+    if not np.isfinite(numeric):
+        return str(value)
+    return f"{numeric:.4g}"
+
+
+def _is_true(value: Any) -> bool:
+    try:
+        return bool(value)
+    except (TypeError, ValueError):
+        return False
+
+
+def _bo_score_summary(
+    recommendations: pd.DataFrame,
+    ranked_candidates: pd.DataFrame,
+    *,
+    score_columns: Sequence[str],
+) -> pd.DataFrame:
+    columns = [
+        "column",
+        "recommended_count",
+        "recommended_min",
+        "recommended_mean",
+        "recommended_max",
+        "ranked_count",
+        "ranked_min",
+        "ranked_mean",
+        "ranked_max",
+    ]
+    rows = []
+    for column in score_columns:
+        recommended = _finite_column_values(recommendations, column)
+        ranked = _finite_column_values(ranked_candidates, column)
+        rows.append(
+            {
+                "column": column,
+                "recommended_count": int(recommended.shape[0]),
+                "recommended_min": _nan_if_empty(np.min, recommended),
+                "recommended_mean": _nan_if_empty(np.mean, recommended),
+                "recommended_max": _nan_if_empty(np.max, recommended),
+                "ranked_count": int(ranked.shape[0]),
+                "ranked_min": _nan_if_empty(np.min, ranked),
+                "ranked_mean": _nan_if_empty(np.mean, ranked),
+                "ranked_max": _nan_if_empty(np.max, ranked),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _finite_column_values(frame: pd.DataFrame, column: str) -> np.ndarray:
+    if column not in frame.columns:
+        return np.asarray([], dtype=float)
+    values = pd.to_numeric(frame[column], errors="coerce").to_numpy(dtype=float)
+    return values[np.isfinite(values)]
+
+
+def _nan_if_empty(function, values: np.ndarray) -> float:
+    if values.size == 0:
+        return float("nan")
+    return float(function(values))
+
+
+def _bo_policy_summary(
+    recommendations: pd.DataFrame,
+    *,
+    ranked_frame: pd.DataFrame,
+    candidate_count: int,
+) -> pd.DataFrame:
+    columns = [
+        "policy",
+        "candidate_count",
+        "pass_count",
+        "fail_count",
+        "recommended_fail_count",
+        "pass_fraction",
+        "details",
+    ]
+    rows: list[dict[str, Any]] = []
+    ranked_count = int(ranked_frame.shape[0])
+    if candidate_count > ranked_count:
+        rows.append(
+            _policy_summary_row(
+                "pre_rank_filtering",
+                candidate_count=candidate_count,
+                pass_count=ranked_count,
+                fail_count=candidate_count - ranked_count,
+                recommended_fail_count=0,
+                details="Candidates removed before or during ranking; inspect annotate policies for reasons.",
+            )
+        )
+
+    if "matgpr_feasible" in ranked_frame.columns:
+        rows.append(
+            _boolean_policy_summary_row(
+                "constraints",
+                ranked_frame,
+                recommendations,
+                column="matgpr_feasible",
+                pass_when=True,
+                details=_joined_nonempty_values(ranked_frame, "matgpr_constraint_violations"),
+            )
+        )
+
+    if "matgpr_in_trust_region" in ranked_frame.columns:
+        rows.append(
+            _boolean_policy_summary_row(
+                "trust_region",
+                ranked_frame,
+                recommendations,
+                column="matgpr_in_trust_region",
+                pass_when=True,
+                details=_distance_detail(ranked_frame, "matgpr_trust_region_distance"),
+            )
+        )
+
+    if "matgpr_is_duplicate" in ranked_frame.columns:
+        rows.append(
+            _boolean_policy_summary_row(
+                "duplicate_policy",
+                ranked_frame,
+                recommendations,
+                column="matgpr_is_duplicate",
+                pass_when=False,
+                details=_joined_nonempty_values(ranked_frame, "matgpr_duplicate_reason"),
+            )
+        )
+
+    batch_frame = ranked_frame if "matgpr_batch_selected" in ranked_frame.columns else recommendations
+    if "matgpr_batch_selected" in batch_frame.columns:
+        selected = _boolean_array(batch_frame["matgpr_batch_selected"])
+        recommended_selected = (
+            int(_boolean_array(recommendations["matgpr_batch_selected"]).sum())
+            if "matgpr_batch_selected" in recommendations.columns
+            else int(recommendations.shape[0])
+        )
+        rows.append(
+            _policy_summary_row(
+                "batch_selection",
+                candidate_count=int(batch_frame.shape[0]),
+                pass_count=int(selected.sum()),
+                fail_count=int((~selected).sum()),
+                recommended_fail_count=max(0, recommendations.shape[0] - recommended_selected),
+                details="Selected candidates are marked by matgpr_batch_selected and matgpr_batch_order.",
+            )
+        )
+
+    if "matgpr_predicted_pareto_front" in ranked_frame.columns:
+        pareto = _boolean_array(ranked_frame["matgpr_predicted_pareto_front"])
+        recommended_not_pareto = (
+            int((~_boolean_array(recommendations["matgpr_predicted_pareto_front"])).sum())
+            if "matgpr_predicted_pareto_front" in recommendations.columns
+            else 0
+        )
+        rows.append(
+            _policy_summary_row(
+                "predicted_pareto_front",
+                candidate_count=int(ranked_frame.shape[0]),
+                pass_count=int(pareto.sum()),
+                fail_count=int((~pareto).sum()),
+                recommended_fail_count=recommended_not_pareto,
+                details="Predicted Pareto-front status is based on posterior means.",
+            )
+        )
+
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _boolean_policy_summary_row(
+    policy: str,
+    ranked_frame: pd.DataFrame,
+    recommendations: pd.DataFrame,
+    *,
+    column: str,
+    pass_when: bool,
+    details: str,
+) -> dict[str, Any]:
+    ranked_values = _boolean_array(ranked_frame[column])
+    recommendation_values = (
+        _boolean_array(recommendations[column])
+        if column in recommendations.columns
+        else np.ones(recommendations.shape[0], dtype=bool) == pass_when
+    )
+    passed = ranked_values == pass_when
+    recommended_failed = recommendation_values != pass_when
+    return _policy_summary_row(
+        policy,
+        candidate_count=int(ranked_frame.shape[0]),
+        pass_count=int(passed.sum()),
+        fail_count=int((~passed).sum()),
+        recommended_fail_count=int(recommended_failed.sum()),
+        details=details,
+    )
+
+
+def _policy_summary_row(
+    policy: str,
+    *,
+    candidate_count: int,
+    pass_count: int,
+    fail_count: int,
+    recommended_fail_count: int,
+    details: str,
+) -> dict[str, Any]:
+    return {
+        "policy": policy,
+        "candidate_count": candidate_count,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "recommended_fail_count": recommended_fail_count,
+        "pass_fraction": np.nan if candidate_count == 0 else pass_count / candidate_count,
+        "details": details,
+    }
+
+
+def _boolean_array(series: pd.Series) -> np.ndarray:
+    return series.fillna(False).astype(bool).to_numpy(dtype=bool)
+
+
+def _joined_nonempty_values(frame: pd.DataFrame, column: str) -> str:
+    if column not in frame.columns:
+        return ""
+    values = sorted(
+        {
+            value
+            for value in frame[column].astype(str)
+            if value and value.lower() not in {"nan", "<na>"}
+        }
+    )
+    return "; ".join(values)
+
+
+def _distance_detail(frame: pd.DataFrame, column: str) -> str:
+    values = _finite_column_values(frame, column)
+    if values.size == 0:
+        return ""
+    return (
+        f"{column}: min={_format_audit_number(np.min(values))}, "
+        f"mean={_format_audit_number(np.mean(values))}, "
+        f"max={_format_audit_number(np.max(values))}"
+    )
+
+
+def _bo_audit_overview(
+    recommendations: pd.DataFrame,
+    *,
+    ranked_frame: pd.DataFrame,
+    candidate_count: int,
+    metadata: dict[str, Any],
+    score_summary: pd.DataFrame,
+    policy_summary: pd.DataFrame,
+    std_columns: Sequence[str],
+) -> pd.DataFrame:
+    acquisition_recommended = _finite_column_values(recommendations, "matgpr_acquisition")
+    acquisition_ranked = _finite_column_values(ranked_frame, "matgpr_acquisition")
+    recommended_uncertainty = (
+        _mean_numeric_columns(recommendations, std_columns).dropna().to_numpy(dtype=float)
+        if std_columns
+        else np.asarray([], dtype=float)
+    )
+    recommended_uncertainty = recommended_uncertainty[np.isfinite(recommended_uncertainty)]
+
+    overview = {
+        **metadata,
+        "matgpr_input_candidates": candidate_count,
+        "matgpr_ranked_candidates": int(ranked_frame.shape[0]),
+        "matgpr_recommended_candidates": int(recommendations.shape[0]),
+        "matgpr_filtered_out_candidates": int(candidate_count - ranked_frame.shape[0]),
+        "matgpr_best_ranked_acquisition": _nan_if_empty(np.max, acquisition_ranked),
+        "matgpr_best_recommended_acquisition": _nan_if_empty(np.max, acquisition_recommended),
+        "matgpr_worst_recommended_acquisition": _nan_if_empty(np.min, acquisition_recommended),
+        "matgpr_mean_recommended_acquisition": _nan_if_empty(np.mean, acquisition_recommended),
+        "matgpr_mean_recommended_uncertainty": _nan_if_empty(np.mean, recommended_uncertainty),
+        "matgpr_feasible_recommended_fraction": _recommended_boolean_fraction(
+            recommendations,
+            "matgpr_feasible",
+            pass_when=True,
+        ),
+        "matgpr_in_trust_region_recommended_fraction": _recommended_boolean_fraction(
+            recommendations,
+            "matgpr_in_trust_region",
+            pass_when=True,
+        ),
+        "matgpr_duplicate_recommended_count": _recommended_boolean_count(
+            recommendations,
+            "matgpr_is_duplicate",
+            value=True,
+        ),
+        "matgpr_policy_count": int(policy_summary.shape[0]),
+        "matgpr_score_column_count": int(score_summary.shape[0]),
+    }
+    return pd.DataFrame([overview])
+
+
+def _recommended_boolean_fraction(
+    frame: pd.DataFrame,
+    column: str,
+    *,
+    pass_when: bool,
+) -> float:
+    if column not in frame.columns or frame.empty:
+        return float("nan")
+    values = _boolean_array(frame[column])
+    return float(np.mean(values == pass_when))
+
+
+def _recommended_boolean_count(
+    frame: pd.DataFrame,
+    column: str,
+    *,
+    value: bool,
+) -> int:
+    if column not in frame.columns:
+        return 0
+    values = _boolean_array(frame[column])
+    return int((values == value).sum())
 
 
 def _build_acquisition_function(

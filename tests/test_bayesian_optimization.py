@@ -10,6 +10,7 @@ import pandas as pd
 
 from matgpr import (
     BayesianOptimizationResult,
+    BORecommendationAudit,
     BoTorchSurrogate,
     CandidateConstraint,
     CandidateDuplicatePolicy,
@@ -27,6 +28,7 @@ from matgpr import (
     select_sequential_multi_objective_batch,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
+    summarize_bo_recommendation_audit,
 )
 
 
@@ -357,6 +359,129 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertEqual(annotated["matgpr_batch_selected"].tolist(), [True, True, False])
         self.assertEqual(annotated["material_id"].tolist(), ["a", "b", "c"])
+
+    def test_summarize_bo_recommendation_audit_reports_scores_and_policies(self):
+        ranked = pd.DataFrame(
+            {
+                "candidate_id": ["a", "b", "c", "d"],
+                "matgpr_rank": [1, 2, 3, 4],
+                "matgpr_acquisition": [0.9, 0.7, 0.4, 0.1],
+                "matgpr_predicted_mean": [1.8, 1.5, 1.1, 0.8],
+                "matgpr_predicted_std": [0.2, 0.5, 0.1, 0.4],
+                "matgpr_feasible": [True, False, True, True],
+                "matgpr_constraint_violations": ["", "temperature_window", "", ""],
+                "matgpr_in_trust_region": [True, False, True, True],
+                "matgpr_trust_region_distance": [0.1, 1.2, 0.3, 0.4],
+                "matgpr_is_duplicate": [False, False, True, False],
+                "matgpr_duplicate_reason": ["", "", "key", ""],
+                "matgpr_batch_selected": [True, False, False, True],
+                "matgpr_batch_order": [1, pd.NA, pd.NA, 2],
+            }
+        )
+        recommendations = ranked.loc[[0, 3]].reset_index(drop=True)
+
+        audit = summarize_bo_recommendation_audit(
+            recommendations,
+            ranked_candidates=ranked,
+            candidate_count=6,
+            identifier_columns=("candidate_id",),
+        )
+
+        self.assertIsInstance(audit, BORecommendationAudit)
+        overview = audit.overview_frame().iloc[0]
+        self.assertEqual(overview["matgpr_input_candidates"], 6)
+        self.assertEqual(overview["matgpr_ranked_candidates"], 4)
+        self.assertEqual(overview["matgpr_recommended_candidates"], 2)
+        self.assertEqual(overview["matgpr_filtered_out_candidates"], 2)
+        self.assertAlmostEqual(overview["matgpr_feasible_recommended_fraction"], 1.0)
+        self.assertEqual(overview["matgpr_duplicate_recommended_count"], 0)
+
+        policy_summary = audit.policy_summary_frame()
+        self.assertEqual(
+            set(policy_summary["policy"]),
+            {
+                "pre_rank_filtering",
+                "constraints",
+                "trust_region",
+                "duplicate_policy",
+                "batch_selection",
+            },
+        )
+        constraint_row = policy_summary.loc[policy_summary["policy"] == "constraints"].iloc[0]
+        self.assertEqual(constraint_row["fail_count"], 1)
+        self.assertIn("temperature_window", constraint_row["details"])
+
+        score_summary = audit.score_summary_frame()
+        acquisition_row = score_summary.loc[
+            score_summary["column"] == "matgpr_acquisition"
+        ].iloc[0]
+        self.assertAlmostEqual(acquisition_row["recommended_mean"], 0.5)
+        self.assertAlmostEqual(acquisition_row["ranked_max"], 0.9)
+
+        recommendation_audit = audit.recommendation_frame()
+        self.assertIn("matgpr_audit_note", recommendation_audit.columns)
+        self.assertIn("rank 1", recommendation_audit["matgpr_audit_note"].iloc[0])
+        self.assertIn("not duplicate", recommendation_audit["matgpr_audit_note"].iloc[0])
+        self.assertIn("matgpr_acquisition_percentile", recommendation_audit.columns)
+        self.assertIn("matgpr_uncertainty_percentile", recommendation_audit.columns)
+
+    def test_summarize_bo_recommendation_audit_accepts_bo_result(self):
+        ranked = pd.DataFrame(
+            {
+                "candidate_id": ["a", "b"],
+                "matgpr_rank": [1, 2],
+                "matgpr_acquisition": [1.0, 0.5],
+                "matgpr_predicted_mean": [2.0, 1.0],
+                "matgpr_predicted_std": [0.2, 0.3],
+            }
+        )
+        surrogate = BoTorchSurrogate(
+            model=object(),
+            train_X=np.zeros((2, 1)),
+            train_y=np.array([[0.0], [1.0]]),
+            objective_y=np.array([[0.0], [1.0]]),
+            maximize=True,
+            best_observed_objective=1.0,
+            feature_names=("x",),
+        )
+        result = BayesianOptimizationResult(
+            recommendations=ranked.head(1),
+            ranked_candidates=ranked,
+            surrogate=surrogate,
+            acquisition_function="expected_improvement",
+            maximize=True,
+            top_k=1,
+        )
+
+        audit = summarize_bo_recommendation_audit(result)
+        overview = audit.overview_frame().iloc[0]
+
+        self.assertEqual(overview["matgpr_acquisition_function"], "expected_improvement")
+        self.assertEqual(overview["matgpr_top_k"], 1)
+        self.assertEqual(overview["matgpr_objective_mode"], "single_objective")
+
+    def test_summarize_bo_recommendation_audit_validation_errors_are_explicit(self):
+        ranked = pd.DataFrame(
+            {
+                "candidate_id": ["a", "b"],
+                "matgpr_acquisition": [1.0, 0.5],
+            }
+        )
+
+        with self.assertRaises(TypeError):
+            summarize_bo_recommendation_audit([{"candidate_id": "a"}])
+        with self.assertRaises(ValueError):
+            summarize_bo_recommendation_audit(
+                ranked.head(1),
+                ranked_candidates=ranked,
+                candidate_count=1,
+            )
+        with self.assertRaises(ValueError):
+            summarize_bo_recommendation_audit(
+                ranked.head(1),
+                ranked_candidates=ranked,
+                identifier_columns=("missing",),
+            )
 
     def test_botorch_missing_dependency_has_clear_install_message(self):
         with patch(

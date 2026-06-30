@@ -9,6 +9,10 @@ policies remove or annotate materials that were already measured, selected, or
 queued. Known observation noise can be passed directly or prepared from
 reported uncertainty columns and replicate measurements before using noisy
 expected-improvement acquisition functions.
+Recommendation audit summaries convert ranked BO tables into compact
+report-ready explanations of acquisition scores, posterior uncertainty,
+feasibility, trust-region status, duplicate filtering, and batch-selection
+decisions.
 For multi-objective campaigns, independent BoTorch GP surrogates can be ranked
 with expected hypervolume improvement while keeping objective directions in
 original materials-property units. Greedy sequential batch selection can

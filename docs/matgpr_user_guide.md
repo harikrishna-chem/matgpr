@@ -94,6 +94,7 @@ from matgpr import (
     log_selected_experiments,
     log_observations,
     summarize_closed_loop_log,
+    summarize_bo_recommendation_audit,
     plot_parity,
     plot_learning_curve,
     plot_bo_benchmark_trace,
@@ -1791,6 +1792,7 @@ from matgpr import (
     split_candidate_features,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
+    summarize_bo_recommendation_audit,
     log_bo_recommendations,
     log_selected_experiments,
     log_observations,
@@ -1899,6 +1901,26 @@ bo_result = suggest_next_experiments(
 recommendations = bo_result.recommendations
 ranked_pool = bo_result.ranked_candidates
 ```
+
+Summarize why candidates were recommended before sending them to the lab or
+recording them in a campaign log:
+
+```python
+recommendation_audit = summarize_bo_recommendation_audit(
+    bo_result,
+    candidate_count=len(composition_candidates),
+    identifier_columns=("candidate_id", "formula"),
+)
+
+recommendation_audit.overview_frame()
+recommendation_audit.score_summary_frame()
+recommendation_audit.policy_summary_frame()
+recommendation_audit.recommendation_frame()
+```
+
+The audit tables explain acquisition-score ranges, posterior uncertainty,
+constraint status, trust-region status, duplicate status, and batch-selection
+order when those columns are present in the ranked candidate table.
 
 When the next experiment must balance multiple goals, include tradeoff columns
 such as cost, toxicity, synthesis difficulty, or degradation rate in
