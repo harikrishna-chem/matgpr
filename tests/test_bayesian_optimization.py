@@ -12,8 +12,12 @@ from matgpr import (
     BayesianOptimizationResult,
     BoTorchSurrogate,
     CandidateConstraint,
+    CandidateDuplicatePolicy,
+    CandidateTrustRegion,
     MultiObjectiveBayesianOptimizationResult,
     apply_candidate_constraints,
+    apply_candidate_duplicate_policy,
+    apply_candidate_trust_region,
     fit_botorch_surrogate,
     fit_multi_objective_botorch_surrogate,
     observation_noise_variance,
@@ -162,6 +166,122 @@ class BayesianOptimizationApiTests(unittest.TestCase):
                 "temperature_window; allowed_solvent",
             ],
         )
+
+    def test_candidate_trust_region_filters_and_annotates_distances(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["near", "far"],
+                "descriptor_x": [0.2, 2.0],
+                "descriptor_y": [0.1, 0.0],
+            }
+        )
+        trust_region = CandidateTrustRegion(
+            centers=pd.DataFrame({"descriptor_x": [0.0], "descriptor_y": [0.0]}),
+            radius=0.5,
+            feature_columns=("descriptor_x", "descriptor_y"),
+        )
+
+        annotated = apply_candidate_trust_region(
+            candidates,
+            trust_region,
+            policy="annotate",
+        )
+        filtered = apply_candidate_trust_region(candidates, trust_region)
+
+        np.testing.assert_allclose(
+            annotated["matgpr_trust_region_distance"].to_numpy(),
+            [np.sqrt(0.05), 2.0],
+        )
+        self.assertEqual(annotated["matgpr_in_trust_region"].tolist(), [True, False])
+        self.assertEqual(filtered["material_id"].tolist(), ["near"])
+
+    def test_candidate_duplicate_policy_filters_exact_key_duplicates(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["already_measured", "new_candidate"],
+                "descriptor_x": [0.0, 1.0],
+            }
+        )
+        duplicate_policy = CandidateDuplicatePolicy(
+            existing_candidates=pd.DataFrame({"material_id": ["already_measured"]}),
+            key_columns=("material_id",),
+        )
+
+        annotated = apply_candidate_duplicate_policy(
+            candidates,
+            duplicate_policy,
+            policy="annotate",
+        )
+        filtered = apply_candidate_duplicate_policy(candidates, duplicate_policy)
+
+        self.assertEqual(annotated["matgpr_is_duplicate"].tolist(), [True, False])
+        self.assertEqual(annotated["matgpr_duplicate_reason"].tolist(), ["key", ""])
+        self.assertEqual(filtered["material_id"].tolist(), ["new_candidate"])
+
+    def test_candidate_duplicate_policy_filters_feature_tolerance_duplicates(self):
+        candidates = pd.DataFrame(
+            {
+                "material_id": ["near_existing", "far_candidate"],
+                "descriptor_x": [0.1, 1.0],
+                "descriptor_y": [0.1, 0.0],
+            }
+        )
+        duplicate_policy = CandidateDuplicatePolicy(
+            existing_candidates=pd.DataFrame(
+                {"descriptor_x": [0.0], "descriptor_y": [0.0]}
+            ),
+            feature_columns=("descriptor_x", "descriptor_y"),
+            feature_tolerance=0.2,
+        )
+
+        annotated = apply_candidate_duplicate_policy(
+            candidates,
+            duplicate_policy,
+            policy="annotate",
+        )
+        filtered = apply_candidate_duplicate_policy(candidates, duplicate_policy)
+
+        np.testing.assert_allclose(
+            annotated["matgpr_duplicate_distance"].to_numpy(),
+            [np.sqrt(0.02), 1.0],
+        )
+        self.assertEqual(annotated["matgpr_is_duplicate"].tolist(), [True, False])
+        self.assertEqual(annotated["matgpr_duplicate_reason"].tolist(), ["feature", ""])
+        self.assertEqual(filtered["material_id"].tolist(), ["far_candidate"])
+
+    def test_candidate_domain_policy_validation_errors_are_explicit(self):
+        candidates = pd.DataFrame({"material_id": ["a"], "descriptor_x": [0.0]})
+
+        with self.assertRaises(ValueError):
+            CandidateTrustRegion(
+                centers=pd.DataFrame({"descriptor_x": [0.0]}),
+                radius=-1.0,
+            )
+        with self.assertRaises(ValueError):
+            CandidateDuplicatePolicy(existing_candidates=candidates)
+        with self.assertRaises(ValueError):
+            CandidateDuplicatePolicy(
+                existing_candidates=candidates,
+                feature_tolerance=-0.1,
+            )
+        with self.assertRaises(ValueError):
+            apply_candidate_trust_region(
+                candidates,
+                CandidateTrustRegion(
+                    centers=pd.DataFrame({"descriptor_x": [0.0]}),
+                    radius=1.0,
+                ),
+                policy="drop",
+            )
+        with self.assertRaises(ValueError):
+            apply_candidate_duplicate_policy(
+                candidates,
+                CandidateDuplicatePolicy(
+                    existing_candidates=pd.DataFrame({"material_id": ["a"]}),
+                    key_columns=("material_id",),
+                ),
+                policy="drop",
+            )
 
     def test_select_diverse_batch_can_return_score_only_top_k(self):
         candidates = pd.DataFrame(
@@ -440,6 +560,39 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("matgpr_predicted_mean", result.recommendations.columns)
         self.assertIn("matgpr_predicted_std", result.recommendations.columns)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_suggest_next_experiments_applies_duplicate_policy(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.Series([0.0, 0.4, 1.0])
+        X_candidates = pd.DataFrame({"x": [0.25, 0.75, 1.25]})
+        candidate_data = pd.DataFrame(
+            {
+                "material_id": ["already_seen", "candidate_b", "candidate_c"],
+            }
+        )
+        duplicate_policy = CandidateDuplicatePolicy(
+            existing_candidates=pd.DataFrame({"material_id": ["already_seen"]}),
+            key_columns=("material_id",),
+        )
+
+        result = suggest_next_experiments(
+            X_train,
+            y_train,
+            X_candidates,
+            candidate_data=candidate_data,
+            top_k=3,
+            duplicate_policy=duplicate_policy,
+            fit_model=False,
+        )
+
+        self.assertEqual(result.ranked_candidates.shape[0], 2)
+        self.assertNotIn("already_seen", result.ranked_candidates["material_id"].tolist())
+        self.assertEqual(result.recommendations.shape[0], 2)
+        self.assertIn("matgpr_is_duplicate", result.ranked_candidates.columns)
 
     @unittest.skipUnless(
         importlib.util.find_spec("botorch") is not None,

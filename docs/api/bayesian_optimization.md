@@ -3,9 +3,12 @@
 The Bayesian-optimization API ranks finite candidate pools for next-experiment
 selection. It also supports dataframe-level feasibility constraints for
 synthesizability, processing windows, safety filters, equipment limits, and
-diversity-aware experimental batch selection. Known observation noise can be
-passed directly or prepared from reported uncertainty columns and replicate
-measurements before using noisy expected-improvement acquisition functions.
+diversity-aware experimental batch selection. Candidate trust-region policies
+keep recommendations near known feasible descriptor space, while duplicate
+policies remove or annotate materials that were already measured, selected, or
+queued. Known observation noise can be passed directly or prepared from
+reported uncertainty columns and replicate measurements before using noisy
+expected-improvement acquisition functions.
 For multi-objective campaigns, independent BoTorch GP surrogates can be ranked
 with expected hypervolume improvement while keeping objective directions in
 original materials-property units. Greedy sequential batch selection can

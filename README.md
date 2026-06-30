@@ -47,7 +47,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   formulation, and processing-condition pools.
 - Optional BoTorch Bayesian optimization helpers for single- and
   multi-objective finite materials candidate pools, known observation noise,
-  feasibility constraints, and diverse or sequential next-experiment batches.
+  feasibility constraints, trust regions, duplicate avoidance, and diverse or
+  sequential next-experiment batches.
 - Multi-objective finite-pool selection with Pareto-front and weighted
   scalarization utilities.
 - Closed-loop experiment logging for BO recommendations, selected experiments,
@@ -129,7 +130,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
-| `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint` | Optional BoTorch finite-pool Bayesian optimization |
+| `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
 | `matgpr.experiment_logging` | `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign audit trails |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |

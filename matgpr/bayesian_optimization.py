@@ -30,9 +30,13 @@ __all__ = [
     "BayesianOptimizationResult",
     "BoTorchSurrogate",
     "CandidateConstraint",
+    "CandidateDuplicatePolicy",
+    "CandidateTrustRegion",
     "MultiObjectiveBayesianOptimizationResult",
     "MultiObjectiveBoTorchSurrogate",
     "apply_candidate_constraints",
+    "apply_candidate_duplicate_policy",
+    "apply_candidate_trust_region",
     "fit_botorch_surrogate",
     "fit_multi_objective_botorch_surrogate",
     "observation_noise_variance",
@@ -188,6 +192,112 @@ class MultiObjectiveBayesianOptimizationResult:
 
 
 @dataclass(frozen=True)
+class CandidateTrustRegion:
+    """Descriptor-space trust region for finite-pool BO candidates.
+
+    Parameters
+    ----------
+    centers
+        One or more center points in the same feature space as the candidate
+        features. This is commonly a dataframe or array of measured features,
+        the current best material, or a manually chosen local search center.
+    radius
+        Maximum allowed distance from the nearest center.
+    metric
+        Distance metric: `"euclidean"`, `"manhattan"`, or `"chebyshev"`.
+    feature_columns
+        Optional feature columns to use when `centers` or candidate features
+        are dataframes.
+    feature_scales
+        Optional feature scales used before distance calculation. Use `None`
+        for raw distances, `"std"` for standard-deviation scaling over centers
+        and candidates, or one positive scale per feature.
+    """
+
+    centers: Any
+    radius: float
+    metric: str = "euclidean"
+    feature_columns: tuple[str, ...] | None = None
+    feature_scales: Any | None = None
+
+    def __post_init__(self) -> None:
+        radius = float(self.radius)
+        if not np.isfinite(radius) or radius < 0.0:
+            raise ValueError("CandidateTrustRegion.radius must be finite and non-negative")
+        object.__setattr__(self, "radius", radius)
+        object.__setattr__(self, "metric", _normalize_distance_metric(self.metric))
+        if self.feature_columns is not None:
+            columns = tuple(str(column).strip() for column in self.feature_columns)
+            if not columns or any(not column for column in columns):
+                raise ValueError("feature_columns must contain non-empty column names")
+            if len(set(columns)) != len(columns):
+                raise ValueError("feature_columns must be unique")
+            object.__setattr__(self, "feature_columns", columns)
+
+
+@dataclass(frozen=True)
+class CandidateDuplicatePolicy:
+    """Duplicate-avoidance policy for finite-pool BO candidates.
+
+    Parameters
+    ----------
+    existing_candidates
+        Existing measured, already-selected, or otherwise unavailable
+        candidates. Use metadata rows for key matching, feature rows for
+        distance matching, or both.
+    key_columns
+        Optional metadata columns used for exact duplicate matching.
+    feature_columns
+        Optional numeric feature columns used when dataframe features are
+        compared by distance.
+    feature_tolerance
+        Optional maximum descriptor-space distance for feature duplicates.
+    metric
+        Distance metric: `"euclidean"`, `"manhattan"`, or `"chebyshev"`.
+    feature_scales
+        Optional feature scales used before distance calculation. Use `None`
+        for raw distances, `"std"` for standard-deviation scaling over
+        candidates and existing rows, or one positive scale per feature.
+    """
+
+    existing_candidates: Any
+    key_columns: tuple[str, ...] | None = None
+    feature_columns: tuple[str, ...] | None = None
+    feature_tolerance: float | None = None
+    metric: str = "euclidean"
+    feature_scales: Any | None = None
+
+    def __post_init__(self) -> None:
+        if self.key_columns is None and self.feature_tolerance is None:
+            raise ValueError(
+                "CandidateDuplicatePolicy requires key_columns or feature_tolerance"
+            )
+        if self.key_columns is not None:
+            columns = tuple(str(column).strip() for column in self.key_columns)
+            if not columns or any(not column for column in columns):
+                raise ValueError("key_columns must contain non-empty column names")
+            if len(set(columns)) != len(columns):
+                raise ValueError("key_columns must be unique")
+            object.__setattr__(self, "key_columns", columns)
+        if self.feature_columns is not None:
+            columns = tuple(str(column).strip() for column in self.feature_columns)
+            if not columns or any(not column for column in columns):
+                raise ValueError("feature_columns must contain non-empty column names")
+            if len(set(columns)) != len(columns):
+                raise ValueError("feature_columns must be unique")
+            object.__setattr__(self, "feature_columns", columns)
+        if self.feature_tolerance is not None:
+            tolerance = float(self.feature_tolerance)
+            if not np.isfinite(tolerance) or tolerance < 0.0:
+                raise ValueError(
+                    "CandidateDuplicatePolicy.feature_tolerance must be finite "
+                    "and non-negative"
+                )
+            object.__setattr__(self, "feature_tolerance", tolerance)
+        object.__setattr__(self, "metric", _normalize_distance_metric(self.metric))
+
+
+@dataclass(frozen=True)
 class CandidateConstraint:
     """Finite-pool feasibility constraint for candidate materials.
 
@@ -326,6 +436,88 @@ def apply_candidate_constraints(
         for _, row in mask_frame.iterrows()
     ]
     return result
+
+
+def apply_candidate_trust_region(
+    candidates: pd.DataFrame,
+    trust_region: CandidateTrustRegion,
+    *,
+    candidate_features: pd.DataFrame | np.ndarray | None = None,
+    policy: str = "filter",
+    in_region_column: str = "matgpr_in_trust_region",
+    distance_column: str = "matgpr_trust_region_distance",
+) -> pd.DataFrame:
+    """Annotate or filter candidates by a descriptor-space trust region.
+
+    Use this helper to keep a finite BO campaign near known feasible chemistry,
+    processing conditions, or local optima. Distances are measured from each
+    candidate to the nearest trust-region center.
+    """
+    if not isinstance(candidates, pd.DataFrame):
+        raise TypeError("candidates must be a pandas DataFrame")
+    if not isinstance(trust_region, CandidateTrustRegion):
+        raise TypeError("trust_region must be a CandidateTrustRegion")
+    policy = _validate_candidate_policy(policy)
+    in_region_column = _validate_output_name(in_region_column, name="in_region_column")
+    distance_column = _validate_output_name(distance_column, name="distance_column")
+    if in_region_column == distance_column:
+        raise ValueError("in_region_column and distance_column must be distinct")
+
+    candidate_data = candidates if candidate_features is None else candidate_features
+    distances, in_region = _trust_region_annotations(
+        candidate_data,
+        trust_region,
+        expected_rows=candidates.shape[0],
+    )
+    result = candidates.copy()
+    result[distance_column] = distances
+    result[in_region_column] = in_region
+    if policy == "filter":
+        result = result.loc[in_region].copy()
+    return result.reset_index(drop=True)
+
+
+def apply_candidate_duplicate_policy(
+    candidates: pd.DataFrame,
+    duplicate_policy: CandidateDuplicatePolicy,
+    *,
+    candidate_features: pd.DataFrame | np.ndarray | None = None,
+    policy: str = "filter",
+    duplicate_column: str = "matgpr_is_duplicate",
+    distance_column: str = "matgpr_duplicate_distance",
+    reason_column: str = "matgpr_duplicate_reason",
+) -> pd.DataFrame:
+    """Annotate or filter duplicate candidates in a finite BO pool.
+
+    Duplicates can be detected by exact metadata keys, by descriptor-space
+    tolerance, or by both. This helps closed-loop BO avoid recommending
+    materials that were already measured, selected, or queued.
+    """
+    if not isinstance(candidates, pd.DataFrame):
+        raise TypeError("candidates must be a pandas DataFrame")
+    if not isinstance(duplicate_policy, CandidateDuplicatePolicy):
+        raise TypeError("duplicate_policy must be a CandidateDuplicatePolicy")
+    policy = _validate_candidate_policy(policy)
+    duplicate_column = _validate_output_name(duplicate_column, name="duplicate_column")
+    distance_column = _validate_output_name(distance_column, name="distance_column")
+    reason_column = _validate_output_name(reason_column, name="reason_column")
+    _validate_distinct_names(duplicate_column, distance_column, reason_column)
+
+    candidate_data = candidates if candidate_features is None else candidate_features
+    is_duplicate, distances, reasons = _duplicate_policy_annotations(
+        candidates,
+        candidate_data,
+        duplicate_policy,
+        expected_rows=candidates.shape[0],
+    )
+    result = candidates.copy()
+    result[duplicate_column] = is_duplicate
+    result[reason_column] = reasons
+    if distances is not None:
+        result[distance_column] = distances
+    if policy == "filter":
+        result = result.loc[~is_duplicate].copy()
+    return result.reset_index(drop=True)
 
 
 def select_diverse_batch(
@@ -767,6 +959,10 @@ def rank_discrete_candidates(
     candidate_data: pd.DataFrame | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    trust_region: CandidateTrustRegion | None = None,
+    trust_region_policy: str = "filter",
+    duplicate_policy: CandidateDuplicatePolicy | None = None,
+    duplicate_policy_action: str = "filter",
 ) -> pd.DataFrame:
     """Rank a finite pool of candidate materials using a BoTorch acquisition.
 
@@ -799,6 +995,17 @@ def rank_discrete_candidates(
     constraint_policy
         `"filter"` returns only feasible candidates. `"annotate"` keeps all
         candidates and adds feasibility columns.
+    trust_region
+        Optional descriptor-space trust region for local candidate filtering.
+    trust_region_policy
+        `"filter"` returns only candidates inside the trust region.
+        `"annotate"` keeps all candidates and adds trust-region columns.
+    duplicate_policy
+        Optional duplicate-avoidance policy for already measured, selected, or
+        queued candidates.
+    duplicate_policy_action
+        `"filter"` removes duplicate candidates. `"annotate"` keeps all
+        candidates and adds duplicate-audit columns.
     """
     if top_k is not None and top_k < 1:
         raise ValueError("top_k must be at least 1 when provided")
@@ -846,7 +1053,17 @@ def rank_discrete_candidates(
     if constraints is not None:
         ranked = apply_candidate_constraints(ranked, constraints)
         if constraint_policy == "filter":
-            ranked = ranked[ranked["matgpr_feasible"]].copy()
+            keep_mask = ranked["matgpr_feasible"].to_numpy(dtype=bool)
+            ranked = ranked.loc[keep_mask].copy()
+            candidate_array = candidate_array[keep_mask]
+    ranked = _apply_candidate_domain_policies(
+        ranked,
+        candidate_array,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
+    )
     ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
     ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
 
@@ -864,6 +1081,10 @@ def rank_multi_objective_discrete_candidates(
     candidate_data: pd.DataFrame | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    trust_region: CandidateTrustRegion | None = None,
+    trust_region_policy: str = "filter",
+    duplicate_policy: CandidateDuplicatePolicy | None = None,
+    duplicate_policy_action: str = "filter",
     mc_samples: int = 128,
     sampler_seed: int | None = 42,
 ) -> pd.DataFrame:
@@ -942,7 +1163,17 @@ def rank_multi_objective_discrete_candidates(
     if constraints is not None:
         ranked = apply_candidate_constraints(ranked, constraints)
         if constraint_policy == "filter":
-            ranked = ranked[ranked["matgpr_feasible"]].copy()
+            keep_mask = ranked["matgpr_feasible"].to_numpy(dtype=bool)
+            ranked = ranked.loc[keep_mask].copy()
+            candidate_array = candidate_array[keep_mask]
+    ranked = _apply_candidate_domain_policies(
+        ranked,
+        candidate_array,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
+    )
     ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
     ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
 
@@ -960,6 +1191,10 @@ def select_sequential_multi_objective_batch(
     candidate_data: pd.DataFrame | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    trust_region: CandidateTrustRegion | None = None,
+    trust_region_policy: str = "filter",
+    duplicate_policy: CandidateDuplicatePolicy | None = None,
+    duplicate_policy_action: str = "filter",
     mc_samples: int = 128,
     sampler_seed: int | None = 42,
     return_all: bool = False,
@@ -1059,8 +1294,18 @@ def select_sequential_multi_objective_batch(
         if constraint_policy == "filter":
             keep_mask = result["matgpr_feasible"].to_numpy(dtype=bool)
             result = result.loc[keep_mask].copy()
+            candidate_array = candidate_array[keep_mask]
             candidate_X = candidate_X[torch.as_tensor(keep_mask, device=candidate_X.device)]
 
+    result, keep_mask = _apply_candidate_domain_policies_with_mask(
+        result,
+        candidate_array,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
+    )
+    candidate_X = candidate_X[torch.as_tensor(keep_mask, device=candidate_X.device)]
     result = result.reset_index(drop=True)
     result.insert(0, "matgpr_rank", _rank_descending(result["matgpr_acquisition"]))
     result["matgpr_batch_selected"] = False
@@ -1117,6 +1362,10 @@ def suggest_next_experiments(
     device: str | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    trust_region: CandidateTrustRegion | None = None,
+    trust_region_policy: str = "filter",
+    duplicate_policy: CandidateDuplicatePolicy | None = None,
+    duplicate_policy_action: str = "filter",
     batch_selection: str = "top",
     batch_feature_columns: list[str] | tuple[str, ...] | None = None,
     diversity_weight: float = 0.25,
@@ -1165,6 +1414,16 @@ def suggest_next_experiments(
     constraint_policy
         `"filter"` recommends only feasible candidates. `"annotate"` ranks all
         candidates and marks feasibility.
+    trust_region
+        Optional descriptor-space trust region.
+    trust_region_policy
+        `"filter"` recommends only candidates inside the trust region.
+        `"annotate"` keeps all candidates and marks trust-region membership.
+    duplicate_policy
+        Optional duplicate-avoidance policy.
+    duplicate_policy_action
+        `"filter"` removes duplicate candidates. `"annotate"` keeps all
+        candidates and marks duplicates.
     batch_selection
         `"top"` returns the highest-acquisition candidates. `"diverse"` uses
         greedy diversity-aware batch selection.
@@ -1201,6 +1460,10 @@ def suggest_next_experiments(
         candidate_data=candidate_data,
         constraints=constraints,
         constraint_policy=constraint_policy,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
     )
     if batch_selection == "diverse":
         recommendations = select_diverse_batch(
@@ -1242,6 +1505,10 @@ def suggest_multi_objective_next_experiments(
     device: str | None = None,
     constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
     constraint_policy: str = "filter",
+    trust_region: CandidateTrustRegion | None = None,
+    trust_region_policy: str = "filter",
+    duplicate_policy: CandidateDuplicatePolicy | None = None,
+    duplicate_policy_action: str = "filter",
     batch_selection: str = "top",
     batch_feature_columns: list[str] | tuple[str, ...] | None = None,
     diversity_weight: float = 0.25,
@@ -1280,6 +1547,10 @@ def suggest_multi_objective_next_experiments(
         candidate_data=candidate_data,
         constraints=constraints,
         constraint_policy=constraint_policy,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
         mc_samples=mc_samples,
         sampler_seed=sampler_seed,
     )
@@ -1292,6 +1563,10 @@ def suggest_multi_objective_next_experiments(
             candidate_data=candidate_data,
             constraints=constraints,
             constraint_policy=constraint_policy,
+            trust_region=trust_region,
+            trust_region_policy=trust_region_policy,
+            duplicate_policy=duplicate_policy,
+            duplicate_policy_action=duplicate_policy_action,
             mc_samples=mc_samples,
             sampler_seed=sampler_seed,
             return_all=False,
@@ -1629,6 +1904,380 @@ def _validate_constraint_policy(policy: str) -> str:
     if normalized not in {"filter", "annotate"}:
         raise ValueError("constraint_policy must be 'filter' or 'annotate'")
     return normalized
+
+
+def _validate_candidate_policy(policy: str) -> str:
+    normalized = str(policy).strip().lower()
+    if normalized not in {"filter", "annotate"}:
+        raise ValueError("candidate policy must be 'filter' or 'annotate'")
+    return normalized
+
+
+def _validate_output_name(value: str, *, name: str) -> str:
+    output_name = str(value).strip()
+    if not output_name:
+        raise ValueError(f"{name} must be a non-empty column name")
+    return output_name
+
+
+def _validate_distinct_names(*names: str) -> None:
+    normalized = tuple(str(name) for name in names)
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("output column names must be distinct")
+
+
+def _normalize_distance_metric(metric: str) -> str:
+    normalized = str(metric).strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "euclidean": "euclidean",
+        "l2": "euclidean",
+        "manhattan": "manhattan",
+        "cityblock": "manhattan",
+        "l1": "manhattan",
+        "chebyshev": "chebyshev",
+        "linf": "chebyshev",
+        "l_inf": "chebyshev",
+        "max": "chebyshev",
+    }
+    if normalized not in aliases:
+        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
+    return aliases[normalized]
+
+
+def _apply_candidate_domain_policies(
+    candidates: pd.DataFrame,
+    candidate_features: pd.DataFrame | np.ndarray,
+    *,
+    trust_region: CandidateTrustRegion | None,
+    trust_region_policy: str,
+    duplicate_policy: CandidateDuplicatePolicy | None,
+    duplicate_policy_action: str,
+) -> pd.DataFrame:
+    result, _ = _apply_candidate_domain_policies_with_mask(
+        candidates,
+        candidate_features,
+        trust_region=trust_region,
+        trust_region_policy=trust_region_policy,
+        duplicate_policy=duplicate_policy,
+        duplicate_policy_action=duplicate_policy_action,
+    )
+    return result
+
+
+def _apply_candidate_domain_policies_with_mask(
+    candidates: pd.DataFrame,
+    candidate_features: pd.DataFrame | np.ndarray,
+    *,
+    trust_region: CandidateTrustRegion | None,
+    trust_region_policy: str,
+    duplicate_policy: CandidateDuplicatePolicy | None,
+    duplicate_policy_action: str,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    if not isinstance(candidates, pd.DataFrame):
+        raise TypeError("candidates must be a pandas DataFrame")
+
+    trust_region_policy = _validate_candidate_policy(trust_region_policy)
+    duplicate_policy_action = _validate_candidate_policy(duplicate_policy_action)
+    result = candidates.copy()
+    keep_mask = np.ones(result.shape[0], dtype=bool)
+
+    if trust_region is not None:
+        if not isinstance(trust_region, CandidateTrustRegion):
+            raise TypeError("trust_region must be a CandidateTrustRegion")
+        distances, in_region = _trust_region_annotations(
+            candidate_features,
+            trust_region,
+            expected_rows=result.shape[0],
+        )
+        result["matgpr_trust_region_distance"] = distances
+        result["matgpr_in_trust_region"] = in_region
+        if trust_region_policy == "filter":
+            keep_mask &= in_region
+
+    if duplicate_policy is not None:
+        if not isinstance(duplicate_policy, CandidateDuplicatePolicy):
+            raise TypeError("duplicate_policy must be a CandidateDuplicatePolicy")
+        is_duplicate, distances, reasons = _duplicate_policy_annotations(
+            result,
+            candidate_features,
+            duplicate_policy,
+            expected_rows=result.shape[0],
+        )
+        result["matgpr_is_duplicate"] = is_duplicate
+        result["matgpr_duplicate_reason"] = reasons
+        if distances is not None:
+            result["matgpr_duplicate_distance"] = distances
+        if duplicate_policy_action == "filter":
+            keep_mask &= ~is_duplicate
+
+    return result.loc[keep_mask].reset_index(drop=True), keep_mask
+
+
+def _trust_region_annotations(
+    candidate_features: pd.DataFrame | np.ndarray,
+    trust_region: CandidateTrustRegion,
+    *,
+    expected_rows: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    candidate_matrix = _policy_feature_matrix(
+        candidate_features,
+        feature_columns=trust_region.feature_columns,
+        expected_rows=expected_rows,
+        allow_empty_rows=True,
+        name="candidate_features",
+    )
+    center_matrix = _policy_feature_matrix(
+        trust_region.centers,
+        feature_columns=trust_region.feature_columns,
+        expected_features=candidate_matrix.shape[1],
+        allow_empty_rows=False,
+        name="trust_region.centers",
+    )
+    scales = _resolve_policy_feature_scales(
+        trust_region.feature_scales,
+        candidate_matrix,
+        center_matrix,
+        name="trust_region.feature_scales",
+    )
+    distances = _minimum_scaled_distances(
+        candidate_matrix,
+        center_matrix,
+        metric=trust_region.metric,
+        scales=scales,
+    )
+    return distances, distances <= trust_region.radius
+
+
+def _duplicate_policy_annotations(
+    candidates: pd.DataFrame,
+    candidate_features: pd.DataFrame | np.ndarray,
+    duplicate_policy: CandidateDuplicatePolicy,
+    *,
+    expected_rows: int | None = None,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
+    is_duplicate = np.zeros(candidates.shape[0], dtype=bool)
+    reason_parts: list[list[str]] = [[] for _ in range(candidates.shape[0])]
+    distances = None
+
+    if duplicate_policy.key_columns is not None:
+        if not isinstance(duplicate_policy.existing_candidates, pd.DataFrame):
+            raise TypeError(
+                "existing_candidates must be a pandas DataFrame when key_columns are used"
+            )
+        candidate_keys = _candidate_policy_row_keys(
+            candidates,
+            duplicate_policy.key_columns,
+            label="candidate key columns",
+        )
+        existing_keys = set(
+            _candidate_policy_row_keys(
+                duplicate_policy.existing_candidates,
+                duplicate_policy.key_columns,
+                label="existing key columns",
+            )
+        )
+        key_duplicates = np.asarray([key in existing_keys for key in candidate_keys], dtype=bool)
+        is_duplicate |= key_duplicates
+        for row_index, duplicate in enumerate(key_duplicates):
+            if duplicate:
+                reason_parts[row_index].append("key")
+
+    if duplicate_policy.feature_tolerance is not None:
+        candidate_matrix = _policy_feature_matrix(
+            candidate_features,
+            feature_columns=duplicate_policy.feature_columns,
+            expected_rows=expected_rows,
+            allow_empty_rows=True,
+            name="candidate_features",
+        )
+        existing_matrix = _policy_feature_matrix(
+            duplicate_policy.existing_candidates,
+            feature_columns=duplicate_policy.feature_columns,
+            expected_features=candidate_matrix.shape[1],
+            allow_empty_rows=True,
+            name="duplicate_policy.existing_candidates",
+        )
+        scales = _resolve_policy_feature_scales(
+            duplicate_policy.feature_scales,
+            candidate_matrix,
+            existing_matrix,
+            name="duplicate_policy.feature_scales",
+        )
+        distances = _minimum_scaled_distances(
+            candidate_matrix,
+            existing_matrix,
+            metric=duplicate_policy.metric,
+            scales=scales,
+        )
+        feature_duplicates = distances <= duplicate_policy.feature_tolerance
+        is_duplicate |= feature_duplicates
+        for row_index, duplicate in enumerate(feature_duplicates):
+            if duplicate:
+                reason_parts[row_index].append("feature")
+
+    reasons = np.asarray(["; ".join(parts) for parts in reason_parts], dtype=object)
+    return is_duplicate, distances, reasons
+
+
+def _policy_feature_matrix(
+    values: pd.DataFrame | np.ndarray,
+    *,
+    feature_columns: tuple[str, ...] | None,
+    expected_features: int | None = None,
+    expected_rows: int | None = None,
+    allow_empty_rows: bool,
+    name: str,
+) -> np.ndarray:
+    if isinstance(values, pd.DataFrame):
+        columns = _resolve_policy_feature_columns(values, feature_columns, name=name)
+        matrix = values.loc[:, list(columns)].to_numpy(dtype=float)
+    else:
+        matrix = np.asarray(values, dtype=float)
+        if matrix.ndim == 1:
+            matrix = matrix.reshape(1, -1)
+        if feature_columns is not None and matrix.ndim == 2 and len(feature_columns) != matrix.shape[1]:
+            raise ValueError(
+                f"{name} feature_columns length must match feature count "
+                f"({len(feature_columns)} != {matrix.shape[1]})"
+            )
+
+    if matrix.ndim != 2:
+        raise ValueError(f"{name} must be a 2D numeric array or dataframe")
+    if matrix.shape[0] == 0 and not allow_empty_rows:
+        raise ValueError(f"{name} must contain at least one row")
+    if matrix.shape[1] == 0:
+        raise ValueError(f"{name} must contain at least one feature")
+    if expected_features is not None and matrix.shape[1] != expected_features:
+        raise ValueError(
+            f"{name} feature count must match candidate features "
+            f"({matrix.shape[1]} != {expected_features})"
+        )
+    if expected_rows is not None and matrix.shape[0] != expected_rows:
+        raise ValueError(
+            f"{name} rows must match candidate rows "
+            f"({matrix.shape[0]} != {expected_rows})"
+        )
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError(f"{name} contains NaN or infinite values")
+    return matrix
+
+
+def _resolve_policy_feature_columns(
+    data: pd.DataFrame,
+    feature_columns: tuple[str, ...] | None,
+    *,
+    name: str,
+) -> tuple[Any, ...]:
+    if feature_columns is not None:
+        column_lookup = {str(column): column for column in data.columns}
+        columns = tuple(
+            column if column in data.columns else column_lookup.get(str(column))
+            for column in feature_columns
+        )
+        missing = [
+            requested
+            for requested, resolved in zip(feature_columns, columns)
+            if resolved is None
+        ]
+        if missing:
+            raise ValueError(f"{name} feature columns are missing: {missing}")
+    else:
+        columns = tuple(
+            column
+            for column in data.columns
+            if pd.api.types.is_numeric_dtype(data[column])
+        )
+        if not columns:
+            raise ValueError(
+                f"No numeric columns could be inferred from {name}; provide feature_columns"
+            )
+
+    non_numeric = [
+        column
+        for column in columns
+        if not pd.api.types.is_numeric_dtype(data[column])
+    ]
+    if non_numeric:
+        raise ValueError(f"{name} feature columns must be numeric: {non_numeric}")
+    return columns
+
+
+def _resolve_policy_feature_scales(
+    feature_scales: Any | None,
+    candidate_matrix: np.ndarray,
+    reference_matrix: np.ndarray,
+    *,
+    name: str,
+) -> np.ndarray:
+    n_features = candidate_matrix.shape[1]
+    if feature_scales is None:
+        scales = np.ones(n_features, dtype=float)
+    elif isinstance(feature_scales, str):
+        normalized = feature_scales.strip().lower().replace("-", "_").replace(" ", "_")
+        if normalized not in {"std", "standard_deviation", "standardize"}:
+            raise ValueError(f"{name} must be None, 'std', or one positive scale per feature")
+        if reference_matrix.shape[0] == 0:
+            combined = candidate_matrix
+        elif candidate_matrix.shape[0] == 0:
+            combined = reference_matrix
+        else:
+            combined = np.vstack([candidate_matrix, reference_matrix])
+        scales = combined.std(axis=0)
+        scales[~np.isfinite(scales) | (scales <= 0.0)] = 1.0
+    else:
+        scales = np.asarray(feature_scales, dtype=float).reshape(-1)
+        if scales.shape[0] != n_features:
+            raise ValueError(
+                f"{name} length must match feature count "
+                f"({scales.shape[0]} != {n_features})"
+            )
+        if not np.all(np.isfinite(scales)) or np.any(scales <= 0.0):
+            raise ValueError(f"{name} must contain finite positive values")
+    return scales.astype(float)
+
+
+def _minimum_scaled_distances(
+    candidate_matrix: np.ndarray,
+    reference_matrix: np.ndarray,
+    *,
+    metric: str,
+    scales: np.ndarray,
+) -> np.ndarray:
+    if candidate_matrix.shape[0] == 0:
+        return np.asarray([], dtype=float)
+    if reference_matrix.shape[0] == 0:
+        return np.full(candidate_matrix.shape[0], np.inf, dtype=float)
+
+    scaled_diff = np.abs(
+        (candidate_matrix[:, np.newaxis, :] - reference_matrix[np.newaxis, :, :])
+        / scales.reshape(1, 1, -1)
+    )
+    if metric == "euclidean":
+        distances = np.sqrt(np.sum(scaled_diff**2, axis=2))
+    elif metric == "manhattan":
+        distances = np.sum(scaled_diff, axis=2)
+    elif metric == "chebyshev":
+        distances = np.max(scaled_diff, axis=2)
+    else:
+        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
+    return distances.min(axis=1)
+
+
+def _candidate_policy_row_keys(
+    data: pd.DataFrame,
+    columns: tuple[str, ...],
+    *,
+    label: str,
+) -> list[tuple[Any, ...]]:
+    missing = [column for column in columns if column not in data.columns]
+    if missing:
+        raise ValueError(f"{label} are missing: {missing}")
+
+    missing_sentinel = ("__matgpr_missing_key__",)
+    return [
+        tuple(missing_sentinel if pd.isna(value) else value for value in row)
+        for row in data.loc[:, list(columns)].itertuples(index=False, name=None)
+    ]
 
 
 def _validate_batch_selection(

@@ -1766,6 +1766,8 @@ same descriptor pipeline, then rank the candidates:
 ```python
 from matgpr import (
     CandidateConstraint,
+    CandidateDuplicatePolicy,
+    CandidateTrustRegion,
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
     exclude_existing_candidates,
@@ -2037,6 +2039,44 @@ Use `maximize=False` for targets where lower values are better, such as
 degradation rate, diffusion barrier, cost, or toxicity. Use
 `constraint_policy="annotate"` when you want to keep infeasible candidates in
 the ranked table for auditing rather than filtering them out.
+
+Use trust regions when a BO campaign should stay near known feasible chemistry,
+composition, or processing space. Use duplicate policies when candidates may
+already be measured, selected in a previous batch, or queued in a lab workflow:
+
+```python
+trust_region = CandidateTrustRegion(
+    centers=X_measured_features,
+    radius=2.0,
+    feature_scales="std",
+)
+
+duplicate_policy = CandidateDuplicatePolicy(
+    existing_candidates=measured_data,
+    key_columns=("candidate_id",),
+)
+
+bo_result = suggest_next_experiments(
+    X_train=X_measured_features,
+    y_train=y_measured,
+    X_candidates=X_candidate_features,
+    candidate_data=candidate_metadata,
+    trust_region=trust_region,
+    trust_region_policy="filter",
+    duplicate_policy=duplicate_policy,
+    duplicate_policy_action="filter",
+    top_k=5,
+)
+```
+
+`CandidateTrustRegion` measures each candidate's distance to the nearest
+center using `"euclidean"`, `"manhattan"`, or `"chebyshev"` distance. Set
+`feature_scales="std"` when descriptor magnitudes differ. `CandidateDuplicatePolicy`
+can match exact metadata keys with `key_columns`, near-duplicate descriptors
+with `feature_tolerance`, or both. Use `"annotate"` policies to keep all rows
+and add audit columns such as `matgpr_in_trust_region`,
+`matgpr_trust_region_distance`, `matgpr_is_duplicate`,
+`matgpr_duplicate_reason`, and `matgpr_duplicate_distance`.
 
 When selecting several experiments at once, use diversity-aware batch selection
 to avoid near-duplicate candidates:
