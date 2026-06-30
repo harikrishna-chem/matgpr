@@ -51,8 +51,9 @@ physics-informed mean functions and uncertainty-aware prediction.
   sequential next-experiment batches.
 - Multi-objective finite-pool selection with Pareto-front and weighted
   scalarization utilities.
-- Closed-loop experiment logging for BO recommendations, selected experiments,
-  measured observations, and campaign summaries.
+- Closed-loop experiment logging and restart state for BO recommendations,
+  selected experiments, measured observations, pending candidates, and
+  campaign summaries.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -132,7 +133,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
-| `matgpr.experiment_logging` | `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign audit trails |
+| `matgpr.experiment_logging` | `resume_bo_campaign`, `infer_next_bo_iteration`, `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign state and audit trails |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |

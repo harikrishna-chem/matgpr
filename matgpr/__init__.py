@@ -46,11 +46,14 @@ from .derivative_gpr import (
 )
 from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
 from .experiment_logging import (
+    BOCampaignState,
     append_closed_loop_records,
+    infer_next_bo_iteration,
     load_closed_loop_log,
     log_bo_recommendations,
     log_observations,
     log_selected_experiments,
+    resume_bo_campaign,
     summarize_closed_loop_log,
 )
 from .featurizers import (
@@ -220,6 +223,7 @@ __all__ = [
     "GPyTorchPrediction",
     "AugmentedTrainingData",
     "BayesianOptimizationResult",
+    "BOCampaignState",
     "BoTorchSurrogate",
     "CandidateConstraint",
     "CandidateDuplicatePolicy",
@@ -325,6 +329,7 @@ __all__ = [
     "identify_feature_types",
     "impute_missing_values",
     "interval_coverage",
+    "infer_next_bo_iteration",
     "is_optional_dependency_available",
     "load_artifact",
     "load_closed_loop_log",
@@ -358,6 +363,7 @@ __all__ = [
     "rank_multi_objective_candidates",
     "regression_metrics",
     "replace_missing_placeholders",
+    "resume_bo_campaign",
     "require_optional_dependency",
     "rule_of_mixtures_equation",
     "save_artifact",

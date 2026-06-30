@@ -1783,6 +1783,7 @@ from matgpr import (
     log_bo_recommendations,
     log_selected_experiments,
     log_observations,
+    resume_bo_campaign,
     summarize_closed_loop_log,
 )
 ```
@@ -2152,6 +2153,29 @@ campaign_summary = summarize_closed_loop_log(
     target_column="conductivity_s_cm",
 )
 ```
+
+At the start of a new session, rebuild campaign state from the log before
+asking for the next recommendations:
+
+```python
+campaign_state = resume_bo_campaign(
+    log_path,
+    campaign_id="conductivity_screen",
+    candidate_pool=composition_candidates,
+    key_columns=("candidate_id",),
+)
+
+next_iteration = campaign_state.next_iteration
+available_candidates = campaign_state.available_candidates
+duplicate_policy = campaign_state.duplicate_policy()
+```
+
+`campaign_state.pending_experiments` contains selected candidates without
+matching observations. `campaign_state.completed_experiments` contains the
+latest observed rows by key. `campaign_state.available_candidates` removes
+both pending and completed candidates from the finite pool, and
+`campaign_state.duplicate_policy()` can be passed directly to
+`suggest_next_experiments` to guard against accidental repeats.
 
 These workflows are best for materials informatics tasks where users have a
 realistic library of synthesizable materials or feasible experimental

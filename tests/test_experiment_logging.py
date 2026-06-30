@@ -9,11 +9,15 @@ import numpy as np
 import pandas as pd
 
 from matgpr import (
+    BOCampaignState,
+    apply_candidate_duplicate_policy,
     append_closed_loop_records,
+    infer_next_bo_iteration,
     load_closed_loop_log,
     log_bo_recommendations,
     log_observations,
     log_selected_experiments,
+    resume_bo_campaign,
     summarize_closed_loop_log,
 )
 
@@ -115,6 +119,99 @@ class ExperimentLoggingTests(unittest.TestCase):
         self.assertEqual(summary.loc[1, "matgpr_target_min"], 1.5)
         self.assertEqual(summary.loc[1, "matgpr_target_max"], 1.5)
 
+    def test_resume_bo_campaign_filters_available_and_pending_candidates(self):
+        log = pd.DataFrame(
+            {
+                "matgpr_campaign_id": ["screen", "screen", "screen", "other"],
+                "matgpr_iteration": [0, 0, 1, 0],
+                "matgpr_record_type": [
+                    "recommendation",
+                    "selection",
+                    "observation",
+                    "selection",
+                ],
+                "candidate_id": ["a", "b", "a", "z"],
+                "target": [np.nan, np.nan, 1.5, np.nan],
+            }
+        )
+        candidate_pool = pd.DataFrame(
+            {
+                "candidate_id": ["a", "b", "c", "d"],
+                "descriptor_x": [0.0, 0.5, 1.0, 1.5],
+            }
+        )
+
+        state = resume_bo_campaign(
+            log,
+            campaign_id="screen",
+            candidate_pool=candidate_pool,
+            key_columns=("candidate_id",),
+        )
+
+        self.assertIsInstance(state, BOCampaignState)
+        self.assertEqual(state.current_iteration, 1)
+        self.assertEqual(state.last_recommendation_iteration, 0)
+        self.assertEqual(state.next_iteration, 1)
+        self.assertEqual(state.pending_experiments["candidate_id"].tolist(), ["b"])
+        self.assertEqual(state.completed_experiments["candidate_id"].tolist(), ["a"])
+        self.assertEqual(state.unavailable_candidates["candidate_id"].tolist(), ["a", "b"])
+        self.assertEqual(state.available_candidates["candidate_id"].tolist(), ["c", "d"])
+        self.assertEqual(state.candidate_pool_size, 4)
+
+        filtered = apply_candidate_duplicate_policy(
+            candidate_pool,
+            state.duplicate_policy(),
+        )
+        self.assertEqual(filtered["candidate_id"].tolist(), ["c", "d"])
+
+    def test_resume_bo_campaign_supports_missing_log_for_first_iteration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "not_created_yet.csv"
+            candidate_pool = pd.DataFrame(
+                {
+                    "candidate_id": ["a", "b"],
+                    "descriptor_x": [0.0, 1.0],
+                }
+            )
+
+            state = resume_bo_campaign(
+                log_path,
+                campaign_id="new_screen",
+                candidate_pool=candidate_pool,
+                key_columns="candidate_id",
+            )
+
+        self.assertIsNone(state.current_iteration)
+        self.assertIsNone(state.last_recommendation_iteration)
+        self.assertEqual(state.next_iteration, 0)
+        self.assertTrue(state.pending_experiments.empty)
+        self.assertTrue(state.unavailable_candidates.empty)
+        self.assertEqual(state.available_candidates["candidate_id"].tolist(), ["a", "b"])
+
+    def test_infer_next_bo_iteration_uses_recommendation_rows(self):
+        log = pd.DataFrame(
+            {
+                "matgpr_campaign_id": ["screen", "screen", "screen", "other"],
+                "matgpr_iteration": [0, 1, 2, 5],
+                "matgpr_record_type": [
+                    "recommendation",
+                    "observation",
+                    "recommendation",
+                    "recommendation",
+                ],
+            }
+        )
+
+        self.assertEqual(infer_next_bo_iteration(log, campaign_id="screen"), 3)
+        self.assertEqual(infer_next_bo_iteration(log, campaign_id="missing"), 0)
+        self.assertEqual(
+            infer_next_bo_iteration(
+                log[log["matgpr_record_type"] == "observation"],
+                campaign_id="screen",
+            ),
+            0,
+        )
+
     def test_append_closed_loop_records_supports_custom_record_types(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             log_path = Path(temp_dir) / "custom.csv"
@@ -209,6 +306,47 @@ class ExperimentLoggingTests(unittest.TestCase):
                     ),
                     target_column="missing_target",
                 )
+
+    def test_resume_bo_campaign_validation_errors_are_explicit(self):
+        log = pd.DataFrame(
+            {
+                "matgpr_campaign_id": ["screen"],
+                "matgpr_iteration": [0],
+                "matgpr_record_type": ["selection"],
+                "candidate_id": ["a"],
+            }
+        )
+
+        with self.assertRaises(ValueError):
+            resume_bo_campaign(log, campaign_id="screen", key_columns=())
+        with self.assertRaises(ValueError):
+            resume_bo_campaign(
+                log,
+                campaign_id="screen",
+                key_columns=("candidate_id", "candidate_id"),
+            )
+        with self.assertRaises(ValueError):
+            resume_bo_campaign(
+                log,
+                campaign_id="screen",
+                key_columns=("missing_id",),
+            )
+        with self.assertRaises(ValueError):
+            resume_bo_campaign(
+                log,
+                campaign_id="screen",
+                candidate_pool=pd.DataFrame({"other_id": ["a"]}),
+            )
+        with self.assertRaises(ValueError):
+            resume_bo_campaign(
+                pd.DataFrame(
+                    {
+                        "matgpr_campaign_id": ["screen"],
+                        "matgpr_record_type": ["recommendation"],
+                    }
+                ),
+                campaign_id="screen",
+            )
 
 
 if __name__ == "__main__":
