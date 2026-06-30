@@ -56,6 +56,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   campaign summaries.
 - Lightweight finite-pool BO benchmarks for comparing acquisition strategies,
   physics-prior scores, model scores, and random baselines on known outcomes.
+- BO visualization helpers for benchmark traces, regret curves, and
+  closed-loop campaign progress.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -96,7 +98,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    `regression_metrics`, or `train_test_regression_metrics`.
 13. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
-   `plot_distribution`, `plot_correlation_matrix`, or the PCA plotting helpers.
+   `plot_distribution`, `plot_correlation_matrix`, BO progress plots, or the
+   PCA plotting helpers.
 14. Optionally build finite candidate pools, rank next experiments with
    `suggest_next_experiments`, and log closed-loop campaigns.
 
@@ -140,7 +143,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
-| `matgpr.visualization` | `plot_parity`, `plot_learning_curve`, `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`, `plot_distribution`, `plot_correlation_matrix`, `plot_pca_scree`, `plot_pca_scores` | Common model and data plots |
+| `matgpr.visualization` | `plot_parity`, `plot_learning_curve`, `plot_bo_benchmark_trace`, `plot_bo_regret_trace`, `plot_bo_campaign_progress`, `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`, `plot_distribution`, `plot_correlation_matrix`, `plot_pca_scree`, `plot_pca_scores` | Common model, BO, and data plots |
 | `matgpr.reporting` | `summarize_missingness`, `summarize_numeric_columns` | Quick dataframe reports |
 | `matgpr.io_utils` | `save_artifact`, `load_artifact`, `log_experiment_result` | Model/artifact persistence and result logging |
 

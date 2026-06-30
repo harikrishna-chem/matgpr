@@ -93,6 +93,9 @@ from matgpr import (
     summarize_closed_loop_log,
     plot_parity,
     plot_learning_curve,
+    plot_bo_benchmark_trace,
+    plot_bo_regret_trace,
+    plot_bo_campaign_progress,
     plot_uncertainty_calibration,
     plot_uncertainty_vs_error,
     save_artifact,
@@ -1785,6 +1788,9 @@ from matgpr import (
     log_bo_recommendations,
     log_selected_experiments,
     log_observations,
+    plot_bo_benchmark_trace,
+    plot_bo_campaign_progress,
+    plot_bo_regret_trace,
     resume_bo_campaign,
     summarize_closed_loop_log,
 )
@@ -2183,6 +2189,9 @@ benchmark = compare_bo_strategies(
 
 benchmark_history = benchmark.history
 benchmark_summary = benchmark.summary_by_strategy()
+
+plot_bo_benchmark_trace(benchmark_history)
+plot_bo_regret_trace(benchmark_history)
 ```
 
 `benchmark.history` records the best value found after each simulated
@@ -2215,6 +2224,20 @@ latest observed rows by key. `campaign_state.available_candidates` removes
 both pending and completed candidates from the finite pool, and
 `campaign_state.duplicate_policy()` can be passed directly to
 `suggest_next_experiments` to guard against accidental repeats.
+
+For closed-loop reports, plot either the logged record counts or the best
+measured target value so far:
+
+```python
+plot_bo_campaign_progress(log_path, campaign_id="conductivity_screen")
+
+plot_bo_campaign_progress(
+    log_path,
+    campaign_id="conductivity_screen",
+    target_column="conductivity_s_cm",
+    maximize=True,
+)
+```
 
 These workflows are best for materials informatics tasks where users have a
 realistic library of synthesizable materials or feasible experimental

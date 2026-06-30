@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -450,6 +451,492 @@ def _learning_curve_y_label(
     if len(metric_columns) == 1:
         return metric_columns[0]
     return "Metric"
+
+
+def plot_bo_benchmark_trace(
+    history: pd.DataFrame,
+    *,
+    value_col: str = "matgpr_best_so_far",
+    strategy_col: str = "matgpr_strategy",
+    evaluation_col: str = "matgpr_evaluation",
+    strategies: Sequence[str] | None = None,
+    show_std: bool = True,
+    std_style: str = "band",
+    markers: bool = True,
+    figsize: tuple[float, float] = (7, 5),
+    title: str | None = None,
+    xlabel: str = "Evaluated candidates",
+    ylabel: str | None = None,
+    save_path: str | None = None,
+    dpi: int = 300,
+):
+    """Plot repeated finite-pool BO benchmark traces.
+
+    The expected input is the ``history`` table returned by
+    ``compare_bo_strategies`` or ``simulate_bo_strategy``. Repeated runs at the
+    same strategy and evaluation count are averaged. When ``show_std=True``,
+    one standard deviation across repeated replays is drawn as either a shaded
+    band or error bars.
+    """
+    plot_df, strategy_order = _prepare_bo_trace_dataframe(
+        history,
+        strategy_col=strategy_col,
+        evaluation_col=evaluation_col,
+        value_col=value_col,
+        strategies=strategies,
+    )
+    summary = _summarize_bo_trace(
+        plot_df,
+        strategy_col=strategy_col,
+        evaluation_col=evaluation_col,
+        value_col=value_col,
+    )
+    std_style = _normalize_std_style(std_style)
+
+    fig, ax = plt.subplots(figsize=figsize)
+    marker_styles = ["o", "s", "^", "D", "v", "P", "X"]
+    linestyles = ["-", "--", "-.", ":"]
+
+    for i, strategy_name in enumerate(strategy_order):
+        strategy_data = summary.loc[summary[strategy_col] == strategy_name]
+        if strategy_data.empty:
+            continue
+        x_values = strategy_data[evaluation_col].to_numpy(dtype=float)
+        means = strategy_data["value_mean"].to_numpy(dtype=float)
+        stds = strategy_data["value_std"].to_numpy(dtype=float)
+        marker = marker_styles[i % len(marker_styles)] if markers else None
+        linestyle = linestyles[i % len(linestyles)]
+
+        if show_std and std_style == "errorbar":
+            ax.errorbar(
+                x_values,
+                means,
+                yerr=stds,
+                fmt=marker or "",
+                linestyle=linestyle,
+                elinewidth=1.2,
+                capsize=3,
+                markersize=6,
+                linewidth=2.1,
+                label=str(strategy_name),
+            )
+        else:
+            (line,) = ax.plot(
+                x_values,
+                means,
+                marker=marker,
+                linestyle=linestyle,
+                markersize=6,
+                linewidth=2.1,
+                label=str(strategy_name),
+            )
+            if show_std and std_style == "band":
+                ax.fill_between(
+                    x_values,
+                    means - stds,
+                    means + stds,
+                    color=line.get_color(),
+                    alpha=0.16,
+                    linewidth=0,
+                )
+
+    y_axis_label = ylabel or _bo_trace_y_label(value_col)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(y_axis_label)
+    ax.set_title(title or f"{y_axis_label} vs BO Evaluations")
+    _set_integer_xticks_if_compact(ax, summary[evaluation_col])
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=False, loc="best")
+    fig.tight_layout()
+    _save_figure(fig, save_path, dpi)
+    return fig, ax, summary
+
+
+def plot_bo_regret_trace(
+    history: pd.DataFrame,
+    *,
+    value_col: str = "matgpr_simple_regret",
+    strategy_col: str = "matgpr_strategy",
+    evaluation_col: str = "matgpr_evaluation",
+    strategies: Sequence[str] | None = None,
+    show_std: bool = True,
+    std_style: str = "band",
+    markers: bool = True,
+    figsize: tuple[float, float] = (7, 5),
+    title: str | None = None,
+    xlabel: str = "Evaluated candidates",
+    ylabel: str = "Simple regret",
+    save_path: str | None = None,
+    dpi: int = 300,
+):
+    """Plot simple regret from repeated finite-pool BO benchmarks."""
+    return plot_bo_benchmark_trace(
+        history,
+        value_col=value_col,
+        strategy_col=strategy_col,
+        evaluation_col=evaluation_col,
+        strategies=strategies,
+        show_std=show_std,
+        std_style=std_style,
+        markers=markers,
+        figsize=figsize,
+        title=title or "Simple Regret vs BO Evaluations",
+        xlabel=xlabel,
+        ylabel=ylabel,
+        save_path=save_path,
+        dpi=dpi,
+    )
+
+
+def plot_bo_campaign_progress(
+    log_data: pd.DataFrame | str | Path,
+    *,
+    campaign_id: str | None = None,
+    target_column: str | None = None,
+    maximize: bool = True,
+    campaign_col: str = "matgpr_campaign_id",
+    iteration_col: str = "matgpr_iteration",
+    record_type_col: str = "matgpr_record_type",
+    observation_record_type: str = "observation",
+    figsize: tuple[float, float] = (7, 5),
+    title: str | None = None,
+    xlabel: str = "BO iteration",
+    ylabel: str | None = None,
+    save_path: str | None = None,
+    dpi: int = 300,
+):
+    """Plot closed-loop BO campaign progress from a log dataframe or CSV path.
+
+    With ``target_column=None``, the plot shows the number of recommendation,
+    selection, and observation records logged at each iteration. With
+    ``target_column`` supplied, the plot shows the best observed target value
+    so far across observation records.
+    """
+    log = _prepare_bo_campaign_log(
+        log_data,
+        campaign_id=campaign_id,
+        campaign_col=campaign_col,
+        iteration_col=iteration_col,
+        record_type_col=record_type_col,
+    )
+    if target_column is None:
+        summary = _summarize_bo_campaign_record_counts(
+            log,
+            iteration_col=iteration_col,
+            record_type_col=record_type_col,
+        )
+        fig, ax = _plot_bo_campaign_record_counts(
+            summary,
+            iteration_col=iteration_col,
+            record_type_col=record_type_col,
+            figsize=figsize,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+        )
+    else:
+        summary = _summarize_bo_campaign_target_progress(
+            log,
+            target_column=target_column,
+            maximize=maximize,
+            iteration_col=iteration_col,
+            record_type_col=record_type_col,
+            observation_record_type=observation_record_type,
+        )
+        fig, ax = _plot_bo_campaign_target_progress(
+            summary,
+            target_column=target_column,
+            iteration_col=iteration_col,
+            maximize=maximize,
+            figsize=figsize,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+        )
+
+    _save_figure(fig, save_path, dpi)
+    return fig, ax, summary
+
+
+def _prepare_bo_trace_dataframe(
+    history: pd.DataFrame,
+    *,
+    strategy_col: str,
+    evaluation_col: str,
+    value_col: str,
+    strategies: Sequence[str] | None,
+) -> tuple[pd.DataFrame, list[str]]:
+    if not isinstance(history, pd.DataFrame):
+        raise TypeError("history must be a pandas DataFrame")
+    _require_columns(
+        history,
+        [strategy_col, evaluation_col, value_col],
+        "BO benchmark history",
+    )
+    plot_df = history[[strategy_col, evaluation_col, value_col]].copy()
+    plot_df[strategy_col] = plot_df[strategy_col].astype(str)
+    _coerce_finite_numeric_columns(
+        plot_df,
+        [evaluation_col, value_col],
+        "BO benchmark history",
+    )
+
+    if strategies is None:
+        strategy_order = plot_df[strategy_col].drop_duplicates().tolist()
+    else:
+        strategy_order = [str(strategy).strip() for strategy in strategies]
+        if not strategy_order or any(not strategy for strategy in strategy_order):
+            raise ValueError("strategies must contain non-empty strategy names")
+        plot_df = plot_df.loc[plot_df[strategy_col].isin(strategy_order)].copy()
+
+    if plot_df.empty:
+        raise ValueError("No BO benchmark history rows available for plotting")
+    return plot_df, strategy_order
+
+
+def _summarize_bo_trace(
+    plot_df: pd.DataFrame,
+    *,
+    strategy_col: str,
+    evaluation_col: str,
+    value_col: str,
+) -> pd.DataFrame:
+    summary = (
+        plot_df.groupby([strategy_col, evaluation_col], dropna=False, sort=False)
+        .agg(
+            value_mean=(value_col, "mean"),
+            value_std=(value_col, "std"),
+            n_runs=(value_col, "count"),
+        )
+        .reset_index()
+        .sort_values([strategy_col, evaluation_col])
+        .reset_index(drop=True)
+    )
+    summary["value_std"] = summary["value_std"].fillna(0.0)
+    summary["value_column"] = value_col
+    return summary
+
+
+def _normalize_std_style(std_style: str) -> str:
+    normalized = str(std_style).strip().lower().replace("-", "_")
+    aliases = {
+        "band": "band",
+        "shade": "band",
+        "shaded": "band",
+        "fill": "band",
+        "errorbar": "errorbar",
+        "errorbars": "errorbar",
+        "error_bar": "errorbar",
+    }
+    if normalized not in aliases:
+        raise ValueError("std_style must be 'band' or 'errorbar'")
+    return aliases[normalized]
+
+
+def _bo_trace_y_label(value_col: str) -> str:
+    labels = {
+        "matgpr_best_so_far": "Best value found",
+        "matgpr_simple_regret": "Simple regret",
+        "matgpr_target_value": "Observed target value",
+        "matgpr_strategy_score": "Strategy score",
+    }
+    return labels.get(value_col, value_col)
+
+
+def _prepare_bo_campaign_log(
+    log_data: pd.DataFrame | str | Path,
+    *,
+    campaign_id: str | None,
+    campaign_col: str,
+    iteration_col: str,
+    record_type_col: str,
+) -> pd.DataFrame:
+    log = _coerce_plot_dataframe(log_data, "log_data")
+    _require_columns(log, [iteration_col, record_type_col], "BO campaign log")
+    if campaign_id is not None:
+        _require_columns(log, [campaign_col], "BO campaign log")
+        log = log.loc[log[campaign_col].astype(str) == str(campaign_id)].copy()
+        if log.empty:
+            raise ValueError(f"No BO campaign log rows found for campaign_id={campaign_id!r}")
+    _coerce_finite_numeric_columns(log, [iteration_col], "BO campaign log")
+    log[record_type_col] = log[record_type_col].astype(str)
+    if log.empty:
+        raise ValueError("No BO campaign log rows available for plotting")
+    return log
+
+
+def _summarize_bo_campaign_record_counts(
+    log: pd.DataFrame,
+    *,
+    iteration_col: str,
+    record_type_col: str,
+) -> pd.DataFrame:
+    return (
+        log.groupby([iteration_col, record_type_col], dropna=False, sort=False)
+        .size()
+        .reset_index(name="matgpr_record_count")
+        .sort_values([iteration_col, record_type_col])
+        .reset_index(drop=True)
+    )
+
+
+def _plot_bo_campaign_record_counts(
+    summary: pd.DataFrame,
+    *,
+    iteration_col: str,
+    record_type_col: str,
+    figsize: tuple[float, float],
+    title: str | None,
+    xlabel: str,
+    ylabel: str | None,
+):
+    fig, ax = plt.subplots(figsize=figsize)
+    marker_styles = ["o", "s", "^", "D", "v", "P", "X"]
+    for i, record_type in enumerate(_ordered_record_types(summary[record_type_col])):
+        record_data = summary.loc[summary[record_type_col] == record_type]
+        ax.plot(
+            record_data[iteration_col].to_numpy(dtype=float),
+            record_data["matgpr_record_count"].to_numpy(dtype=float),
+            marker=marker_styles[i % len(marker_styles)],
+            linewidth=2.0,
+            markersize=6,
+            label=str(record_type),
+        )
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel or "Logged records")
+    ax.set_title(title or "Closed-Loop BO Records by Iteration")
+    _set_integer_xticks_if_compact(ax, summary[iteration_col])
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=False, loc="best")
+    fig.tight_layout()
+    return fig, ax
+
+
+def _summarize_bo_campaign_target_progress(
+    log: pd.DataFrame,
+    *,
+    target_column: str,
+    maximize: bool,
+    iteration_col: str,
+    record_type_col: str,
+    observation_record_type: str,
+) -> pd.DataFrame:
+    target_column = str(target_column).strip()
+    if not target_column:
+        raise ValueError("target_column must be non-empty when provided")
+    _require_columns(log, [target_column], "BO campaign log")
+    observations = log.loc[log[record_type_col] == str(observation_record_type)].copy()
+    if observations.empty:
+        raise ValueError(
+            f"No BO campaign observation rows found for record type {observation_record_type!r}"
+        )
+    _coerce_finite_numeric_columns(
+        observations,
+        [iteration_col, target_column],
+        "BO campaign observation log",
+    )
+    best_agg = "max" if maximize else "min"
+    summary = (
+        observations.groupby(iteration_col, dropna=False, sort=True)
+        .agg(
+            matgpr_observation_count=(target_column, "count"),
+            matgpr_target_mean=(target_column, "mean"),
+            matgpr_target_min=(target_column, "min"),
+            matgpr_target_max=(target_column, "max"),
+            matgpr_iteration_best=(target_column, best_agg),
+        )
+        .reset_index()
+        .sort_values(iteration_col)
+        .reset_index(drop=True)
+    )
+    if maximize:
+        summary["matgpr_best_so_far"] = summary["matgpr_iteration_best"].cummax()
+    else:
+        summary["matgpr_best_so_far"] = summary["matgpr_iteration_best"].cummin()
+    return summary
+
+
+def _plot_bo_campaign_target_progress(
+    summary: pd.DataFrame,
+    *,
+    target_column: str,
+    iteration_col: str,
+    maximize: bool,
+    figsize: tuple[float, float],
+    title: str | None,
+    xlabel: str,
+    ylabel: str | None,
+):
+    fig, ax = plt.subplots(figsize=figsize)
+    iterations = summary[iteration_col].to_numpy(dtype=float)
+    iteration_best = summary["matgpr_iteration_best"].to_numpy(dtype=float)
+    best_so_far = summary["matgpr_best_so_far"].to_numpy(dtype=float)
+
+    ax.scatter(
+        iterations,
+        iteration_best,
+        s=55,
+        alpha=0.8,
+        color="tab:gray",
+        edgecolor="black",
+        linewidth=0.4,
+        label="Best this iteration",
+    )
+    ax.plot(
+        iterations,
+        best_so_far,
+        marker="o",
+        linewidth=2.2,
+        markersize=6,
+        color="tab:blue",
+        label="Best so far",
+    )
+    goal = "maximum" if maximize else "minimum"
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel or target_column)
+    ax.set_title(title or f"Closed-Loop BO Target Progress ({goal})")
+    _set_integer_xticks_if_compact(ax, summary[iteration_col])
+    ax.grid(True, alpha=0.25)
+    ax.legend(frameon=False, loc="best")
+    fig.tight_layout()
+    return fig, ax
+
+
+def _coerce_plot_dataframe(data, name: str) -> pd.DataFrame:
+    if isinstance(data, pd.DataFrame):
+        return data.copy()
+    if isinstance(data, (str, Path)):
+        return pd.read_csv(Path(data))
+    raise TypeError(f"{name} must be a pandas DataFrame or CSV path")
+
+
+def _coerce_finite_numeric_columns(
+    df: pd.DataFrame,
+    columns: Sequence[str],
+    name: str,
+) -> None:
+    invalid_columns = []
+    for column in columns:
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        if numeric.isna().any() or not np.all(np.isfinite(numeric.to_numpy(dtype=float))):
+            invalid_columns.append(column)
+        df[column] = numeric.astype(float)
+    if invalid_columns:
+        raise ValueError(f"{name} has missing, non-numeric, or infinite values in {invalid_columns}")
+
+
+def _ordered_record_types(record_types: pd.Series) -> list[str]:
+    values = [str(value) for value in record_types.drop_duplicates()]
+    preferred = ["recommendation", "selection", "observation"]
+    return [value for value in preferred if value in values] + [
+        value for value in values if value not in preferred
+    ]
+
+
+def _set_integer_xticks_if_compact(ax, values: pd.Series) -> None:
+    unique_values = np.sort(pd.Series(values).dropna().unique().astype(float))
+    if 0 < unique_values.size <= 20 and np.allclose(unique_values, np.round(unique_values)):
+        ax.set_xticks(unique_values.astype(int))
 
 
 def plot_pca_scree(

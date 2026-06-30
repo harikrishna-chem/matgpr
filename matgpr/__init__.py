@@ -192,6 +192,9 @@ from .validation import (
     learning_curve,
 )
 from .visualization import (
+    plot_bo_benchmark_trace,
+    plot_bo_campaign_progress,
+    plot_bo_regret_trace,
     plot_correlation_matrix,
     plot_distribution,
     plot_learning_curve,
@@ -359,6 +362,9 @@ __all__ = [
     "pairwise_structure_distance",
     "pairwise_tanimoto_similarity",
     "pareto_front_mask",
+    "plot_bo_benchmark_trace",
+    "plot_bo_campaign_progress",
+    "plot_bo_regret_trace",
     "plot_correlation_matrix",
     "plot_distribution",
     "plot_learning_curve",
