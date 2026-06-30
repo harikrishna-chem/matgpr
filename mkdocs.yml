@@ -71,6 +71,7 @@ nav:
       - Validation: api/validation.md
       - Candidate Generation: api/candidate_generation.md
       - Bayesian Optimization: api/bayesian_optimization.md
+      - BO Benchmarking: api/bo_benchmarking.md
       - Multi-Objective Selection: api/multi_objective.md
       - Experiment Logging: api/experiment_logging.md
       - Uncertainty: api/uncertainty.md

@@ -1765,11 +1765,13 @@ same descriptor pipeline, then rank the candidates:
 
 ```python
 from matgpr import (
+    BOBenchmarkStrategy,
     CandidateConstraint,
     CandidateDuplicatePolicy,
     CandidateTrustRegion,
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
+    compare_bo_strategies,
     exclude_existing_candidates,
     ObjectiveSpec,
     observation_noise_variance,
@@ -2153,6 +2155,43 @@ campaign_summary = summarize_closed_loop_log(
     target_column="conductivity_s_cm",
 )
 ```
+
+Before committing to a closed-loop policy, benchmark candidate-ranking
+strategies on historical finite-pool data where outcomes are already known:
+
+```python
+benchmark = compare_bo_strategies(
+    historical_candidates,
+    strategies=[
+        BOBenchmarkStrategy(
+            "expected_improvement",
+            score_column="matgpr_acquisition",
+        ),
+        BOBenchmarkStrategy(
+            "physics_prior",
+            score_column="physics_score",
+        ),
+        BOBenchmarkStrategy("random"),
+    ],
+    target_column="measured_conductivity_s_cm",
+    candidate_id_column="candidate_id",
+    maximize=True,
+    budget=20,
+    n_repeats=25,
+    random_state=42,
+)
+
+benchmark_history = benchmark.history
+benchmark_summary = benchmark.summary_by_strategy()
+```
+
+`benchmark.history` records the best value found after each simulated
+experiment. `benchmark.summary` gives one row per strategy and repeat, while
+`benchmark.summary_by_strategy()` aggregates final best value, simple regret,
+hit-optimum rate, and evaluations needed to find the optimum. This is an
+offline replay against known outcomes; it is useful for comparing acquisition
+or ranking ideas, but it should not be reported as a live prospective
+closed-loop result.
 
 At the start of a new session, rebuild campaign state from the log before
 asking for the next recommendations:

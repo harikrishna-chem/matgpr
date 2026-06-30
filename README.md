@@ -54,6 +54,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Closed-loop experiment logging and restart state for BO recommendations,
   selected experiments, measured observations, pending candidates, and
   campaign summaries.
+- Lightweight finite-pool BO benchmarks for comparing acquisition strategies,
+  physics-prior scores, model scores, and random baselines on known outcomes.
 - Uncertainty diagnostics for coverage, calibration, NLPD, standardized
   residuals, and uncertainty-error trends.
 - Plotting and metrics utilities for parity plots, learning curves, PCA, and
@@ -132,6 +134,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
+| `matgpr.bo_benchmarking` | `BOBenchmarkStrategy`, `simulate_bo_strategy`, `compare_bo_strategies`, `summarize_bo_benchmark` | Offline finite-pool BO strategy benchmarks |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
 | `matgpr.experiment_logging` | `resume_bo_campaign`, `infer_next_bo_iteration`, `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign state and audit trails |
 | `matgpr.metrics` | `regression_metrics`, `train_test_regression_metrics` | Model quality metrics |

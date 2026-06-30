@@ -28,6 +28,8 @@ types, and class methods.
   composition, formulation, and processing-condition candidate pools.
 - [Bayesian Optimization](bayesian_optimization.md): optional BoTorch
   finite-pool candidate ranking for next-experiment selection.
+- [BO Benchmarking](bo_benchmarking.md): offline finite-pool strategy replay
+  against known outcomes.
 - [Multi-Objective Selection](multi_objective.md): Pareto-front and weighted
   finite-pool ranking helpers.
 - [Experiment Logging](experiment_logging.md): closed-loop recommendation,
