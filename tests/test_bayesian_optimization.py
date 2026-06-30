@@ -20,6 +20,7 @@ from matgpr import (
     rank_discrete_candidates,
     rank_multi_objective_discrete_candidates,
     select_diverse_batch,
+    select_sequential_multi_objective_batch,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
 )
@@ -382,6 +383,16 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertIn("batch_selection", str(context.exception))
 
+        with self.assertRaises(ValueError) as context:
+            suggest_next_experiments(
+                pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
+                pd.Series([0.0, 1.0, 0.5]),
+                pd.DataFrame({"x": [0.25, 0.75]}),
+                batch_selection="sequential",
+            )
+
+        self.assertIn("'top' or 'diverse'", str(context.exception))
+
     def test_suggest_multi_objective_next_experiments_rejects_invalid_batch_selection_before_botorch_use(self):
         with self.assertRaises(ValueError) as context:
             suggest_multi_objective_next_experiments(
@@ -519,6 +530,81 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("matgpr_predicted_pareto_front", result.ranked_candidates.columns)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
         self.assertIn("material_id", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_suggest_multi_objective_next_experiments_supports_sequential_batch(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.3, 0.7, 1.0]})
+        y_train = pd.DataFrame(
+            {
+                "performance": [0.1, 0.4, 0.8, 1.0],
+                "cost": [4.0, 2.5, 2.0, 3.0],
+            }
+        )
+        X_candidates = pd.DataFrame({"x": [0.15, 0.35, 0.55, 0.9]})
+        candidate_data = pd.DataFrame({"material_id": ["a", "b", "c", "d"]})
+
+        result = suggest_multi_objective_next_experiments(
+            X_train,
+            y_train,
+            X_candidates,
+            objective_directions=("maximize", "minimize"),
+            candidate_data=candidate_data,
+            top_k=3,
+            batch_selection="greedy",
+            acquisition_function="q_log_expected_hypervolume_improvement",
+            fit_model=False,
+            mc_samples=16,
+            sampler_seed=11,
+        )
+
+        self.assertEqual(result.recommendations.shape[0], 3)
+        self.assertEqual(result.recommendations["matgpr_batch_order"].tolist(), [1, 2, 3])
+        self.assertTrue(result.recommendations["matgpr_batch_selected"].all())
+        self.assertTrue(np.isfinite(result.recommendations["matgpr_batch_score"]).all())
+        self.assertEqual(result.recommendations["material_id"].nunique(), 3)
+        self.assertIn("matgpr_rank", result.recommendations.columns)
+
+    @unittest.skipUnless(
+        importlib.util.find_spec("botorch") is not None,
+        "BoTorch is optional and not installed",
+    )
+    def test_select_sequential_multi_objective_batch_can_return_annotated_pool(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.DataFrame(
+            {
+                "strength": [1.0, 2.0, 3.0],
+                "toxicity": [0.5, 0.4, 0.8],
+            }
+        )
+        X_candidates = pd.DataFrame({"x": [0.2, 0.6, 0.9]})
+        candidate_data = pd.DataFrame({"material_id": ["a", "b", "c"]})
+        surrogate = fit_multi_objective_botorch_surrogate(
+            X_train,
+            y_train,
+            objective_directions=("maximize", "minimize"),
+            fit_model=False,
+        )
+
+        annotated = select_sequential_multi_objective_batch(
+            surrogate,
+            X_candidates,
+            top_k=2,
+            candidate_data=candidate_data,
+            mc_samples=16,
+            sampler_seed=13,
+            return_all=True,
+        )
+
+        selected = annotated[annotated["matgpr_batch_selected"]]
+
+        self.assertEqual(annotated.shape[0], 3)
+        self.assertEqual(selected["matgpr_batch_order"].tolist(), [1, 2])
+        self.assertIn("matgpr_predicted_mean_strength", annotated.columns)
+        self.assertIn("matgpr_predicted_std_toxicity", annotated.columns)
+        self.assertTrue(np.isfinite(selected["matgpr_batch_score"]).all())
 
     @unittest.skipUnless(
         importlib.util.find_spec("botorch") is not None,

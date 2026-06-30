@@ -39,6 +39,7 @@ __all__ = [
     "rank_discrete_candidates",
     "rank_multi_objective_discrete_candidates",
     "select_diverse_batch",
+    "select_sequential_multi_objective_batch",
     "suggest_multi_objective_next_experiments",
     "suggest_next_experiments",
 ]
@@ -950,6 +951,155 @@ def rank_multi_objective_discrete_candidates(
     return ranked
 
 
+def select_sequential_multi_objective_batch(
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    X_candidates: pd.DataFrame | np.ndarray,
+    *,
+    top_k: int,
+    acquisition_function: str = "q_log_expected_hypervolume_improvement",
+    candidate_data: pd.DataFrame | None = None,
+    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraint_policy: str = "filter",
+    mc_samples: int = 128,
+    sampler_seed: int | None = 42,
+    return_all: bool = False,
+) -> pd.DataFrame:
+    """Select a greedy multi-objective batch from a finite candidate pool.
+
+    Candidates are selected one at a time. After each selection, the selected
+    candidates are treated as pending points and the hypervolume-improvement
+    acquisition is recomputed for the remaining candidates. This is useful
+    when recommending a small experimental batch, because the second and later
+    choices account for what was already selected rather than simply taking the
+    top individual acquisition scores.
+
+    Parameters
+    ----------
+    surrogate
+        Fitted multi-objective surrogate returned by
+        `fit_multi_objective_botorch_surrogate`.
+    X_candidates
+        Numeric candidate features with shape `(n_candidates, n_features)`.
+    top_k
+        Maximum number of candidates to select.
+    acquisition_function
+        Multi-objective acquisition function name. Supported values match
+        `rank_multi_objective_discrete_candidates`.
+    candidate_data
+        Optional metadata dataframe to carry through to the output.
+    constraints
+        Optional finite-pool feasibility constraints.
+    constraint_policy
+        `"filter"` selects only feasible candidates. `"annotate"` keeps all
+        candidates and adds feasibility columns.
+    mc_samples
+        Number of Monte Carlo samples for hypervolume acquisition estimates.
+    sampler_seed
+        Optional seed for reproducible Sobol sampling.
+    return_all
+        If `True`, return the full annotated candidate table. Otherwise return
+        only selected candidates in sequential batch order.
+    """
+    if top_k < 1:
+        raise ValueError("top_k must be at least 1")
+    constraint_policy = _validate_constraint_policy(constraint_policy)
+    mc_samples = _validate_mc_samples(mc_samples)
+
+    import torch
+
+    candidate_array, _, candidate_index = _as_numeric_matrix(
+        X_candidates,
+        name="X_candidates",
+    )
+    if candidate_array.shape[1] != surrogate.train_X.shape[-1]:
+        raise ValueError(
+            "X_candidates must have the same number of features as X_train "
+            f"({candidate_array.shape[1]} != {surrogate.train_X.shape[-1]})"
+        )
+
+    result = _candidate_frame(
+        X_candidates=X_candidates,
+        candidate_data=candidate_data,
+        candidate_index=candidate_index,
+    )
+    candidate_X = _to_tensor(
+        torch,
+        candidate_array,
+        device=surrogate.train_X.device,
+    )
+    single_scores, predicted_mean, predicted_std = _multi_objective_scores_and_predictions(
+        surrogate,
+        candidate_X,
+        acquisition_function=acquisition_function,
+        mc_samples=mc_samples,
+        sampler_seed=sampler_seed,
+        x_pending=None,
+    )
+    objective_columns = _add_multi_objective_prediction_columns(
+        result,
+        surrogate=surrogate,
+        predicted_mean=predicted_mean,
+        predicted_std=predicted_std,
+    )
+    result["matgpr_acquisition"] = single_scores
+    result["matgpr_predicted_pareto_front"] = pareto_front_mask(
+        result,
+        [
+            ObjectiveSpec(
+                name=surrogate.objective_names[index],
+                column=column,
+                goal=surrogate.objective_directions[index],
+            )
+            for index, column in enumerate(objective_columns)
+        ],
+    ).to_numpy(dtype=bool)
+
+    if constraints is not None:
+        result = apply_candidate_constraints(result, constraints)
+        if constraint_policy == "filter":
+            keep_mask = result["matgpr_feasible"].to_numpy(dtype=bool)
+            result = result.loc[keep_mask].copy()
+            candidate_X = candidate_X[torch.as_tensor(keep_mask, device=candidate_X.device)]
+
+    result = result.reset_index(drop=True)
+    result.insert(0, "matgpr_rank", _rank_descending(result["matgpr_acquisition"]))
+    result["matgpr_batch_selected"] = False
+    result["matgpr_batch_order"] = pd.Series(pd.NA, index=result.index, dtype="Int64")
+    result["matgpr_batch_score"] = np.nan
+
+    if result.empty:
+        return result.reset_index(drop=True)
+
+    selected_positions, selected_scores = _greedy_multi_objective_batch_positions(
+        surrogate,
+        candidate_X,
+        top_k=min(top_k, result.shape[0]),
+        acquisition_function=acquisition_function,
+        mc_samples=mc_samples,
+        sampler_seed=sampler_seed,
+    )
+    for order, (position, score) in enumerate(
+        zip(selected_positions, selected_scores),
+        start=1,
+    ):
+        result.loc[position, "matgpr_batch_selected"] = True
+        result.loc[position, "matgpr_batch_order"] = order
+        result.loc[position, "matgpr_batch_score"] = score
+
+    if return_all:
+        return result.sort_values(
+            ["matgpr_batch_selected", "matgpr_batch_order", "matgpr_rank"],
+            ascending=[False, True, True],
+            na_position="last",
+        ).reset_index(drop=True)
+
+    return (
+        result[result["matgpr_batch_selected"]]
+        .sort_values("matgpr_batch_order")
+        .reset_index(drop=True)
+    )
+
+
 def suggest_next_experiments(
     X_train: pd.DataFrame | np.ndarray,
     y_train: pd.Series | np.ndarray,
@@ -1108,7 +1258,7 @@ def suggest_multi_objective_next_experiments(
     if top_k < 1:
         raise ValueError("top_k must be at least 1")
     constraint_policy = _validate_constraint_policy(constraint_policy)
-    batch_selection = _validate_batch_selection(batch_selection)
+    batch_selection = _validate_batch_selection(batch_selection, allow_sequential=True)
 
     surrogate = fit_multi_objective_botorch_surrogate(
         X_train,
@@ -1133,7 +1283,20 @@ def suggest_multi_objective_next_experiments(
         mc_samples=mc_samples,
         sampler_seed=sampler_seed,
     )
-    if batch_selection == "diverse":
+    if batch_selection == "sequential":
+        recommendations = select_sequential_multi_objective_batch(
+            surrogate,
+            X_candidates,
+            top_k=top_k,
+            acquisition_function=acquisition_function,
+            candidate_data=candidate_data,
+            constraints=constraints,
+            constraint_policy=constraint_policy,
+            mc_samples=mc_samples,
+            sampler_seed=sampler_seed,
+            return_all=False,
+        )
+    elif batch_selection == "diverse":
         recommendations = select_diverse_batch(
             ranked_candidates,
             top_k=top_k,
@@ -1216,6 +1379,7 @@ def _build_multi_objective_acquisition_function(
     surrogate: MultiObjectiveBoTorchSurrogate,
     mc_samples: int,
     sampler_seed: int | None,
+    x_pending: Any | None = None,
 ) -> Any:
     normalized = _normalize_multi_objective_acquisition_name(name)
     import torch
@@ -1242,6 +1406,7 @@ def _build_multi_objective_acquisition_function(
             ref_point=surrogate.reference_point,
             partitioning=partitioning,
             sampler=sampler,
+            X_pending=x_pending,
         )
     if normalized == "q_log_noisy_expected_hypervolume_improvement":
         from botorch.acquisition.multi_objective.logei import (
@@ -1253,6 +1418,7 @@ def _build_multi_objective_acquisition_function(
             ref_point=surrogate.reference_point,
             X_baseline=surrogate.train_X,
             sampler=sampler,
+            X_pending=x_pending,
         )
     if normalized == "q_expected_hypervolume_improvement":
         from botorch.acquisition.multi_objective.monte_carlo import (
@@ -1271,6 +1437,7 @@ def _build_multi_objective_acquisition_function(
             ref_point=surrogate.reference_point,
             partitioning=partitioning,
             sampler=sampler,
+            X_pending=x_pending,
         )
     if normalized == "q_noisy_expected_hypervolume_improvement":
         from botorch.acquisition.multi_objective.monte_carlo import (
@@ -1282,6 +1449,7 @@ def _build_multi_objective_acquisition_function(
             ref_point=surrogate.reference_point,
             X_baseline=surrogate.train_X,
             sampler=sampler,
+            X_pending=x_pending,
         )
     raise ValueError(
         "acquisition_function must be one of "
@@ -1289,6 +1457,92 @@ def _build_multi_objective_acquisition_function(
         "'q_log_noisy_expected_hypervolume_improvement', "
         "'q_expected_hypervolume_improvement', or "
         "'q_noisy_expected_hypervolume_improvement'"
+    )
+
+
+def _multi_objective_scores_and_predictions(
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    candidate_X: Any,
+    *,
+    acquisition_function: str,
+    mc_samples: int,
+    sampler_seed: int | None,
+    x_pending: Any | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    import torch
+
+    acquisition = _build_multi_objective_acquisition_function(
+        acquisition_function,
+        surrogate=surrogate,
+        mc_samples=mc_samples,
+        sampler_seed=sampler_seed,
+        x_pending=x_pending,
+    )
+
+    surrogate.model.eval()
+    with torch.no_grad():
+        scores = acquisition(candidate_X.unsqueeze(-2)).detach().cpu().numpy().reshape(-1)
+        posterior = surrogate.model.posterior(candidate_X)
+        objective_mean = posterior.mean.detach().cpu()
+        std = posterior.variance.clamp_min(0.0).sqrt().detach().cpu().numpy()
+
+    signs = surrogate.objective_signs.detach().cpu()
+    predicted_mean = (objective_mean * signs).numpy()
+    return scores, predicted_mean, std
+
+
+def _add_multi_objective_prediction_columns(
+    data: pd.DataFrame,
+    *,
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    predicted_mean: np.ndarray,
+    predicted_std: np.ndarray,
+) -> list[str]:
+    objective_columns = []
+    for objective_index, objective_name in enumerate(surrogate.objective_names):
+        slug = _slugify_objective_name(objective_name)
+        mean_column = f"matgpr_predicted_mean_{slug}"
+        std_column = f"matgpr_predicted_std_{slug}"
+        data[mean_column] = predicted_mean[:, objective_index]
+        data[std_column] = predicted_std[:, objective_index]
+        objective_columns.append(mean_column)
+    return objective_columns
+
+
+def _greedy_multi_objective_batch_positions(
+    surrogate: MultiObjectiveBoTorchSurrogate,
+    candidate_X: Any,
+    *,
+    top_k: int,
+    acquisition_function: str,
+    mc_samples: int,
+    sampler_seed: int | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    selected: list[int] = []
+    selected_scores: list[float] = []
+    remaining = np.ones(candidate_X.shape[0], dtype=bool)
+
+    while len(selected) < top_k and np.any(remaining):
+        x_pending = candidate_X[selected] if selected else None
+        scores, _, _ = _multi_objective_scores_and_predictions(
+            surrogate,
+            candidate_X,
+            acquisition_function=acquisition_function,
+            mc_samples=mc_samples,
+            sampler_seed=sampler_seed,
+            x_pending=x_pending,
+        )
+        scores[~remaining] = -np.inf
+        chosen = _argmax_stable(scores)
+        if chosen is None:
+            break
+        selected.append(chosen)
+        selected_scores.append(float(scores[chosen]))
+        remaining[chosen] = False
+
+    return (
+        np.asarray(selected, dtype=int),
+        np.asarray(selected_scores, dtype=float),
     )
 
 
@@ -1377,11 +1631,29 @@ def _validate_constraint_policy(policy: str) -> str:
     return normalized
 
 
-def _validate_batch_selection(batch_selection: str) -> str:
-    normalized = batch_selection.strip().lower()
-    if normalized not in {"top", "diverse"}:
-        raise ValueError("batch_selection must be 'top' or 'diverse'")
-    return normalized
+def _validate_batch_selection(
+    batch_selection: str,
+    *,
+    allow_sequential: bool = False,
+) -> str:
+    normalized = batch_selection.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "top": "top",
+        "diverse": "diverse",
+    }
+    if allow_sequential:
+        aliases.update(
+            {
+                "greedy": "sequential",
+                "sequential": "sequential",
+                "sequential_hypervolume": "sequential",
+                "greedy_hypervolume": "sequential",
+            }
+        )
+    if normalized not in aliases:
+        allowed = "'top', 'diverse', or 'sequential'" if allow_sequential else "'top' or 'diverse'"
+        raise ValueError(f"batch_selection must be {allowed}")
+    return aliases[normalized]
 
 
 def _validate_mc_samples(mc_samples: int) -> int:
@@ -1494,6 +1766,15 @@ def _top_score_positions(effective_scores: np.ndarray, top_k: int) -> np.ndarray
     positions = np.arange(effective_scores.shape[0])
     order = np.lexsort((positions, -effective_scores))
     return order[: min(top_k, effective_scores.shape[0])]
+
+
+def _rank_descending(values: pd.Series) -> np.ndarray:
+    scores = _as_finite_numeric_vector(values, name=str(values.name or "scores"))
+    positions = np.arange(scores.shape[0])
+    order = np.lexsort((positions, -scores))
+    ranks = np.empty(scores.shape[0], dtype=int)
+    ranks[order] = np.arange(1, scores.shape[0] + 1)
+    return ranks
 
 
 def _greedy_diverse_positions(

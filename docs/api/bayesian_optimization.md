@@ -8,7 +8,9 @@ passed directly or prepared from reported uncertainty columns and replicate
 measurements before using noisy expected-improvement acquisition functions.
 For multi-objective campaigns, independent BoTorch GP surrogates can be ranked
 with expected hypervolume improvement while keeping objective directions in
-original materials-property units.
+original materials-property units. Greedy sequential batch selection can
+recompute hypervolume improvement after each selected candidate is treated as a
+pending experiment.
 Use the experiment-logging API to record recommendations, selected batches,
 measured outcomes, and compact campaign summaries across closed-loop
 iterations.

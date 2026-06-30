@@ -13,6 +13,7 @@ from .bayesian_optimization import (
     rank_discrete_candidates,
     rank_multi_objective_discrete_candidates,
     select_diverse_batch,
+    select_sequential_multi_objective_batch,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
 )
@@ -355,6 +356,7 @@ __all__ = [
     "scalarize_objectives",
     "separate_features_target",
     "select_diverse_batch",
+    "select_sequential_multi_objective_batch",
     "select_pareto_front",
     "split_train_test",
     "split_candidate_features",

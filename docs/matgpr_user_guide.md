@@ -84,6 +84,7 @@ from matgpr import (
     select_pareto_front,
     CandidateConstraint,
     select_diverse_batch,
+    select_sequential_multi_objective_batch,
     suggest_multi_objective_next_experiments,
     suggest_next_experiments,
     log_bo_recommendations,
@@ -1772,6 +1773,7 @@ from matgpr import (
     observation_noise_variance,
     rank_multi_objective_candidates,
     select_diverse_batch,
+    select_sequential_multi_objective_batch,
     select_pareto_front,
     split_candidate_features,
     suggest_multi_objective_next_experiments,
@@ -1920,6 +1922,37 @@ functions are `"q_log_expected_hypervolume_improvement"`,
 `"q_log_noisy_expected_hypervolume_improvement"`,
 `"q_expected_hypervolume_improvement"`, and
 `"q_noisy_expected_hypervolume_improvement"`.
+
+For multi-experiment batches, use sequential hypervolume-aware selection. This
+greedy strategy picks one candidate, treats it as pending, then recomputes the
+multi-objective acquisition for the remaining pool:
+
+```python
+sequential_bo_result = suggest_multi_objective_next_experiments(
+    X_train=X_measured_features,
+    y_train=measured_data[["conductivity_s_cm", "degradation_rate"]],
+    X_candidates=X_candidate_features,
+    objective_directions=("maximize", "minimize"),
+    candidate_data=candidate_metadata,
+    top_k=4,
+    batch_selection="sequential",
+    acquisition_function="q_log_expected_hypervolume_improvement",
+)
+
+sequential_batch = sequential_bo_result.recommendations[
+    [
+        "candidate_id",
+        "matgpr_batch_order",
+        "matgpr_batch_score",
+        "matgpr_acquisition",
+    ]
+]
+```
+
+`matgpr_batch_score` is the step-wise acquisition value after previously
+selected candidates are treated as pending. `matgpr_acquisition` remains the
+single-candidate acquisition value, which is useful for auditing why sequential
+batch order may differ from the individual ranking.
 
 When experimental rows have known measurement uncertainty, pass a target-noise
 variance vector to the BoTorch surrogate. The variance should be in squared
