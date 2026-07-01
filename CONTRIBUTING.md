@@ -6,24 +6,13 @@ Thank you for your interest in improving `matgpr`.
 high-quality materials-informatics workflows, physics-informed GPR models,
 well-documented examples, and reproducible benchmarks.
 
-## Current Licensing Status
+## Licensing
 
-`matgpr` is dual-licensed:
+`matgpr` is released under the Apache License 2.0. See `LICENSE`.
 
-- Community License: GNU Affero General Public License v3.0.
-- Commercial License: available for proprietary or closed-source commercial
-  applications by contacting `harikrishnasahu89@gmail.com`.
-
-Because the project has a dual-license model:
-
-- do not submit large external code contributions unless contribution and
-  relicensing terms have been agreed in writing,
-- small issue reports, documentation suggestions, and reproducibility feedback
-  are welcome,
-- a final contributor policy may be added before broader external contribution
-  intake.
-
-See `LICENSE`, `COMMERCIAL_LICENSE.md`, and `docs/license_strategy.md`.
+Small issue reports, documentation suggestions, and reproducibility feedback
+are welcome. Larger external code contributions should be discussed first so
+scope, testing expectations, and attribution are clear.
 
 ## Development Setup
 
@@ -31,7 +20,7 @@ From a local checkout:
 
 ```bash
 python -m pip install -U pip
-python -m pip install -e ".[dev,examples]"
+python -m pip install -e ".[dev,examples,bo]"
 ```
 
 For optional fingerprinting backends:
@@ -65,12 +54,13 @@ replacement for full scientific benchmark runs.
 
 Each example should include:
 
-- `dataset.csv` or a clear data-preparation script,
+- `dataset.pkl` or a clear data-preparation script,
 - a notebook with standard GPR and at least one physics-informed GPR model,
 - learning curves with repeated splits,
 - 90/10 validation with 10-fold cross-validation,
-- train/test parity with uncertainty bars,
-- production-model interpretation such as SHAP or sensitivity analysis,
+- train/test parity with uncertainty bars when it clarifies model behavior,
+- production-model interpretation such as SHAP or sensitivity analysis when it
+  is computationally practical and scientifically useful,
 - a short report explaining physics, equations, learned parameters, and
   performance.
 

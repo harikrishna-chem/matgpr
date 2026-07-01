@@ -13,14 +13,12 @@ optional extras.
 ### Core Dependencies
 
 These packages are installed with `matgpr` because they support common
-materials-informatics workflows and are useful across many examples.
+materials-informatics workflows used by the current public API.
 
 | Package | Role in matgpr | Typical use |
 | --- | --- | --- |
 | `pymatgen` | Composition parsing and crystal-structure objects | Inorganic formulas, structure files, elemental properties |
 | `rdkit` | Molecule and polymer SMILES fingerprints | Organic molecules, solvents, polymer repeat units |
-| `matminer` | Standard materials featurizers | Composition, structure, site, band-structure, and DOS descriptors |
-| `mendeleev` | Lightweight elemental-property table | Custom composition descriptors and element metadata |
 
 ### Optional Dependencies
 
@@ -30,6 +28,7 @@ platform-specific dependency constraints.
 
 | Extra | Packages | Use when |
 | --- | --- | --- |
+| `materials-extra` | `matminer`, `mendeleev` | Published materials featurizers and custom elemental-property tables |
 | `structures` | `ase`, `dscribe` | SOAP, ACSF, MBTR, Coulomb/Sine/Ewald matrix descriptors |
 | `molecular-extra` | `mordredcommunity` | Large molecular descriptor sets beyond RDKit defaults |
 | `jarvis` | `jarvis-tools` | JARVIS datasets and JARVIS-style materials descriptors |
@@ -40,6 +39,7 @@ Install examples:
 
 ```bash
 python -m pip install -e .
+python -m pip install -e ".[materials-extra]"
 python -m pip install -e ".[structures]"
 python -m pip install -e ".[molecular-extra]"
 python -m pip install -e ".[all-fingerprints]"
@@ -95,8 +95,8 @@ Best default for early GPR examples:
 
 1. Start with `append_composition_fingerprints`.
 2. Add process variables, measurement conditions, or physical descriptors.
-3. Compare against `matminer` composition featurizers when the baseline is
-   stable.
+3. Compare against optional `matminer` composition featurizers when the
+   baseline is stable and `matgpr[materials-extra]` is installed.
 4. Use `append_element_fractions` when the model will use
    `ElementFractionKernel`.
 
@@ -141,8 +141,8 @@ Practical guidance:
 
 - For small tabular GPR, start with `append_structure_fingerprints` and
   `StructureFeatureKernel`.
-- Compare against `matminer` structure featurizers when structure information
-  appears important.
+- Compare against optional `matminer` structure featurizers when structure
+  information appears important and `matgpr[materials-extra]` is installed.
 - For local atomic environments, defects, surfaces, or force-field-like
   descriptors, use `DScribe`.
 - For graph neural networks, keep the graph featurizer optional and separate
@@ -278,7 +278,7 @@ fingerprint block if they are part of the physical interpretation.
 | Dataset type | First model | Stronger next model | Optional advanced model |
 | --- | --- | --- | --- |
 | inorganic formula only | `pymatgen` composition descriptors | `matminer` composition featurizers | element embeddings or learned composition models |
-| inorganic crystal structures | `matminer` structure featurizers | `DScribe` SOAP/MBTR | graph neural network descriptors |
+| inorganic crystal structures | `pymatgen` structure descriptors | optional `matminer` structure featurizers or `DScribe` SOAP/MBTR | graph neural network descriptors |
 | molecule SMILES | RDKit Morgan + descriptors | Mordred-selected descriptors | DeepChem graph featurizers |
 | polymer repeat-unit SMILES | cyclic-trimer RDKit Morgan + descriptors | add Mordred or polymer physics features | polymer graph/sequence model |
 | mixed materials and conditions | material fingerprint + condition columns | physics-informed mean features | multitask/BO workflow |
@@ -310,9 +310,10 @@ Already implemented:
 - `PolymerSmilesFeaturizer`
 - deterministic fingerprint cache keys through `fingerprint_cache_key`
 
-### Near-Term Additions
+### Planned Optional Wrappers
 
-Recommended next wrappers:
+These wrappers are not part of the current public API. They are good next
+additions after the first release:
 
 | Wrapper | Backend | Purpose |
 | --- | --- | --- |
@@ -337,8 +338,8 @@ dscribe = require_optional_dependency("dscribe")
 2. If SMILES are available, use RDKit Morgan fingerprints plus descriptors.
 3. If polymer repeat units are available, use the cyclic-trimer polymer
    canonicalization before fingerprinting.
-4. If structures are available, start with matminer structure descriptors before
-   moving to SOAP/MBTR.
+4. If structures are available, start with `pymatgen` structure descriptors
+   before moving to optional `matminer` or SOAP/MBTR descriptors.
 5. If the dataset is small, prefer interpretable descriptors and simple physics
    features over very large fingerprint spaces.
 6. If the dataset is large and diverse, consider optional deep/graph

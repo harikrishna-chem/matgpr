@@ -111,7 +111,7 @@ from matgpr import (
 Start by making column names stable and missing values explicit.
 
 ```python
-data = pd.read_csv("dataset.csv")
+data = pd.read_pickle("dataset.pkl")
 
 data = normalize_column_names(data)
 data = replace_missing_placeholders(data)
@@ -120,6 +120,10 @@ data = drop_duplicate_rows(data)
 missing_report = summarize_missingness(data)
 numeric_report = summarize_numeric_columns(data)
 ```
+
+The public examples use `dataset.pkl` files stored in this repository. Only
+load pickle files from trusted sources; for third-party datasets, prefer CSV,
+Parquet, or a documented data-preparation script.
 
 Useful cleaning functions:
 
@@ -2398,13 +2402,13 @@ from matgpr import (
     plot_parity,
 )
 
-data = pd.read_csv("hardness.csv")
+data = pd.read_pickle("dataset.pkl")
 data = normalize_column_names(data)
 data = replace_missing_placeholders(data)
 data = append_composition_fingerprints(data, formula_column="formula", errors="coerce")
 data = data.dropna().reset_index(drop=True)
 
-target_column = "hardness_gpa"
+target_column = "target_property"
 feature_columns = [column for column in data.columns if column not in ["formula", target_column]]
 X = data[feature_columns]
 y = data[target_column]

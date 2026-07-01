@@ -28,7 +28,7 @@ jobs:
       - name: Install package
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,examples]"
+          python -m pip install -e ".[dev,examples,bo]"
 
       - name: Lint
         run: python -m ruff check matgpr tests scripts

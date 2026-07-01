@@ -1,8 +1,6 @@
 gpytorch
 joblib
 matplotlib
-matminer
-mendeleev
 numpy
 pandas
 pymatgen

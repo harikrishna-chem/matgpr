@@ -14,6 +14,20 @@ except ImportError:
     from metrics import regression_metrics
     from uncertainty import calibration_curve, uncertainty_diagnostics
 
+__all__ = [
+    "plot_bo_benchmark_trace",
+    "plot_bo_campaign_progress",
+    "plot_bo_regret_trace",
+    "plot_correlation_matrix",
+    "plot_distribution",
+    "plot_learning_curve",
+    "plot_parity",
+    "plot_pca_scores",
+    "plot_pca_scree",
+    "plot_uncertainty_calibration",
+    "plot_uncertainty_vs_error",
+]
+
 
 def plot_parity(
     y_train_true,

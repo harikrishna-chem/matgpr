@@ -79,6 +79,19 @@ physics term while still keeping the mean function compact.
 | PI-GPR: degeneracy | frontier-orbital near-degeneracy | nearby orbitals beyond HOMO/LUMO can improve OPV processes |
 | PI-GPR: degeneracy + binding | near-degeneracy plus low exciton binding | adds an interpretable charge-separation term |
 
+## 20 Percent Release Gate
+
+The first public PI-GPR example set keeps only notebooks where a
+physics-informed model improves the 20 percent training-data RMSE over the
+non-physics baseline.
+
+For the OPV gate-only run:
+
+- Standard GPR RMSE: 1.520.
+- Retained PI-GPR model: degeneracy + binding.
+- Retained PI-GPR RMSE: 1.278.
+- RMSE advantage: 0.242.
+
 ## Physics Scores
 
 Let `z(q)` be the z-score of descriptor `q` using only the active training
@@ -227,9 +240,11 @@ production fit uses all available OPV data.
 
 ## Production Model And SHAP
 
-The production model is selected from Standard GPR, PI-GPR degeneracy, and
-PI-GPR degeneracy + binding using the 20 percent training-data RMSE summary.
-That selected model is refit on 100 percent of the OPV dataset.
+The production model is selected from the PI-GPR candidates only when a
+PI-GPR model has lower mean RMSE than Standard GPR at the 20 percent
+training-data point. This keeps the notebook as a physics-informed example
+only when the low-data comparison supports that conclusion. The retained
+PI-GPR model is then refit on 100 percent of the OPV dataset.
 
 The notebook then computes SHAP values for the production model using a
 model-agnostic permutation explainer. The SHAP plots identify which descriptors

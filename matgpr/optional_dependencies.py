@@ -66,6 +66,18 @@ OPTIONAL_DEPENDENCIES: dict[str, OptionalDependency] = {
         extra="molecular-extra",
         purpose="Mordred molecular descriptors",
     ),
+    "matminer": OptionalDependency(
+        import_name="matminer",
+        package_name="matminer",
+        extra="materials-extra",
+        purpose="Matminer materials featurizers",
+    ),
+    "mendeleev": OptionalDependency(
+        import_name="mendeleev",
+        package_name="mendeleev",
+        extra="materials-extra",
+        purpose="Mendeleev elemental-property tables",
+    ),
     "jarvis": OptionalDependency(
         import_name="jarvis",
         package_name="jarvis-tools",

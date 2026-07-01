@@ -3,6 +3,7 @@
 `matgpr` is a Gaussian Process Regression toolkit for materials informatics.
 It focuses on reproducible data preparation, materials featurization,
 uncertainty-aware GPR, and physics-informed mean functions.
+Python 3.10 or newer is required.
 
 The package is designed for small-to-medium materials datasets where uncertainty,
 validation protocol, and physical interpretation matter as much as point
@@ -28,15 +29,16 @@ prediction accuracy.
 - Candidate-generation helpers for finite chemistry, composition,
   formulation, and processing-condition pools.
 - Optional BoTorch Bayesian optimization for ranking finite candidate pools,
-  passing known observation noise, applying feasibility constraints, and
-  selecting diverse next-experiment batches.
+  passing known observation noise, applying feasibility constraints, selecting
+  diverse next-experiment batches, and auditing recommendation decisions.
 - Multi-objective finite-pool selection with Pareto-front and weighted
   scalarization utilities.
 - Composition, molecule, and polymer fingerprints for materials datasets.
 - Learning curves, parity plots, uncertainty diagnostics, PCA plots, and SHAP
   analysis workflows.
-- Published-paper examples for OPV, hardness, gas transport, solvent
-  diffusivity, and spall strength.
+- Published-paper PI-GPR examples for OPV and solvent diffusivity. Other
+  candidate examples are being reviewed before inclusion in the public example
+  set.
 
 ## Start Here
 
@@ -57,7 +59,7 @@ python -m pip install -e .
 For development:
 
 ```bash
-python -m pip install -e ".[dev,examples]"
+python -m pip install -e ".[dev,examples,bo]"
 python -m ruff check matgpr tests scripts
 python -m pytest
 ```
@@ -77,6 +79,4 @@ should be cited.
 
 ## License
 
-`matgpr` is dual-licensed: AGPL-3.0 for community use, with a separate
-commercial license available for proprietary or closed-source commercial
-applications.
+`matgpr` is released under the Apache License 2.0.

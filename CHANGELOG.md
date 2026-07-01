@@ -48,14 +48,11 @@ semantic-versioning conventions once the first public release is tagged.
   predictions.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
-- Published-paper example workflows for OPV, hardness, gas transport, solvent
-  diffusivity, and spall strength.
+- Published-paper PI-GPR example workflows for OPV and solvent diffusivity.
 - User guide and fingerprinting-options guide.
 - MkDocs Material documentation site scaffold with docs-build workflow and
   generated API-reference pages.
-- License-strategy note for source-available/academic-use licensing decision.
-- Dual-license metadata and notices: AGPL-3.0 community license plus separate
-  commercial license availability.
+- Apache-2.0 license metadata and notices.
 - CI/package-quality scaffolding.
 - Scikit-learn estimator compliance and pipeline tests covering official
   estimator checks, `GridSearchCV`, material featurizers, and GPR pipelines.
@@ -73,10 +70,13 @@ semantic-versioning conventions once the first public release is tagged.
 - Documentation workflow now builds docs only and does not deploy GitHub Pages
   while the repository remains private.
 - Heavy fingerprinting tools are organized as optional dependency extras.
-- New examples include 90/10 validation, 10-fold cross-validation, uncertainty
-  parity plots, and production-model interpretation.
+- `matminer` and `mendeleev` are optional ecosystem dependencies, not required
+  runtime dependencies.
+- Public examples now use `dataset.pkl` instead of raw CSV datasets.
+- Gas transport, hardness, and spall strength moved out of the first public
+  PI-GPR example set for later review.
 
 ### Notes
 
-- The community license is AGPL-3.0. Proprietary or closed-source commercial use
-  requires a separate commercial license.
+- `matgpr` is released under the Apache License 2.0.
+- Python 3.10 or newer is required.

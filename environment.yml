@@ -16,6 +16,7 @@ dependencies:
   - rdkit
   - pytorch
   - gpytorch
+  - botorch
   - scikit-learn
   - scipy
   - shap

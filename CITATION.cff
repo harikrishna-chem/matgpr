@@ -7,7 +7,6 @@ authors:
 repository-code: "https://github.com/harikrishna-chem/matgpr"
 url: "https://github.com/harikrishna-chem/matgpr"
 version: "0.1.0"
-date-released: "2026-06-27"
 abstract: >
   matgpr is a materials-informatics toolkit for Gaussian Process Regression,
   uncertainty-aware prediction, materials fingerprinting, and physics-informed
@@ -18,4 +17,4 @@ keywords:
   - physics-informed machine learning
   - Bayesian optimization
   - uncertainty quantification
-license: "AGPL-3.0-only"
+license: "Apache-2.0"

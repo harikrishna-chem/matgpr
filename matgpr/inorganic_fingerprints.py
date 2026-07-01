@@ -14,6 +14,20 @@ from .fingerprint_cache import (
     write_fingerprint_cache_record,
 )
 
+__all__ = [
+    "CompositionFingerprintResult",
+    "DEFAULT_COMPOSITION_STATISTICS",
+    "DEFAULT_ELEMENTAL_PROPERTIES",
+    "append_composition_fingerprints",
+    "append_element_fractions",
+    "clean_formula",
+    "composition_fingerprint",
+    "default_element_symbols",
+    "element_fraction_fingerprint",
+    "featurize_compositions",
+    "featurize_element_fractions",
+]
+
 DEFAULT_ELEMENTAL_PROPERTIES: tuple[str, ...] = (
     "atomic_number",
     "atomic_mass",

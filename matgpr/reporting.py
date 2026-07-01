@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
+__all__ = [
+    "summarize_missingness",
+    "summarize_numeric_columns",
+]
+
 
 def summarize_missingness(df: pd.DataFrame) -> pd.DataFrame:
     """Return missing counts and fractions by column."""

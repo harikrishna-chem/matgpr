@@ -8,7 +8,7 @@ workflows on materials datasets. The first release focuses on clean data
 preparation utilities, scikit-learn and GPyTorch GPR models, uncertainty-aware
 prediction, and a flexible physics-informed mean-function API.
 
-The importable package is `matgpr`.
+The importable package is `matgpr`. Python 3.10 or newer is required.
 
 ## Repository Description
 
@@ -106,7 +106,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    `plot_distribution`, `plot_correlation_matrix`, BO progress plots, or the
    PCA plotting helpers.
 14. Optionally build and audit finite candidate pools, rank next experiments
-   with `suggest_next_experiments`, and log closed-loop campaigns.
+   with Bayesian optimization, summarize recommendation audits, and log
+   closed-loop campaigns.
 
 ## Documentation
 
@@ -223,14 +224,13 @@ learned_parameters = model.learned_physics_parameters_
 From a local checkout:
 
 ```bash
-python3 -m pip install -r requirements.txt
 python3 -m pip install -e .
 ```
 
 For development:
 
 ```bash
-python3 -m pip install -e ".[dev,examples]"
+python3 -m pip install -e ".[dev,examples,bo]"
 python3 -m ruff check matgpr tests scripts
 python3 -m pytest
 python3 -m build
@@ -257,41 +257,32 @@ their reports.
 
 ## License
 
-`matgpr` is dual-licensed:
-
-- Community License: GNU Affero General Public License v3.0. See `LICENSE`.
-- Commercial License: available for proprietary or closed-source commercial
-  applications.
-
-For commercial licensing, contact:
-
-```text
-harikrishnasahu89@gmail.com
-```
+`matgpr` is released under the Apache License 2.0. See `LICENSE`.
 
 ## Contributing
 
-See `CONTRIBUTING.md` for development setup, contribution expectations, and the
-current licensing status. See `docs/license_strategy.md` for licensing details.
+See `CONTRIBUTING.md` for development setup, contribution expectations, and
+licensing details.
 
 ## Examples
 
-The first worked example is available in `examples/opv`:
+Worked examples are available under `examples/`:
 
-- `opv_gpr_modeling.ipynb` compares standard GPR with physics-informed GPR
-  models of increasing mean-function complexity.
-- `physics_informed_gpr_report.md` explains the physical rationale,
-  implementation details, and learning-curve results.
-- `dataset.csv` contains the OPV descriptor dataset used by the notebook.
+- `examples/opv/opv_gpr_modeling.ipynb` compares standard GPR with
+  physics-informed GPR models of increasing mean-function complexity.
+- `examples/solvent_diffusivity/solvent_diffusivity_gpr_modeling.ipynb`
+  compares temperature, concentration, and solvent-size physics means.
+- Example reports explain the physical rationale, implementation details,
+  validation protocol, and modeling conclusions.
 
 ## Roadmap
 
-- Add four more published-paper example workflows for materials-informatics
-  users.
+- Continue refining published-paper example workflows for
+  materials-informatics users.
 - Expand documentation with tutorials, API references, and example equations.
 - Add multitask Gaussian-process models.
 - Add additional physics-informed model families.
-- Add Bayesian optimization workflows for selecting the next experiments.
+- Expand Bayesian optimization examples for next-experiment selection.
 
 ## Project Status
 

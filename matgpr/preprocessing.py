@@ -8,6 +8,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, RobustScaler, StandardScaler
 
+__all__ = [
+    "build_preprocessor",
+    "build_scaler",
+    "identify_feature_types",
+]
+
 
 def identify_feature_types(X: pd.DataFrame) -> tuple[list[str], list[str]]:
     """Identify numeric and categorical feature columns in a dataframe.

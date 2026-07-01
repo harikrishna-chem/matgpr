@@ -6,7 +6,7 @@ Nistane, J.; Datta, R.; Lee, Y. J.; Sahu, H.; Jang, S. S.; Lively, R.; Ramprasad
 
 ## Dataset
 
-- File: `diffusivity_dataset.csv`.
+- File: `dataset.pkl`.
 - Target: `Target Diffusivity Value(log10)`.
 - First-version scope: experimental rows only.
 - Polymer input: `Polymer Canonical SMILES`.
@@ -77,17 +77,28 @@ log10(D) = log10(D0)
 ## Learning Curve Protocol
 
 - Training pool/test split is repeated 10 times to keep the exact-GPR benchmark practical.
-- Training pool usage is varied from 10 percent to 100 percent using `[10, 30, 50, 70, 90, 100]`.
+- Training pool usage is varied from 10 percent to 100 percent using `[10, 20, 30, 50, 70, 90, 100]`.
 - Each point reports mean and standard deviation across the 10 splits.
 - Metrics: RMSE, R2, MAE, and Pearson r.
 
-## 90/10 Validation And SHAP
+## 20 Percent Release Gate
 
-- After low-data model selection, the selected model is evaluated on a 90/10 train-test split.
+- Standard GPR RMSE: 1.384.
+- Retained PI-GPR model: `PI-GPR: concentration`.
+- Retained PI-GPR RMSE: 1.333.
+- RMSE advantage: 0.051.
+
+This example is retained because the concentration prior mean gives a modest
+but positive low-data improvement over Standard GPR.
+
+## 90/10 Cross-Validation And Production Model
+
+- After low-data model selection, the selected PI-GPR model is evaluated on a
+  90/10 train-test split only if it beats Standard GPR at the 20 percent
+  training-data RMSE comparison.
 - The 90 percent training partition is evaluated with 10-fold cross-validation.
-- The validation figure reports cross-validation statistics on the left and train/test parity with uncertainty bars on the right.
+- The validation figure reports cross-validation statistics for the 90 percent training partition.
 - The production model is then refit on 100 percent of the filtered data.
-- Permutation SHAP is applied to the production model using the physics/condition features and the most target-correlated fingerprint/descriptor columns.
 
 ## Notes
 

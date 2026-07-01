@@ -82,6 +82,8 @@ class OptionalDependencyTests(unittest.TestCase):
         self.assertIn("dscribe", OPTIONAL_DEPENDENCIES)
         self.assertIn(("dscribe", "structures"), keys)
         self.assertIn(("mordred", "molecular-extra"), keys)
+        self.assertIn(("matminer", "materials-extra"), keys)
+        self.assertIn(("mendeleev", "materials-extra"), keys)
 
     def test_empty_dependency_name_is_rejected(self):
         with self.assertRaises(ValueError):

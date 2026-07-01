@@ -13,6 +13,12 @@ from .kernels import (
     build_tanimoto_gpr_kernel,
 )
 
+__all__ = [
+    "build_sklearn_gpr_grid_search",
+    "build_sklearn_gpr_kernel",
+    "build_sklearn_gpr_model",
+]
+
 
 def build_sklearn_gpr_kernel(
     name: str = "matern",

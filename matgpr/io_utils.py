@@ -5,6 +5,12 @@ from pathlib import Path
 import joblib
 import pandas as pd
 
+__all__ = [
+    "load_artifact",
+    "log_experiment_result",
+    "save_artifact",
+]
+
 
 def save_artifact(artifact, path: str | Path) -> None:
     """Save a fitted preprocessor, model, or full pipeline with joblib."""

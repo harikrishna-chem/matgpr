@@ -17,13 +17,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 NOTEBOOKS = [
     PROJECT_ROOT / "examples" / "opv" / "opv_gpr_modeling.ipynb",
-    PROJECT_ROOT / "examples" / "hardness" / "hardness_gpr_modeling.ipynb",
-    PROJECT_ROOT / "examples" / "gas_transport" / "gas_transport_gpr_modeling.ipynb",
     PROJECT_ROOT
     / "examples"
     / "solvent_diffusivity"
     / "solvent_diffusivity_gpr_modeling.ipynb",
-    PROJECT_ROOT / "examples" / "spall_strength" / "spall_strength_gpr_modeling.ipynb",
 ]
 
 REPLACEMENTS = {
@@ -31,11 +28,12 @@ REPLACEMENTS = {
     "LEARNING_CURVE_PERCENTS = np.arange(10, 71, 10)": "LEARNING_CURVE_PERCENTS = np.array([10])",
     "TRAINING_PERCENTS = np.arange(10, 71, 10)": "TRAINING_PERCENTS = np.array([10])",
     "TRAIN_PERCENTS = list(range(10, MAX_TRAIN_PERCENT + 1, 10))": "TRAIN_PERCENTS = [10]",
-    "TRAINING_PERCENTS = np.array([10, 30, 50, 70, 90, 100])": "TRAINING_PERCENTS = np.array([10])",
+    "TRAINING_PERCENTS = np.array([10, 20, 30, 50, 70, 90, 100])": "TRAINING_PERCENTS = np.array([10])",
     "N_REPEATS = 20": "N_REPEATS = 1",
     "N_RANDOM_SPLITS = 10": "N_RANDOM_SPLITS = 1",
     "N_CV_SPLITS = 10": "N_CV_SPLITS = 2",
     "CV_SPLITS = 10": "CV_SPLITS = 2",
+    "REQUIRE_PI_IMPROVEMENT = True": "REQUIRE_PI_IMPROVEMENT = False",
     "SELECTION_PERCENT = 20": "SELECTION_PERCENT = 10",
     "TRAINING_ITER = 150": "TRAINING_ITER = 2",
     "TRAINING_ITER = 120": "TRAINING_ITER = 2",

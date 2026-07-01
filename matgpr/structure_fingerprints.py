@@ -14,6 +14,15 @@ from .fingerprint_cache import (
     write_fingerprint_cache_record,
 )
 
+__all__ = [
+    "DEFAULT_STRUCTURE_FEATURES",
+    "StructureFingerprintResult",
+    "append_structure_fingerprints",
+    "featurize_structures",
+    "structure_feature_names",
+    "structure_fingerprint",
+]
+
 DEFAULT_STRUCTURE_FEATURES: tuple[str, ...] = (
     "log_lattice_length_min",
     "log_lattice_length_mid",

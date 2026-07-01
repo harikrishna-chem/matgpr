@@ -212,26 +212,16 @@ from .visualization import (
     plot_uncertainty_vs_error,
 )
 
-try:
-    from .gpytorch_gpr import (
-        EquationMeanFunction,
-        ExactGPRModel,
-        GPyTorchGPRResult,
-        GPyTorchPrediction,
-        PhysicsInformedMean,
-        fit_gpytorch_gpr,
-        predict_gpytorch_gpr,
-        train_gpytorch_gpr,
-    )
-except ImportError:
-    EquationMeanFunction = None
-    ExactGPRModel = None
-    GPyTorchGPRResult = None
-    GPyTorchPrediction = None
-    PhysicsInformedMean = None
-    fit_gpytorch_gpr = None
-    predict_gpytorch_gpr = None
-    train_gpytorch_gpr = None
+from .gpytorch_gpr import (
+    EquationMeanFunction,
+    ExactGPRModel,
+    GPyTorchGPRResult,
+    GPyTorchPrediction,
+    PhysicsInformedMean,
+    fit_gpytorch_gpr,
+    predict_gpytorch_gpr,
+    train_gpytorch_gpr,
+)
 
 __all__ = [
     "EquationMeanFunction",

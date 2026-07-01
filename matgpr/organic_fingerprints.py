@@ -13,6 +13,16 @@ from .fingerprint_cache import (
     write_fingerprint_cache_record,
 )
 
+__all__ = [
+    "DEFAULT_RDKIT_DESCRIPTORS",
+    "SmilesFingerprintResult",
+    "append_smiles_features",
+    "canonicalize_molecule_smiles",
+    "canonicalize_polymer_smiles",
+    "featurize_smiles",
+    "fingerprint_smiles",
+]
+
 DEFAULT_RDKIT_DESCRIPTORS: tuple[str, ...] = (
     "MolWt",
     "MolLogP",
