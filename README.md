@@ -275,6 +275,10 @@ Worked examples are available under `examples/`:
 - Example reports explain the physical rationale, implementation details,
   validation protocol, and modeling conclusions.
 
+The public example notebooks include Colab badges. When opened in Colab, they
+install `matgpr[examples]` from GitHub and download the matching `dataset.pkl`
+from the repository.
+
 ## Roadmap
 
 - Continue refining published-paper example workflows for
