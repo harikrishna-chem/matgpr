@@ -59,7 +59,7 @@ from .derivative_gpr import (
     combine_derivative_observations,
     fit_derivative_constrained_gpr,
 )
-from .estimators import MatGPRRegressor, PhysicsInformedGPRRegressor
+from .estimators import MatGPRRegressor, MissingValueReport, PhysicsInformedGPRRegressor
 from .experiment_logging import (
     BOCampaignState,
     append_closed_loop_records,
@@ -248,6 +248,7 @@ __all__ = [
     "KnownLimitConstraint",
     "LogTargetTransform",
     "MatGPRRegressor",
+    "MissingValueReport",
     "MonotonicDerivativeConstraint",
     "MonotonicTrendConstraint",
     "MultiObjectiveBayesianOptimizationResult",

@@ -22,6 +22,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 ## Highlights
 
 - Data cleaning, feature preprocessing, train/test splitting, and quick reports.
+- Native estimator missing-value policies with auditable reports for rejected,
+  dropped, or imputed rows.
 - Optional-dependency helpers with clear install messages for advanced
   fingerprinting backends.
 - Deterministic fingerprint caching and failed-row reports for repeated
@@ -159,7 +161,7 @@ file alongside any published benchmark results.
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
 | `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `list_physics_equation_templates` | Reusable materials-physics mean-equation templates |
-| `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor` | Scikit-learn-style GPyTorch GPR estimators |
+| `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |

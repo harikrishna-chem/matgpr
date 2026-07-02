@@ -61,6 +61,8 @@ semantic-versioning conventions once the first public release is tagged.
   advanced fingerprinting backends.
 - Package metadata URLs and keywords for documentation, issues, repository, and
   changelog discovery.
+- Native estimator missing-value policies: `missing="error"`, `"drop"`, or
+  `"impute"`, with fitted `MissingValueReport` summaries.
 - Optional BoTorch Bayesian-optimization helpers for fitting `SingleTaskGP`
   surrogates, ranking finite candidate pools, and suggesting next experiments.
 - Finite-pool Bayesian-optimization feasibility constraints for filtering or

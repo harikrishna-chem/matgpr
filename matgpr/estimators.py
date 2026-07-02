@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass
 
 import numpy as np
 import torch
 from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import r2_score
-from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.utils.validation import (
+    check_array,
+    check_consistent_length,
+    check_is_fitted,
+    column_or_1d,
+)
 
 try:
     from sklearn.utils.validation import validate_data
@@ -17,8 +24,36 @@ from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMe
 
 __all__ = [
     "MatGPRRegressor",
+    "MissingValueReport",
     "PhysicsInformedGPRRegressor",
 ]
+
+
+@dataclass(frozen=True)
+class MissingValueReport:
+    """Summary of estimator-level missing-value handling.
+
+    The fit-time report is attached to fitted estimators as
+    ``missing_report_``. Prediction-time reports are returned by
+    ``summarize_prediction_missing_values`` without mutating estimator state.
+    The report records the selected policy, row counts, feature-level missing
+    counts, and any imputation settings used by the estimator.
+    """
+
+    stage: str
+    policy: str
+    input_rows: int
+    output_rows: int
+    dropped_rows: int
+    rows_with_missing_features: int
+    rows_with_missing_target: int
+    feature_missing_counts: dict[str, int]
+    imputed_features: tuple[str, ...] = ()
+    imputation_strategy: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Return the report as a plain dictionary for notebook display."""
+        return asdict(self)
 
 
 class MatGPRRegressor(RegressorMixin, BaseEstimator):
@@ -40,6 +75,9 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
         training_iter: int = 1000,
         initial_noise: float | None = 0.1,
         standardize_y: bool = True,
+        missing: str = "error",
+        imputation_strategy: str = "median",
+        imputation_fill_value: object | None = None,
         device: str = "cpu",
         dtype: str | torch.dtype = "float64",
         verbose: bool = False,
@@ -53,6 +91,9 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
         self.training_iter = training_iter
         self.initial_noise = initial_noise
         self.standardize_y = standardize_y
+        self.missing = missing
+        self.imputation_strategy = imputation_strategy
+        self.imputation_fill_value = imputation_fill_value
         self.device = device
         self.dtype = dtype
         self.verbose = verbose
@@ -71,6 +112,13 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
             consistency checks.
         y
             One-dimensional target values.
+
+        Notes
+        -----
+        Missing-value handling is controlled by ``missing``. ``"error"``
+        rejects missing data, ``"drop"`` removes incomplete training rows, and
+        ``"impute"`` learns a numeric feature imputer from the training data.
+        Missing targets are never imputed; they are either rejected or dropped.
         """
         X_checked, y_checked = _validate_fit_input(self, X, y)
 
@@ -167,6 +215,31 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
         )
         return prediction.mean, prediction.lower, prediction.upper
 
+    def summarize_prediction_missing_values(self, X) -> MissingValueReport:
+        """Summarize missing values in prediction features without predicting.
+
+        This method is useful for auditing candidate pools before calling
+        :meth:`predict`. It does not mutate the estimator, which keeps
+        prediction calls compatible with scikit-learn conventions.
+        """
+        check_is_fitted(self, "result_")
+        policy = _validate_missing_policy(self.missing)
+        X_checked = _validate_prediction_features(self, X, allow_nan=True)
+        return _make_missing_report(
+            self,
+            stage="predict",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=None,
+            output_rows=X_checked.shape[0],
+            imputed_features=_imputed_feature_names(self, X_checked)
+            if policy == "impute"
+            else (),
+            imputation_strategy=_validate_imputation_strategy(self.imputation_strategy)
+            if policy == "impute"
+            else None,
+        )
+
     def score(self, X, y, sample_weight=None) -> float:
         """Return the coefficient of determination, R2."""
         return r2_score(y, self.predict(X), sample_weight=sample_weight)
@@ -205,6 +278,9 @@ class PhysicsInformedGPRRegressor(MatGPRRegressor):
         training_iter: int = 1000,
         initial_noise: float | None = 0.1,
         standardize_y: bool = True,
+        missing: str = "error",
+        imputation_strategy: str = "median",
+        imputation_fill_value: object | None = None,
         device: str = "cpu",
         dtype: str | torch.dtype = "float64",
         verbose: bool = False,
@@ -219,6 +295,9 @@ class PhysicsInformedGPRRegressor(MatGPRRegressor):
             training_iter=training_iter,
             initial_noise=initial_noise,
             standardize_y=standardize_y,
+            missing=missing,
+            imputation_strategy=imputation_strategy,
+            imputation_fill_value=imputation_fill_value,
             device=device,
             dtype=dtype,
             verbose=verbose,
@@ -284,35 +363,61 @@ def _feature_names_from_input(X) -> np.ndarray | None:
 
 
 def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
+    _clear_missing_state(estimator)
+    if y is None:
+        raise ValueError("requires y to be passed, but the target y is None")
+    policy = _validate_missing_policy(estimator.missing)
+    _validate_imputation_strategy(estimator.imputation_strategy)
+
     if validate_data is not None:
-        return validate_data(
+        X_checked = validate_data(
             estimator,
             X,
-            y,
+            reset=True,
             ensure_2d=True,
             dtype="numeric",
-            y_numeric=True,
+            ensure_all_finite="allow-nan",
         )
+    else:
+        feature_names = _feature_names_from_input(X)
+        X_checked = check_array(
+            X,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",
+        )
+        estimator.n_features_in_ = X_checked.shape[1]
+        if feature_names is not None:
+            if len(feature_names) != estimator.n_features_in_:
+                raise ValueError("Number of dataframe columns does not match validated features")
+            estimator.feature_names_in_ = feature_names
+        elif hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
 
-    feature_names = _feature_names_from_input(X)
-    X_checked, y_checked = check_X_y(
-        X,
+    y_checked = check_array(
         y,
-        ensure_2d=True,
+        ensure_2d=False,
         dtype="numeric",
-        y_numeric=True,
+        ensure_all_finite="allow-nan",
+        input_name="y",
     )
-    estimator.n_features_in_ = X_checked.shape[1]
-    if feature_names is not None:
-        if len(feature_names) != estimator.n_features_in_:
-            raise ValueError("Number of dataframe columns does not match validated features")
-        estimator.feature_names_in_ = feature_names
-    elif hasattr(estimator, "feature_names_in_"):
-        delattr(estimator, "feature_names_in_")
-    return X_checked, y_checked
+    y_checked = column_or_1d(y_checked, warn=True)
+
+    check_consistent_length(X_checked, y_checked)
+    return _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
 
 
 def _validate_predict_input(estimator, X) -> np.ndarray:
+    policy = _validate_missing_policy(estimator.missing)
+    X_checked = _validate_prediction_features(
+        estimator,
+        X,
+        allow_nan=policy == "impute",
+    )
+    return _apply_predict_missing_policy(estimator, X_checked, policy)
+
+
+def _validate_prediction_features(estimator, X, *, allow_nan: bool) -> np.ndarray:
     if validate_data is not None:
         return validate_data(
             estimator,
@@ -320,6 +425,7 @@ def _validate_predict_input(estimator, X) -> np.ndarray:
             reset=False,
             ensure_2d=True,
             dtype="numeric",
+            ensure_all_finite="allow-nan" if allow_nan else True,
             ensure_min_samples=1,
         )
 
@@ -336,6 +442,7 @@ def _validate_predict_input(estimator, X) -> np.ndarray:
         ensure_2d=True,
         dtype="numeric",
         ensure_min_samples=1,
+        ensure_all_finite="allow-nan" if allow_nan else True,
     )
     if X_checked.shape[1] != estimator.n_features_in_:
         raise ValueError(
@@ -343,6 +450,202 @@ def _validate_predict_input(estimator, X) -> np.ndarray:
             f"{estimator.n_features_in_} features"
         )
     return X_checked
+
+
+def _clear_missing_state(estimator) -> None:
+    for attr in (
+        "feature_imputer_",
+        "feature_imputation_statistics_",
+        "missing_report_",
+    ):
+        if hasattr(estimator, attr):
+            delattr(estimator, attr)
+
+
+def _validate_missing_policy(policy: str) -> str:
+    normalized = str(policy).lower()
+    valid = {"error", "drop", "impute"}
+    if normalized not in valid:
+        raise ValueError("missing must be one of: 'error', 'drop', or 'impute'")
+    return normalized
+
+
+def _validate_imputation_strategy(strategy: str) -> str:
+    normalized = str(strategy).lower()
+    valid = {"mean", "median", "most_frequent", "constant"}
+    if normalized not in valid:
+        raise ValueError(
+            "imputation_strategy must be one of: "
+            "'mean', 'median', 'most_frequent', or 'constant'"
+        )
+    return normalized
+
+
+def _apply_fit_missing_policy(
+    estimator,
+    X_checked: np.ndarray,
+    y_checked: np.ndarray,
+    policy: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    feature_missing_mask = np.isnan(X_checked).any(axis=1)
+    target_missing_mask = np.isnan(y_checked)
+    any_missing_mask = feature_missing_mask | target_missing_mask
+
+    if policy == "error" and np.any(any_missing_mask):
+        report = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_checked.shape[0],
+        )
+        estimator.missing_report_ = report
+        raise ValueError(
+            "Input contains NaN/missing values. Set missing='drop' to remove "
+            "incomplete training rows or missing='impute' to impute missing "
+            f"features. Missing-value report: {report.to_dict()}"
+        )
+
+    if policy == "drop":
+        keep_mask = ~any_missing_mask
+        X_out = X_checked[keep_mask]
+        y_out = y_checked[keep_mask]
+        if X_out.shape[0] == 0:
+            raise ValueError("No training rows remain after missing='drop'")
+        estimator.missing_report_ = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_out.shape[0],
+        )
+        return X_out, y_out
+
+    if policy == "impute":
+        keep_mask = ~target_missing_mask
+        X_to_impute = X_checked[keep_mask]
+        y_out = y_checked[keep_mask]
+        if X_to_impute.shape[0] == 0:
+            raise ValueError("No training rows remain after dropping missing targets")
+
+        strategy = _validate_imputation_strategy(estimator.imputation_strategy)
+        _raise_for_unimputable_columns(estimator, X_to_impute, strategy)
+        imputer = SimpleImputer(
+            strategy=strategy,
+            fill_value=estimator.imputation_fill_value,
+            keep_empty_features=True,
+        )
+        X_out = imputer.fit_transform(X_to_impute)
+        estimator.feature_imputer_ = imputer
+        estimator.feature_imputation_statistics_ = np.asarray(imputer.statistics_).copy()
+        estimator.missing_report_ = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_out.shape[0],
+            imputed_features=_imputed_feature_names(estimator, X_to_impute),
+            imputation_strategy=strategy,
+        )
+        return X_out, y_out
+
+    estimator.missing_report_ = _make_missing_report(
+        estimator,
+        stage="fit",
+        policy=policy,
+        X_checked=X_checked,
+        y_checked=y_checked,
+        output_rows=X_checked.shape[0],
+    )
+    return X_checked, y_checked
+
+
+def _apply_predict_missing_policy(estimator, X_checked: np.ndarray, policy: str) -> np.ndarray:
+    if policy != "impute":
+        return X_checked
+
+    check_is_fitted(estimator, "feature_imputer_")
+    return estimator.feature_imputer_.transform(X_checked)
+
+
+def _make_missing_report(
+    estimator,
+    *,
+    stage: str,
+    policy: str,
+    X_checked: np.ndarray,
+    y_checked: np.ndarray | None,
+    output_rows: int,
+    imputed_features: tuple[str, ...] = (),
+    imputation_strategy: str | None = None,
+) -> MissingValueReport:
+    feature_missing_mask = np.isnan(X_checked).any(axis=1)
+    target_missing_mask = np.zeros(X_checked.shape[0], dtype=bool)
+    if y_checked is not None:
+        target_missing_mask = np.isnan(y_checked)
+
+    return MissingValueReport(
+        stage=stage,
+        policy=policy,
+        input_rows=int(X_checked.shape[0]),
+        output_rows=int(output_rows),
+        dropped_rows=int(X_checked.shape[0] - output_rows),
+        rows_with_missing_features=int(feature_missing_mask.sum()),
+        rows_with_missing_target=int(target_missing_mask.sum()),
+        feature_missing_counts=_feature_missing_counts(estimator, X_checked),
+        imputed_features=tuple(imputed_features),
+        imputation_strategy=imputation_strategy,
+    )
+
+
+def _feature_missing_counts(estimator, X_checked: np.ndarray) -> dict[str, int]:
+    labels = _feature_labels(estimator, X_checked.shape[1])
+    counts = np.isnan(X_checked).sum(axis=0)
+    return {
+        label: int(count)
+        for label, count in zip(labels, counts, strict=True)
+        if int(count) > 0
+    }
+
+
+def _feature_labels(estimator, n_features: int) -> list[str]:
+    if hasattr(estimator, "feature_names_in_"):
+        return [str(name) for name in estimator.feature_names_in_]
+    return [f"feature_{index}" for index in range(n_features)]
+
+
+def _imputed_feature_names(estimator, X_checked: np.ndarray) -> tuple[str, ...]:
+    labels = _feature_labels(estimator, X_checked.shape[1])
+    counts = np.isnan(X_checked).sum(axis=0)
+    return tuple(
+        label for label, count in zip(labels, counts, strict=True) if int(count) > 0
+    )
+
+
+def _raise_for_unimputable_columns(
+    estimator,
+    X_checked: np.ndarray,
+    strategy: str,
+) -> None:
+    if strategy == "constant":
+        return
+    all_missing_mask = np.isnan(X_checked).all(axis=0)
+    if not np.any(all_missing_mask):
+        return
+    labels = _feature_labels(estimator, X_checked.shape[1])
+    missing_columns = [
+        label
+        for label, is_all_missing in zip(labels, all_missing_mask, strict=True)
+        if is_all_missing
+    ]
+    raise ValueError(
+        "Cannot impute feature columns with all values missing using "
+        f"imputation_strategy={strategy!r}: {missing_columns}. Remove these "
+        "columns or use imputation_strategy='constant'."
+    )
 
 
 def _resolve_torch_dtype(dtype: str | torch.dtype) -> torch.dtype:

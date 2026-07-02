@@ -456,6 +456,37 @@ y_test_pred, y_test_std = model.predict(X_test_array, return_std=True)
 metrics = regression_metrics(y_test, y_test_pred)
 ```
 
+Estimator-level missing-value handling is available when quick modeling or
+candidate-pool prediction needs a local policy:
+
+```python
+model = MatGPRRegressor(
+    missing="impute",
+    imputation_strategy="median",
+    training_iter=1000,
+    random_state=42,
+)
+
+model.fit(X_train_array, y_train.to_numpy())
+print(model.missing_report_.to_dict())
+
+candidate_report = model.summarize_prediction_missing_values(X_candidate_array)
+print(candidate_report.to_dict())
+
+y_candidate, y_candidate_std = model.predict(
+    X_candidate_array,
+    return_std=True,
+)
+```
+
+Use `missing="error"` when missing values should fail loudly, `missing="drop"`
+when incomplete training rows should be removed, and `missing="impute"` when
+numeric feature values should be filled from the training fold. Targets are not
+imputed; missing targets are rejected by `missing="error"` and dropped by
+`missing="drop"` or `missing="impute"`. Prediction-time missing features are
+supported by `missing="impute"` because the fitted training imputer can be
+reused without leaking test or candidate-pool information.
+
 Useful fitted attributes:
 
 | Attribute | Meaning |
@@ -464,6 +495,12 @@ Useful fitted attributes:
 | `model_`, `likelihood_` | Fitted GPyTorch objects. |
 | `loss_history_` | Training loss by optimizer iteration. |
 | `target_mean_`, `target_std_` | Target standardization values. |
+| `missing_report_` | Fitted `MissingValueReport` describing rejected, dropped, or imputed training rows. |
+
+For prediction-time audits, use
+`model.summarize_prediction_missing_values(X_candidate)` before calling
+`predict`. The method returns a `MissingValueReport` without changing estimator
+state.
 
 For confidence intervals:
 

@@ -18,7 +18,12 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.estimator_checks import check_estimator
 
-from matgpr import CompositionFeaturizer, MatGPRRegressor, PhysicsInformedGPRRegressor
+from matgpr import (
+    CompositionFeaturizer,
+    MatGPRRegressor,
+    MissingValueReport,
+    PhysicsInformedGPRRegressor,
+)
 from matgpr.gpytorch_gpr import GPyTorchPrediction
 
 
@@ -92,6 +97,98 @@ class MatGPRRegressorTests(unittest.TestCase):
         estimator.fit(array_x, y)
         self.assertFalse(hasattr(estimator, "feature_names_in_"))
 
+    def test_missing_error_reports_missing_values(self):
+        x = pd.DataFrame(
+            {
+                "x": [0.0, 0.2, np.nan, 0.6, 0.8],
+                "descriptor": [1.0, 1.1, 1.2, 1.3, 1.4],
+            }
+        )
+        y = np.array([0.1, 0.4, 0.6, 0.9, np.nan])
+        estimator = MatGPRRegressor(training_iter=1)
+
+        with self.assertRaisesRegex(ValueError, "missing='drop'"):
+            estimator.fit(x, y)
+
+        self.assertIsInstance(estimator.missing_report_, MissingValueReport)
+        self.assertEqual(estimator.missing_report_.policy, "error")
+        self.assertEqual(estimator.missing_report_.rows_with_missing_features, 1)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_target, 1)
+        self.assertEqual(estimator.missing_report_.feature_missing_counts, {"x": 1})
+
+    def test_missing_drop_removes_incomplete_training_rows(self):
+        x = pd.DataFrame(
+            {
+                "x": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "descriptor": [1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
+            }
+        )
+        y = np.array([0.1, 0.4, 0.6, 0.9, np.nan, 1.6])
+        estimator = MatGPRRegressor(
+            missing="drop",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=19,
+        )
+
+        estimator.fit(x, y)
+        prediction = estimator.predict(x.dropna().iloc[:2])
+
+        self.assertEqual(prediction.shape, (2,))
+        self.assertEqual(estimator.missing_report_.output_rows, 4)
+        self.assertEqual(estimator.missing_report_.dropped_rows, 2)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_features, 1)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_target, 1)
+
+    def test_missing_impute_learns_training_imputer_and_predicts_missing_features(self):
+        x = pd.DataFrame(
+            {
+                "x": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "descriptor": [1.0, np.nan, 1.2, 1.3, 1.4, 1.5],
+            }
+        )
+        y = np.array([0.1, 0.4, 0.6, 0.9, np.nan, 1.6])
+        estimator = MatGPRRegressor(
+            missing="impute",
+            imputation_strategy="median",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=23,
+        )
+
+        estimator.fit(x, y)
+        prediction_report = estimator.summarize_prediction_missing_values(
+            pd.DataFrame({"x": [0.1, np.nan], "descriptor": [np.nan, 1.4]})
+        )
+        prediction, std = estimator.predict(
+            pd.DataFrame({"x": [0.1, np.nan], "descriptor": [np.nan, 1.4]}),
+            return_std=True,
+        )
+
+        self.assertEqual(prediction.shape, (2,))
+        self.assertEqual(std.shape, (2,))
+        self.assertTrue(hasattr(estimator, "feature_imputer_"))
+        self.assertEqual(estimator.missing_report_.output_rows, 5)
+        self.assertEqual(estimator.missing_report_.dropped_rows, 1)
+        self.assertEqual(estimator.missing_report_.imputed_features, ("x", "descriptor"))
+        self.assertEqual(prediction_report.imputed_features, ("x", "descriptor"))
+        self.assertFalse(hasattr(estimator, "last_prediction_missing_report_"))
+
+    def test_missing_impute_rejects_all_missing_feature_without_constant_strategy(self):
+        x = pd.DataFrame(
+            {
+                "x": [0.0, 0.2, 0.4, 0.6],
+                "all_missing": [np.nan, np.nan, np.nan, np.nan],
+            }
+        )
+        y = np.array([0.1, 0.4, 0.6, 0.9])
+        estimator = MatGPRRegressor(missing="impute", training_iter=1)
+
+        with self.assertRaisesRegex(ValueError, "all values missing"):
+            estimator.fit(x, y)
+
 
 class PhysicsInformedGPRRegressorTests(unittest.TestCase):
     def test_physics_estimator_fit_predict_and_parameter_report(self):
@@ -151,6 +248,36 @@ class PhysicsInformedGPRRegressorTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             estimator.fit(x, y)
+
+    def test_physics_estimator_supports_imputed_physics_features(self):
+        x = pd.DataFrame(
+            {
+                "x": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "descriptor": [1.0, 1.1, 1.2, np.nan, 1.4, 1.5],
+            }
+        )
+        y = np.array([0.5, 0.9, 1.2, 1.7, np.nan, 2.5])
+        estimator = PhysicsInformedGPRRegressor(
+            equation=linear_physics_equation,
+            physics_features=("x",),
+            learnable_parameters={"slope": 1.0, "intercept": 0.0},
+            positive_parameters=("slope",),
+            missing="impute",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=29,
+        )
+
+        estimator.fit(x, y)
+        prediction = estimator.predict(
+            pd.DataFrame({"x": [np.nan, 0.3], "descriptor": [1.2, np.nan]})
+        )
+
+        self.assertEqual(prediction.shape, (2,))
+        self.assertEqual(estimator.mean_module_.feature_indices, {"x": 0})
+        self.assertEqual(estimator.missing_report_.imputed_features, ("x", "descriptor"))
+        self.assertIn("slope", estimator.learned_physics_parameters_)
 
 
 class EstimatorPipelineTests(unittest.TestCase):
