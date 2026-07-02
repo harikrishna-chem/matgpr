@@ -13,6 +13,20 @@ Nistane, J.; Datta, R.; Lee, Y. J.; Sahu, H.; Jang, S. S.; Lively, R.; Ramprasad
 - Solvent input: `Solvent Canonical SMILES`.
 - Condition inputs: temperature and solvent weight fraction.
 
+## Target Transform Preset
+
+The notebook demonstrates `make_materials_target_transform("diffusivity")`,
+which builds a `LogTargetTransform` for raw positive diffusivity values. Since
+the paper dataset already stores the target as `log10(D)`, the demonstration
+creates a raw positive diffusivity column with `D = 10 ** log10(D)` and checks
+that the preset log transform is equivalent to multiplying the stored target
+by `ln(10)`.
+
+The main PI-GPR workflow continues to model `log10(D)` directly. This keeps the
+target aligned with the published data column and with the Arrhenius,
+concentration, and solvent-size mean functions written in log10 diffusivity
+units.
+
 ## Polymer And Molecule Featurization
 
 - Polymer repeat units must contain exactly two `[*]` atoms.

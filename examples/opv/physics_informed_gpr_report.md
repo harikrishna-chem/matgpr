@@ -79,6 +79,19 @@ physics term while still keeping the mean function compact.
 | PI-GPR: degeneracy | frontier-orbital near-degeneracy | nearby orbitals beyond HOMO/LUMO can improve OPV processes |
 | PI-GPR: degeneracy + binding | near-degeneracy plus low exciton binding | adds an interpretable charge-separation term |
 
+## Target Transform Preset
+
+PCE is a bounded percentage target. The notebook demonstrates the
+`make_materials_target_transform("pce")` preset, which builds a
+`BoundedTargetTransform` with default bounds from 0 to 100 percent.
+
+The main PI-GPR workflow keeps the target in original PCE percent units. This
+is intentional: the physics-informed mean equations are written directly in
+PCE units, and `fit_gpytorch_gpr(..., standardize_y=True)` already performs
+internal target standardization during optimization. The preset cell shows how
+users can choose a bounded target transform for workflows where the model is
+trained directly on a constrained transformed target.
+
 ## 20 Percent Release Gate
 
 The first public PI-GPR example set keeps only notebooks where a
