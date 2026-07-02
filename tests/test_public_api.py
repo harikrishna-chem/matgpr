@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import importlib
 import unittest
+from importlib.metadata import version
 from pathlib import Path
 
 
 class PublicApiTests(unittest.TestCase):
+    def test_package_version_matches_installed_metadata(self):
+        import matgpr
+
+        self.assertEqual(matgpr.__version__, version("matgpr"))
+
     def test_module_all_exports_are_explicit_and_resolvable(self):
         modules = ["matgpr"]
         modules.extend(

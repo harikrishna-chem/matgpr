@@ -54,7 +54,9 @@ prediction accuracy.
    for a paper, benchmark, or production workflow.
 7. Use the [Release Checklist](release_checklist.md) before tagging a public
    package release.
-8. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+8. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
+   distribution.
+9. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 

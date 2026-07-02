@@ -143,6 +143,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   policy, and how to pin releases or commits for reproducible workflows.
 - `docs/release_checklist.md` defines the release gate for `v0.1.0` and later
   `0.x` releases.
+- `docs/pypi_readiness.md` records the PyPI readiness audit and remaining
+  upload blockers.
 
 ## Versioning And API Stability
 

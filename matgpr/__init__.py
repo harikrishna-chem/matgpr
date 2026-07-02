@@ -1,5 +1,12 @@
 """Utilities for data preparation, Gaussian Process Regression, and analysis."""
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("matgpr")
+except PackageNotFoundError:  # pragma: no cover - source tree without installation
+    __version__ = "0.0.0+unknown"
+
 from .bayesian_optimization import (
     BayesianOptimizationResult,
     BORecommendationAudit,
@@ -247,6 +254,7 @@ from .gpytorch_gpr import (
 )
 
 __all__ = [
+    "__version__",
     "EquationMeanFunction",
     "ExactGPRModel",
     "FeatureSubsetKernel",

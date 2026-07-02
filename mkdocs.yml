@@ -61,6 +61,7 @@ nav:
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
+  - PyPI Readiness: pypi_readiness.md
   - API Reference:
       - Overview: api/index.md
       - Estimators: api/estimators.md

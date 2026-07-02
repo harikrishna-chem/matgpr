@@ -192,6 +192,7 @@ and the original papers for the example datasets.
 Do not upload to PyPI until the package name, metadata, and release artifacts
 are reviewed. Before any PyPI release:
 
+- review `docs/pypi_readiness.md`,
 - confirm the `matgpr` package name and account access,
 - upload to TestPyPI first,
 - install from TestPyPI in a clean environment,
