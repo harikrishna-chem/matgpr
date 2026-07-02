@@ -60,6 +60,7 @@ nav:
   - Physics-Informed GPR: physics_informed_gpr.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
+  - Release Checklist: release_checklist.md
   - API Reference:
       - Overview: api/index.md
       - Estimators: api/estimators.md

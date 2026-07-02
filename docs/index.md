@@ -52,7 +52,9 @@ prediction accuracy.
 5. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
 6. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-7. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+7. Use the [Release Checklist](release_checklist.md) before tagging a public
+   package release.
+8. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 

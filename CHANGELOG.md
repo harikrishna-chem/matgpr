@@ -60,6 +60,7 @@ semantic-versioning conventions once the first public release is tagged.
   examples.
 - User guide and fingerprinting-options guide.
 - Versioning and API-stability guide for active-development `0.x` releases.
+- Release checklist for `v0.1.0` and later `0.x` releases.
 - MkDocs Material documentation site scaffold with docs-build workflow and
   generated API-reference pages.
 - Apache-2.0 license metadata and notices.
