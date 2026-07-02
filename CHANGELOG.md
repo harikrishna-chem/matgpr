@@ -50,6 +50,7 @@ semantic-versioning conventions once the first public release is tagged.
   physics-residual GPR workflows.
 - Published-paper PI-GPR example workflows for OPV and solvent diffusivity.
 - User guide and fingerprinting-options guide.
+- Versioning and API-stability guide for active-development `0.x` releases.
 - MkDocs Material documentation site scaffold with docs-build workflow and
   generated API-reference pages.
 - Apache-2.0 license metadata and notices.
@@ -58,6 +59,8 @@ semantic-versioning conventions once the first public release is tagged.
   estimator checks, `GridSearchCV`, material featurizers, and GPR pipelines.
 - Optional-dependency helper registry with clear install messages and tests for
   advanced fingerprinting backends.
+- Package metadata URLs and keywords for documentation, issues, repository, and
+  changelog discovery.
 - Optional BoTorch Bayesian-optimization helpers for fitting `SingleTaskGP`
   surrogates, ranking finite candidate pools, and suggesting next experiments.
 - Finite-pool Bayesian-optimization feasibility constraints for filtering or

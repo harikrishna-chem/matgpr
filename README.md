@@ -10,6 +10,10 @@ prediction, and a flexible physics-informed mean-function API.
 
 The importable package is `matgpr`. Python 3.10 or newer is required.
 
+`matgpr` is currently an active-development `0.x` package. Pin release tags or
+commit hashes for reproducible research workflows, and see
+`docs/versioning.md` for the API-stability and versioning policy.
+
 ## Repository Description
 
 Gaussian Process Regression toolkit for materials informatics, including
@@ -122,6 +126,24 @@ physics-informed mean functions and uncertainty-aware prediction.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.
+- `docs/versioning.md` explains the active-development status, API-stability
+  policy, and how to pin releases or commits for reproducible workflows.
+
+## Versioning And API Stability
+
+Current version: `0.1.0`.
+
+`matgpr` follows semantic-versioning conventions in spirit, but minor `0.x`
+releases may include breaking API changes while the package is still being
+shaped. For publications, benchmarks, and production workflows, install from a
+release tag or exact commit instead of the moving `main` branch:
+
+```bash
+python3 -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+```
+
+Record the `matgpr` version or commit hash, Python version, and dependency lock
+file alongside any published benchmark results.
 
 ## Module Map
 

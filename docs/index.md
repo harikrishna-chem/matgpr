@@ -46,7 +46,9 @@ prediction accuracy.
 2. Read [Physics-Informed GPR](physics_informed_gpr.md) before defining custom
    equations.
 3. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
-4. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+4. Review [Versioning And Stability](versioning.md) before pinning a release
+   for a paper, benchmark, or production workflow.
+5. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 

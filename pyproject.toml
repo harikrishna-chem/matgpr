@@ -10,6 +10,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
+keywords = [
+    "bayesian-optimization",
+    "gaussian-process",
+    "materials-informatics",
+    "physics-informed",
+    "uncertainty",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -33,6 +40,13 @@ dependencies = [
     "scipy",
     "torch",
 ]
+
+[project.urls]
+Homepage = "https://github.com/harikrishna-chem/matgpr"
+Documentation = "https://harikrishna-chem.github.io/matgpr/"
+Repository = "https://github.com/harikrishna-chem/matgpr"
+Issues = "https://github.com/harikrishna-chem/matgpr/issues"
+Changelog = "https://github.com/harikrishna-chem/matgpr/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 bo = [
