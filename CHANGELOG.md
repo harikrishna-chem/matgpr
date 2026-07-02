@@ -66,6 +66,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Optional matminer Magpie composition descriptors through
   `MagpieCompositionFeaturizer`, `featurize_magpie_compositions`, and
   `append_magpie_composition_features`.
+- Physics-equation registry/discovery metadata with feature specs, parameter
+  specs, units, assumptions, search helpers, and dataframe summaries.
 - Optional BoTorch Bayesian-optimization helpers for fitting `SingleTaskGP`
   surrogates, ranking finite candidate pools, and suggesting next experiments.
 - Finite-pool Bayesian-optimization feasibility constraints for filtering or

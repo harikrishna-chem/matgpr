@@ -1404,10 +1404,23 @@ Available templates include:
 Use `get_physics_equation_template` when you want a documented starting point:
 
 ```python
-from matgpr import get_physics_equation_template, fit_gpytorch_gpr
+from matgpr import (
+    describe_physics_equation_template,
+    get_physics_equation_template,
+    search_physics_equation_templates,
+    summarize_physics_equation_templates,
+    fit_gpytorch_gpr,
+)
 
 
+template_table = summarize_physics_equation_templates()
+transport_templates = search_physics_equation_templates(query="transport")
 template = get_physics_equation_template("arrhenius_rate")
+metadata = describe_physics_equation_template("arrhenius_rate")
+
+feature_metadata = template.feature_specs()
+parameter_metadata = template.parameter_specs()
+assumptions = metadata["assumptions"]
 
 mean_module = template.build_mean_function(
     feature_indices={"temperature_k": feature_columns.index("temperature_k")},
@@ -1447,6 +1460,10 @@ mean_module = template.build_mean_function(
     },
 )
 ```
+
+Use the metadata when writing reports. It states which features are required,
+their expected units, which parameters are learned during GPR training, which
+constants are fixed, and which assumptions justify using the equation.
 
 The templates are not proof that a system obeys the equation. Treat them as
 transparent inductive biases, then validate them against standard GPR with

@@ -103,7 +103,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 9. Optionally build per-row observation noise with `SourceNoiseModel`,
    `ReplicateNoiseModel`, `FeatureNoiseModel`, and `combine_noise_profiles`.
 10. Optionally start from a reusable physics equation template with
-   `get_physics_equation_template`.
+   `summarize_physics_equation_templates`, `search_physics_equation_templates`,
+   and `get_physics_equation_template`.
 11. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
 12. Evaluate models with `evaluate_train_test_split`,
@@ -162,7 +163,7 @@ file alongside any published benchmark results.
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
-| `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `list_physics_equation_templates` | Reusable materials-physics mean-equation templates |
+| `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `search_physics_equation_templates`, `summarize_physics_equation_templates` | Reusable materials-physics mean-equation templates and metadata discovery |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |

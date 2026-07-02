@@ -111,10 +111,18 @@ For common materials trends, start with a documented template instead of
 rewriting the equation in every notebook:
 
 ```python
-from matgpr import get_physics_equation_template
+from matgpr import (
+    describe_physics_equation_template,
+    get_physics_equation_template,
+    search_physics_equation_templates,
+    summarize_physics_equation_templates,
+)
 
 
+summary = summarize_physics_equation_templates()
+transport_templates = search_physics_equation_templates(query="transport")
 template = get_physics_equation_template("arrhenius_rate")
+metadata = describe_physics_equation_template("arrhenius_rate")
 
 mean_function = template.build_mean_function(
     feature_indices={"temperature_k": 0},
@@ -125,17 +133,25 @@ mean_function = template.build_mean_function(
 )
 ```
 
-Each template reports the canonical feature names, default learnable
-parameters, positive constraints, fixed constants, and a short equation
-description:
+Each template reports canonical feature names, feature units, default learnable
+parameters, learned/fixed parameter roles, parameter units, positivity
+constraints, fixed constants, assumptions, tags, applications, and a short
+equation description:
 
 ```python
 template.summary()
+template.feature_specs()
+template.parameter_specs()
+metadata["assumptions"]
 ```
 
 The initial template set covers Arrhenius, square-root-time Arrhenius growth,
 power-law scaling, Hall-Petch grain-size strengthening, free-volume exponential
 transport, and rule-of-mixtures baselines.
+
+The registry is intentionally explicit: it helps users discover documented,
+human-defined physics templates. It does not automatically infer new symbolic
+equations from a dataset.
 
 ## Feature Scaling
 

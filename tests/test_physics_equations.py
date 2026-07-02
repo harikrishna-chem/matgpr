@@ -6,16 +6,21 @@ import torch
 
 from matgpr import (
     R_GAS_CONSTANT_J_MOL_K,
+    PhysicsFeatureSpec,
     PhysicsEquationTemplate,
+    PhysicsParameterSpec,
     arrhenius_rate_equation,
     arrhenius_sqrt_time_equation,
     available_physics_equation_templates,
+    describe_physics_equation_template,
     free_volume_exponential_equation,
     get_physics_equation_template,
     hall_petch_equation,
     list_physics_equation_templates,
     power_law_equation,
     rule_of_mixtures_equation,
+    search_physics_equation_templates,
+    summarize_physics_equation_templates,
 )
 
 
@@ -29,6 +34,38 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
         self.assertIn("arrhenius", names_with_aliases)
         self.assertTrue(all(isinstance(template, PhysicsEquationTemplate) for template in templates))
         self.assertEqual(get_physics_equation_template("arrhenius").name, "arrhenius_rate")
+
+    def test_template_metadata_describes_features_parameters_and_assumptions(self):
+        template = get_physics_equation_template("arrhenius_rate")
+        feature_specs = template.feature_specs()
+        parameter_specs = template.parameter_specs()
+        record = describe_physics_equation_template("arrhenius")
+
+        self.assertTrue(all(isinstance(spec, PhysicsFeatureSpec) for spec in feature_specs))
+        self.assertTrue(all(isinstance(spec, PhysicsParameterSpec) for spec in parameter_specs))
+        self.assertEqual(feature_specs[0].name, "temperature_k")
+        self.assertEqual(feature_specs[0].units, "K")
+        self.assertIn("activation_energy", template.learnable_parameter_names)
+        self.assertTrue(record["parameter_metadata"][1]["learned_on_fit"])
+        self.assertEqual(record["parameter_metadata"][1]["units"], "J/mol")
+        self.assertGreater(len(record["assumptions"]), 0)
+        self.assertIn("temperature", record["tags"])
+
+    def test_search_and_summary_support_discovery_workflows(self):
+        transport_templates = search_physics_equation_templates(query="transport")
+        grain_templates = search_physics_equation_templates(
+            application="strength",
+            required_features=("grain_size",),
+        )
+        polymer_templates = search_physics_equation_templates(tag="polymer")
+        summary = summarize_physics_equation_templates()
+
+        self.assertIn("arrhenius_rate", {template.name for template in transport_templates})
+        self.assertEqual([template.name for template in grain_templates], ["hall_petch"])
+        self.assertEqual([template.name for template in polymer_templates], ["free_volume_exponential"])
+        self.assertIn("name", summary.columns)
+        self.assertIn("required_features", summary.columns)
+        self.assertGreaterEqual(summary.shape[0], 6)
 
     def test_arrhenius_rate_equation_uses_fixed_gas_constant_default(self):
         temperature = torch.tensor([300.0, 600.0], dtype=torch.float64)
