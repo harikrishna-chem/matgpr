@@ -128,6 +128,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   installing `matgpr` with the `docs` extra.
 - `docs/quickstart.md` shows the compact path from standard GPR to
   physics-informed GPR.
+- `docs/example_cards.md` links to dataset cards and model cards for the
+  public examples.
 - `docs/matgpr_user_guide.md` provides a practical user guide for cleaning
   data, generating materials fingerprints, training standard and
   physics-informed GPR models, introducing custom physics equations, analyzing
@@ -314,6 +316,9 @@ Worked examples are available under `examples/`:
   compares temperature, concentration, and solvent-size physics means.
 - Example reports explain the physical rationale, implementation details,
   validation protocol, and modeling conclusions.
+- Each public example includes `dataset_card.md` and `model_card.md` files for
+  provenance, features, validation protocol, learned physics terms, intended
+  use, and known limitations.
 
 The public example notebooks include Colab badges. When opened in Colab, they
 install `matgpr[examples]` from GitHub and download the matching `dataset.pkl`

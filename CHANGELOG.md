@@ -56,6 +56,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Published-paper PI-GPR example workflows for OPV and solvent diffusivity.
 - Quickstart documentation showing a standard GPR to physics-informed GPR
   workflow.
+- Dataset cards and model cards for the OPV and solvent diffusivity public
+  examples.
 - User guide and fingerprinting-options guide.
 - Versioning and API-stability guide for active-development `0.x` releases.
 - MkDocs Material documentation site scaffold with docs-build workflow and

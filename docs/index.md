@@ -44,13 +44,15 @@ prediction accuracy.
 
 1. Try the [Quickstart](quickstart.md) for a compact standard GPR to PI-GPR
    workflow.
-2. Read the [User Guide](matgpr_user_guide.md) for the end-to-end workflow.
-3. Read [Physics-Informed GPR](physics_informed_gpr.md) before defining custom
+2. Review the [Example Cards](example_cards.md) for dataset provenance,
+   validation protocols, and model limitations.
+3. Read the [User Guide](matgpr_user_guide.md) for the end-to-end workflow.
+4. Read [Physics-Informed GPR](physics_informed_gpr.md) before defining custom
    equations.
-4. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
-5. Review [Versioning And Stability](versioning.md) before pinning a release
+5. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
+6. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-6. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+7. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 
