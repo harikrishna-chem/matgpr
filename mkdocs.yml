@@ -54,6 +54,7 @@ extra_javascript:
 
 nav:
   - Home: index.md
+  - Quickstart: quickstart.md
   - User Guide: matgpr_user_guide.md
   - Physics-Informed GPR: physics_informed_gpr.md
   - Fingerprinting Options: fingerprinting_options.md

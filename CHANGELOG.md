@@ -54,6 +54,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Target transforms for log-scale properties, explicit standardization, and
   physics-residual GPR workflows.
 - Published-paper PI-GPR example workflows for OPV and solvent diffusivity.
+- Quickstart documentation showing a standard GPR to physics-informed GPR
+  workflow.
 - User guide and fingerprinting-options guide.
 - Versioning and API-stability guide for active-development `0.x` releases.
 - MkDocs Material documentation site scaffold with docs-build workflow and

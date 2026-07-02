@@ -126,6 +126,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 
 - A MkDocs site can be built locally with `python -m mkdocs serve` after
   installing `matgpr` with the `docs` extra.
+- `docs/quickstart.md` shows the compact path from standard GPR to
+  physics-informed GPR.
 - `docs/matgpr_user_guide.md` provides a practical user guide for cleaning
   data, generating materials fingerprints, training standard and
   physics-informed GPR models, introducing custom physics equations, analyzing
