@@ -33,6 +33,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Scikit-learn GPR helpers for baseline models and kernel search.
 - GPyTorch exact GPR with ARD kernels, target standardization, and predictive
   uncertainty.
+- Learned heteroscedastic GPR with a residual noise GP for input-dependent
+  observation uncertainty.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -102,19 +104,21 @@ physics-informed mean functions and uncertainty-aware prediction.
    `fit_derivative_constrained_gpr`.
 9. Optionally build per-row observation noise with `SourceNoiseModel`,
    `ReplicateNoiseModel`, `FeatureNoiseModel`, and `combine_noise_profiles`.
-10. Optionally start from a reusable physics equation template with
+10. Optionally learn input-dependent noise with `fit_heteroscedastic_gpr` when
+   residual variance changes across the materials space.
+11. Optionally start from a reusable physics equation template with
    `summarize_physics_equation_templates`, `search_physics_equation_templates`,
    and `get_physics_equation_template`.
-11. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
+12. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
-12. Evaluate models with `evaluate_train_test_split`,
+13. Evaluate models with `evaluate_train_test_split`,
    `cross_validate_regressor`, `learning_curve`,
    `regression_metrics`, or `train_test_regression_metrics`.
-13. Visualize results with `plot_parity`, `plot_learning_curve`,
+14. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, BO progress plots, or the
    PCA plotting helpers.
-14. Optionally build and audit finite candidate pools, rank next experiments
+15. Optionally build and audit finite candidate pools, rank next experiments
    with Bayesian optimization, summarize recommendation audits, and log
    closed-loop campaigns.
 
@@ -163,6 +167,7 @@ file alongside any published benchmark results.
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
+| `matgpr.heteroscedastic_gpr` | `fit_heteroscedastic_gpr`, `HeteroscedasticGPRResult` | Learned input-dependent observation-noise GPR |
 | `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `search_physics_equation_templates`, `summarize_physics_equation_templates` | Reusable materials-physics mean-equation templates and metadata discovery |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |

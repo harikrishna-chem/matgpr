@@ -72,6 +72,7 @@ from matgpr import (
     StandardizedTargetTransform,
     build_sklearn_gpr_model,
     fit_gpytorch_gpr,
+    fit_heteroscedastic_gpr,
     regression_metrics,
     train_test_regression_metrics,
     uncertainty_diagnostics,
@@ -1164,6 +1165,83 @@ Guidance:
   such as high temperature, high load, low signal, or extreme composition.
 - Keep noise values in target units.
 - Report the assumed noise model when publishing model results.
+
+### 8.3 Learned Heteroscedastic GPR
+
+Use `fit_heteroscedastic_gpr` when the observation noise is not known in
+advance but appears to vary across the materials space. The current
+implementation is a practical two-stage model:
+
+```text
+y_i = f_signal(x_i) + epsilon_i
+epsilon_i ~ Normal(0, sigma_noise^2(x_i))
+
+f_signal(x) ~ GP(m(x), k_signal(x, x'))
+log(sigma_noise^2(x)) ~ GP(m_noise(x), k_noise(x, x'))
+```
+
+The signal GP is fit first. Then a second GP is fit to
+`log(residual^2 + residual_variance_floor)`. At prediction time, `matgpr`
+returns the signal mean, latent signal uncertainty, learned noise uncertainty,
+and total uncertainty:
+
+```text
+sigma_total^2(x) = sigma_latent^2(x) + sigma_noise^2(x)
+```
+
+Example:
+
+```python
+from matgpr import fit_heteroscedastic_gpr
+
+result = fit_heteroscedastic_gpr(
+    X_train_array,
+    y_train,
+    signal_kernel="matern",
+    noise_kernel="matern",
+    signal_training_iter=1000,
+    noise_training_iter=500,
+    residual_variance_floor=1e-8,
+    verbose=False,
+)
+
+prediction = result.predict(X_test_array, confidence_level=0.95)
+
+y_mean = prediction.mean
+y_total_std = prediction.std
+y_signal_std = prediction.latent_std
+y_noise_std = prediction.noise_std
+```
+
+This can also be combined with a physics-informed mean function:
+
+```python
+result = fit_heteroscedastic_gpr(
+    X_train_array,
+    y_train,
+    signal_mean_module=physics_mean_function,
+    signal_training_iter=1000,
+    noise_training_iter=500,
+    verbose=False,
+)
+```
+
+Use learned heteroscedastic GPR when:
+
+- measurement quality changes with composition, temperature, concentration, or
+  processing condition,
+- some regions of descriptor space are systematically harder to predict,
+- uncertainty calibration is important for Bayesian optimization or candidate
+  prioritization,
+- no reliable per-row experimental uncertainty is available.
+
+Use explicit `SourceNoiseModel`, `ReplicateNoiseModel`, or `FeatureNoiseModel`
+instead when uncertainty estimates are known from metadata, replicate
+measurements, or a trusted physical noise equation.
+
+Report that this is a residual-noise GP approximation, not a full joint
+variational heteroscedastic likelihood. Also report the residual variance floor,
+signal kernel, noise kernel, and train/test protocol.
 
 ## 9. Physics-Informed GPR
 

@@ -50,6 +50,47 @@ The GP residual is still important. It captures systematic deviations caused by
 missing descriptors, approximations in the equation, experimental noise, and
 material-specific effects not included in the physics term.
 
+## Learned Heteroscedastic Noise
+
+The simplest GPR likelihood uses one learned observation-noise variance
+\(\sigma_n^2\) for all rows. Some materials datasets are more naturally
+heteroscedastic: uncertainty can change with temperature, concentration,
+composition region, measurement source, or descriptor quality.
+
+`matgpr` provides `fit_heteroscedastic_gpr` as a two-stage residual-noise
+workflow:
+
+$$
+y_i = f_{signal}(\mathbf{x}_i) + \epsilon_i
+$$
+
+$$
+\epsilon_i \sim \mathcal{N}(0, \sigma^2_{noise}(\mathbf{x}_i))
+$$
+
+$$
+\log \sigma^2_{noise}(\mathbf{x}) \sim
+\mathcal{GP}(m_{noise}(\mathbf{x}), k_{noise}(\mathbf{x}, \mathbf{x'}))
+$$
+
+First, a signal GP is fit to the target. Then a second GP is fit to
+\(\log(r_i^2 + \delta)\), where \(r_i\) is the signal residual and \(\delta\)
+is a positive residual-variance floor. At prediction time, uncertainty is
+decomposed as:
+
+$$
+\sigma^2_{total}(\mathbf{x}) =
+\sigma^2_{latent}(\mathbf{x}) + \sigma^2_{noise}(\mathbf{x})
+$$
+
+The signal GP may use a standard constant mean or a `PhysicsInformedMean`.
+This is useful when the expected property trend is physics-informed but the
+experimental noise itself still changes across the design space.
+
+This workflow is an approximation, not a full joint variational
+heteroscedastic GP. Report the signal kernel, noise kernel, residual-variance
+floor, and validation protocol when using it.
+
 ## Implementation Pattern
 
 Define an equation that accepts a feature dictionary and a parameter dictionary.

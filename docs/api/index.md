@@ -18,6 +18,8 @@ types, and class methods.
   function-value and derivative observations.
 - [Noise Models](noise_models.md): source-dependent, replicate-aware, and
   feature-dependent observation-noise profiles.
+- [Heteroscedastic GPR](heteroscedastic_gpr.md): learned input-dependent
+  observation noise with a residual-noise GP.
 - [Physics Equation Templates](physics_equations.md): reusable Arrhenius,
   power-law, Hall-Petch, free-volume, and mixture mean equations.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and

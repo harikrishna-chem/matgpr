@@ -83,6 +83,11 @@ from .featurizers import (
     featurize_magpie_compositions,
 )
 from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
+from .heteroscedastic_gpr import (
+    HeteroscedasticGPRPrediction,
+    HeteroscedasticGPRResult,
+    fit_heteroscedastic_gpr,
+)
 from .io_utils import load_artifact, log_experiment_result, save_artifact
 from .kernels import (
     ElementFractionKernel,
@@ -239,6 +244,8 @@ __all__ = [
     "FeatureSubsetKernel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
+    "HeteroscedasticGPRPrediction",
+    "HeteroscedasticGPRResult",
     "AugmentedTrainingData",
     "BayesianOptimizationResult",
     "BOCampaignState",
@@ -354,6 +361,7 @@ __all__ = [
     "fingerprint_cache_key",
     "fit_derivative_constrained_gpr",
     "fit_gpytorch_gpr",
+    "fit_heteroscedastic_gpr",
     "fit_pca",
     "free_volume_exponential_equation",
     "gaussian_nlpd",

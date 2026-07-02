@@ -40,6 +40,8 @@ semantic-versioning conventions once the first public release is tagged.
   observations.
 - Physics-aware observation-noise profiles for source-dependent, replicate, and
   feature-dependent uncertainty.
+- Learned heteroscedastic GPR through a two-stage signal GP plus residual
+  log-noise GP workflow.
 - Reusable physics equation templates for Arrhenius, square-root-time,
   power-law, Hall-Petch, free-volume, and rule-of-mixtures mean functions.
 - Reusable validation workflows for train/test evaluation, cross-validation,
