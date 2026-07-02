@@ -72,10 +72,15 @@ from .experiment_logging import (
     summarize_closed_loop_log,
 )
 from .featurizers import (
+    DEFAULT_MAGPIE_PROPERTIES,
+    DEFAULT_MAGPIE_STATISTICS,
     CompositionFeaturizer,
+    MagpieCompositionFeaturizer,
     PolymerSmilesFeaturizer,
     SmilesFeaturizer,
     StructureFeaturizer,
+    append_magpie_composition_features,
+    featurize_magpie_compositions,
 )
 from .fingerprint_cache import FINGERPRINT_CACHE_SCHEMA_VERSION, fingerprint_cache_key
 from .io_utils import load_artifact, log_experiment_result, save_artifact
@@ -261,11 +266,14 @@ __all__ = [
     "CompositionFeaturizer",
     "CrossValidationResult",
     "DEFAULT_RDKIT_DESCRIPTORS",
+    "DEFAULT_MAGPIE_PROPERTIES",
+    "DEFAULT_MAGPIE_STATISTICS",
     "DEFAULT_STRUCTURE_FEATURES",
     "ElementFractionKernel",
     "FINGERPRINT_CACHE_SCHEMA_VERSION",
     "FeatureNoiseModel",
     "LearningCurveResult",
+    "MagpieCompositionFeaturizer",
     "R_GAS_CONSTANT_J_MOL_K",
     "PolymerSmilesFeaturizer",
     "ObservationNoiseProfile",
@@ -285,6 +293,7 @@ __all__ = [
     "VirtualObservationSet",
     "append_composition_fingerprints",
     "append_element_fractions",
+    "append_magpie_composition_features",
     "append_smiles_features",
     "append_structure_fingerprints",
     "append_closed_loop_records",
@@ -327,6 +336,7 @@ __all__ = [
     "exclude_existing_candidates",
     "featurize_compositions",
     "featurize_element_fractions",
+    "featurize_magpie_compositions",
     "featurize_smiles",
     "featurize_structures",
     "filter_iqr_outliers",

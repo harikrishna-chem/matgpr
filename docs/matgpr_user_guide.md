@@ -41,6 +41,7 @@ from matgpr import (
     summarize_missingness,
     summarize_numeric_columns,
     CompositionFeaturizer,
+    MagpieCompositionFeaturizer,
     StructureFeaturizer,
     SmilesFeaturizer,
     PolymerSmilesFeaturizer,
@@ -220,6 +221,34 @@ feature_names = composition_featurizer.get_feature_names_out()
 Set `cache_dir` when repeated notebook runs recompute the same fingerprints.
 Each row receives a deterministic cache key based on the input and descriptor
 settings. Failed-row reports include that key for traceability.
+
+For a stronger published composition-descriptor baseline, install the optional
+`materials-extra` dependencies and use matminer's Magpie descriptors through
+`MagpieCompositionFeaturizer`:
+
+```bash
+python -m pip install "matgpr[materials-extra]"
+```
+
+```python
+from matgpr import MagpieCompositionFeaturizer
+
+magpie_featurizer = MagpieCompositionFeaturizer(
+    formula_column="composition",
+    properties=("Number", "AtomicWeight", "Electronegativity"),
+    statistics=("mean", "range", "avg_dev"),
+    errors="coerce",
+)
+
+magpie_features = magpie_featurizer.fit_transform(data)
+failed_formulas = magpie_featurizer.failed_
+```
+
+Magpie descriptors summarize elemental-property tables with statistics such as
+mean, range, mode, and average deviation. They are useful as a stronger
+composition-only baseline for inorganic materials, but they add an optional
+dependency and can create a larger feature space than the lightweight built-in
+composition descriptors.
 
 ### 3.2 Crystal Structure Fingerprints
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
@@ -14,7 +15,16 @@ from sklearn.base import clone
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from matgpr import CompositionFeaturizer, PolymerSmilesFeaturizer, SmilesFeaturizer, StructureFeaturizer
+from matgpr import (
+    CompositionFeaturizer,
+    MagpieCompositionFeaturizer,
+    PolymerSmilesFeaturizer,
+    SmilesFeaturizer,
+    StructureFeaturizer,
+    append_magpie_composition_features,
+    featurize_magpie_compositions,
+    is_optional_dependency_available,
+)
 
 
 def _diamond_structure() -> Structure:
@@ -95,6 +105,86 @@ class CompositionFeaturizerTests(unittest.TestCase):
         self.assertEqual(cloned.formula_column, "formula")
         self.assertEqual(cloned.properties, ("atomic_number",))
         self.assertEqual(cloned.statistics, ("fwm",))
+
+
+class MagpieCompositionFeaturizerTests(unittest.TestCase):
+    def test_missing_matminer_backend_has_clear_message(self):
+        with patch(
+            "matgpr.featurizers.require_optional_dependency",
+            side_effect=ImportError("install matgpr[materials-extra]"),
+        ):
+            with self.assertRaisesRegex(ImportError, "materials-extra"):
+                MagpieCompositionFeaturizer().fit(["B4C"])
+
+    @unittest.skipUnless(
+        is_optional_dependency_available("matminer"),
+        "matminer is not installed",
+    )
+    def test_transform_dataframe_formula_column_with_small_magpie_set(self):
+        data = pd.DataFrame({"formula": ["B4C", "BN"], "label": [1, 2]}, index=[10, 20])
+        featurizer = MagpieCompositionFeaturizer(
+            formula_column="formula",
+            properties=("Number", "AtomicWeight"),
+            statistics=("mean", "range"),
+            column_prefix="magpie",
+        )
+
+        features = featurizer.fit_transform(data)
+
+        self.assertEqual(features.index.tolist(), [10, 20])
+        self.assertEqual(
+            features.columns.tolist(),
+            [
+                "magpie_number_mean",
+                "magpie_number_range",
+                "magpie_atomic_weight_mean",
+                "magpie_atomic_weight_range",
+            ],
+        )
+        self.assertEqual(featurizer.get_feature_names_out().tolist(), features.columns.tolist())
+        self.assertEqual(features.shape, (2, 4))
+        self.assertTrue(np.isfinite(features.to_numpy()).all())
+        self.assertEqual(featurizer.failed_.shape[0], 0)
+
+    @unittest.skipUnless(
+        is_optional_dependency_available("matminer"),
+        "matminer is not installed",
+    )
+    def test_low_level_magpie_helpers_report_failed_formulas(self):
+        result = featurize_magpie_compositions(
+            ["B4C", "not-a-formula"],
+            properties=("Number",),
+            statistics=("mean",),
+            errors="coerce",
+        )
+
+        self.assertEqual(result.features.shape, (2, 1))
+        self.assertEqual(result.failed.shape[0], 1)
+        self.assertTrue(np.isnan(result.features.iloc[1, 0]))
+
+        data = pd.DataFrame({"composition": ["B4C"], "target": [1.0]})
+        appended = append_magpie_composition_features(
+            data,
+            properties=("Number",),
+            statistics=("mean",),
+        )
+
+        self.assertIn("magpie_number_mean", appended.columns)
+        self.assertIn("target", appended.columns)
+
+    def test_magpie_featurizer_is_cloneable(self):
+        featurizer = MagpieCompositionFeaturizer(
+            formula_column="formula",
+            properties=("Number",),
+            statistics=("mean",),
+            return_dataframe=False,
+        )
+        cloned = clone(featurizer)
+
+        self.assertEqual(cloned.formula_column, "formula")
+        self.assertEqual(cloned.properties, ("Number",))
+        self.assertEqual(cloned.statistics, ("mean",))
+        self.assertFalse(cloned.return_dataframe)
 
 
 class StructureFeaturizerTests(unittest.TestCase):

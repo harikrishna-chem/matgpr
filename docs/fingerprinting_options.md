@@ -64,7 +64,13 @@ Recommended options:
 Current `matgpr` implementation:
 
 ```python
-from matgpr import CompositionFeaturizer, append_composition_fingerprints, append_element_fractions
+from matgpr import (
+    CompositionFeaturizer,
+    MagpieCompositionFeaturizer,
+    append_composition_fingerprints,
+    append_element_fractions,
+    append_magpie_composition_features,
+)
 
 model_data = append_composition_fingerprints(
     data,
@@ -82,6 +88,19 @@ element_fraction_features = append_element_fractions(
     data,
     formula_column="composition",
     elements=("B", "C", "N", "O", "Al", "Si"),
+    errors="coerce",
+)
+
+magpie_features = MagpieCompositionFeaturizer(
+    formula_column="composition",
+    properties=("Number", "AtomicWeight", "Electronegativity"),
+    statistics=("mean", "range", "avg_dev"),
+    errors="coerce",
+).fit_transform(data)
+
+model_data_with_magpie = append_magpie_composition_features(
+    data,
+    formula_column="composition",
     errors="coerce",
 )
 ```
@@ -292,6 +311,8 @@ Already implemented:
 - `composition_fingerprint`
 - `featurize_compositions`
 - `append_composition_fingerprints`
+- `featurize_magpie_compositions`
+- `append_magpie_composition_features`
 - `default_element_symbols`
 - `element_fraction_fingerprint`
 - `featurize_element_fractions`
@@ -305,6 +326,7 @@ Already implemented:
 - `featurize_smiles`
 - `append_smiles_features`
 - `CompositionFeaturizer`
+- `MagpieCompositionFeaturizer`
 - `StructureFeaturizer`
 - `SmilesFeaturizer`
 - `PolymerSmilesFeaturizer`
@@ -317,8 +339,6 @@ additions after the first release:
 
 | Wrapper | Backend | Purpose |
 | --- | --- | --- |
-| `featurize_matminer_compositions` | `matminer` | Standard composition featurizer set |
-| `append_matminer_composition_features` | `matminer` | Add matminer descriptors to a dataframe |
 | `featurize_mendeleev_compositions` | `mendeleev` | Custom lightweight elemental-property descriptors |
 | `featurize_matminer_structures` | `matminer` | Larger published structure featurizer set |
 

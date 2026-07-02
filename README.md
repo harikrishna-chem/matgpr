@@ -28,6 +28,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   fingerprinting backends.
 - Deterministic fingerprint caching and failed-row reports for repeated
   featurization workflows.
+- Optional matminer Magpie composition descriptors through
+  `MagpieCompositionFeaturizer` and helper functions.
 - Scikit-learn GPR helpers for baseline models and kernel search.
 - GPyTorch exact GPR with ARD kernels, target standardization, and predictive
   uncertainty.
@@ -82,8 +84,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 2. Separate the target from features with `separate_features_target`, then make
    train/test sets with `split_train_test`.
 3. Add materials descriptors with `CompositionFeaturizer`,
-   `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer`, or the
-   lower-level fingerprint helpers.
+   `MagpieCompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`,
+   `PolymerSmilesFeaturizer`, or the lower-level fingerprint helpers.
 4. Identify column types with `identify_feature_types` and build a transformer
    with `build_preprocessor`.
 5. Choose a kernel, including `TanimotoKernel` for molecular or polymer
@@ -154,7 +156,7 @@ file alongside any published benchmark results.
 | `matgpr.data_cleaning` | `normalize_column_names`, `replace_missing_placeholders`, `drop_duplicate_rows`, `drop_columns_by_missing_fraction`, `impute_missing_values`, `filter_iqr_outliers` | Data cleaning before modeling |
 | `matgpr.data_splitting` | `separate_features_target`, `split_train_test` | Target and train/test splitting |
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
-| `matgpr.featurizers` | `CompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
+| `matgpr.featurizers` | `CompositionFeaturizer`, `MagpieCompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
 | `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `StructureFeatureKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
 | `matgpr.target_transforms` | `LogTargetTransform`, `BoundedTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target constraints, transforms, and physics-residual modeling |
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
@@ -271,6 +273,12 @@ For Bayesian optimization:
 
 ```bash
 python3 -m pip install -e ".[bo]"
+```
+
+For optional matminer Magpie descriptors:
+
+```bash
+python3 -m pip install -e ".[materials-extra]"
 ```
 
 ## Citation
