@@ -11,7 +11,7 @@ types, and class methods.
 - [Kernels](kernels.md): Tanimoto, element-fraction, structure-feature, and
   feature-subset kernel helpers.
 - [Target Transforms](target_transforms.md): positive, bounded, standardized,
-  and physics-residual modeling helpers.
+  physics-residual, and materials-property preset helpers.
 - [Physics Constraints](physics_constraints.md): soft virtual observations for
   known limits and monotonic trends.
 - [Derivative-Constrained GPR](derivative_gpr.md): exact RBF GPR with

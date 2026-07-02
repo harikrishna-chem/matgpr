@@ -34,6 +34,9 @@ semantic-versioning conventions once the first public release is tagged.
   structure-aware GPR kernels for global lattice/packing similarity.
 - Bounded target transforms for GPR workflows with finite physical output
   limits.
+- Materials-property target-transform presets for efficiencies, fractions,
+  transport coefficients, electronic gaps, stability energies, mechanical
+  properties, transition temperatures, and signed energy targets.
 - Soft physics-constraint utilities for known limits and monotonic trends using
   virtual observations.
 - Exact RBF derivative-constrained GPR with function-value and derivative

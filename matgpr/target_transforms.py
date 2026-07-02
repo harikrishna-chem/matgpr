@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 import numpy as np
+import pandas as pd
 
 from .gpytorch_gpr import GPyTorchPrediction
 
@@ -12,7 +14,15 @@ __all__ = [
     "LogTargetTransform",
     "PhysicsResidualTransform",
     "StandardizedTargetTransform",
+    "TargetTransformSpec",
+    "available_target_transform_specs",
+    "describe_target_transform_spec",
+    "get_target_transform_spec",
+    "list_target_transform_specs",
+    "make_materials_target_transform",
     "make_target_transform",
+    "search_target_transform_specs",
+    "summarize_target_transform_specs",
 ]
 
 
@@ -318,6 +328,70 @@ class PhysicsResidualTransform:
         return _inverse_prediction_with_arrays(self, prediction, baseline=baseline)
 
 
+@dataclass(frozen=True)
+class TargetTransformSpec:
+    """Metadata for a reusable materials-property target-transform preset.
+
+    The spec documents which transform is usually appropriate for a property
+    type, stores default transform keyword arguments, and builds the concrete
+    transform when requested.
+    """
+
+    name: str
+    transform_name: str
+    transform_kwargs: Mapping[str, object] = field(default_factory=dict)
+    aliases: Sequence[str] = ()
+    category: str = ""
+    description: str = ""
+    target_units: str | None = None
+    examples: Sequence[str] = ()
+    assumptions: Sequence[str] = ()
+    notes: Sequence[str] = ()
+    tags: Sequence[str] = ()
+
+    def __post_init__(self) -> None:
+        if not str(self.name).strip():
+            raise ValueError("name must be non-empty")
+        if not str(self.transform_name).strip():
+            raise ValueError("transform_name must be non-empty")
+        object.__setattr__(self, "name", str(self.name))
+        object.__setattr__(self, "transform_name", str(self.transform_name))
+        object.__setattr__(self, "transform_kwargs", dict(self.transform_kwargs))
+        object.__setattr__(self, "aliases", tuple(self.aliases))
+        object.__setattr__(self, "examples", tuple(self.examples))
+        object.__setattr__(self, "assumptions", tuple(self.assumptions))
+        object.__setattr__(self, "notes", tuple(self.notes))
+        object.__setattr__(self, "tags", tuple(self.tags))
+
+    def build_transform(self, **overrides):
+        """Build the concrete transform for this property preset."""
+        transform_kwargs = dict(self.transform_kwargs)
+        transform_kwargs.update(overrides)
+        return make_target_transform(self.transform_name, **transform_kwargs)
+
+    def summary(self) -> dict[str, object]:
+        """Return a compact serializable summary for reports."""
+        return {
+            "name": self.name,
+            "aliases": list(self.aliases),
+            "category": self.category,
+            "transform_name": self.transform_name,
+            "transform_kwargs": dict(self.transform_kwargs),
+            "description": self.description,
+            "target_units": self.target_units,
+            "examples": list(self.examples),
+            "assumptions": list(self.assumptions),
+            "tags": list(self.tags),
+        }
+
+    def discovery_record(self) -> dict[str, object]:
+        """Return complete metadata for one transform preset."""
+        return {
+            **self.summary(),
+            "notes": list(self.notes),
+        }
+
+
 def make_target_transform(name: str, **kwargs):
     """Create a target transform by name.
 
@@ -326,9 +400,11 @@ def make_target_transform(name: str, **kwargs):
     name
         One of ``"identity"``, ``"standard"``, ``"standardized"``, ``"log"``,
         ``"positive"``, ``"bounded"``, ``"logit"``, ``"residual"``, or
-        ``"physics_residual"``.
+        ``"physics_residual"``. Registered materials-property presets such as
+        ``"diffusivity"``, ``"efficiency_percent"``, ``"band_gap_ev"``, and
+        ``"formation_energy"`` are also accepted.
     """
-    normalized = name.lower().replace("-", "_")
+    normalized = _normalize_spec_name(name)
     if normalized in {"identity", "none", "passthrough"}:
         return IdentityTargetTransform(**kwargs)
     if normalized in {"standard", "standardized", "zscore", "z_score"}:
@@ -339,7 +415,292 @@ def make_target_transform(name: str, **kwargs):
         return BoundedTargetTransform(**kwargs)
     if normalized in {"residual", "physics_residual"}:
         return PhysicsResidualTransform(**kwargs)
-    raise ValueError("name must be one of: identity, standard, log, bounded, residual")
+
+    lookup = _target_transform_spec_lookup()
+    if normalized in lookup:
+        return lookup[normalized].build_transform(**kwargs)
+
+    available = ", ".join(
+        [
+            "identity",
+            "standard",
+            "log",
+            "bounded",
+            "residual",
+            *available_target_transform_specs(include_aliases=True),
+        ]
+    )
+    raise ValueError(f"Unknown target transform '{name}'. Available transforms: {available}")
+
+
+def make_materials_target_transform(property_name: str, **overrides):
+    """Build a target transform from a materials-property preset."""
+    return get_target_transform_spec(property_name).build_transform(**overrides)
+
+
+def list_target_transform_specs() -> tuple[TargetTransformSpec, ...]:
+    """Return registered materials-property target-transform presets."""
+    return _TARGET_TRANSFORM_SPECS
+
+
+def available_target_transform_specs(*, include_aliases: bool = False) -> tuple[str, ...]:
+    """Return available target-transform preset names, optionally with aliases."""
+    names = [spec.name for spec in _TARGET_TRANSFORM_SPECS]
+    if include_aliases:
+        names.extend(alias for spec in _TARGET_TRANSFORM_SPECS for alias in spec.aliases)
+    return tuple(names)
+
+
+def get_target_transform_spec(name: str) -> TargetTransformSpec:
+    """Return a target-transform preset by name or alias."""
+    key = _normalize_spec_name(name)
+    lookup = _target_transform_spec_lookup()
+    if key not in lookup:
+        available = ", ".join(available_target_transform_specs(include_aliases=True))
+        raise ValueError(f"Unknown target-transform preset '{name}'. Available presets: {available}")
+    return lookup[key]
+
+
+def describe_target_transform_spec(name: str) -> dict[str, object]:
+    """Return complete registry metadata for one target-transform preset."""
+    return get_target_transform_spec(name).discovery_record()
+
+
+def search_target_transform_specs(
+    query: str | None = None,
+    *,
+    category: str | None = None,
+    tag: str | None = None,
+    transform_name: str | None = None,
+) -> tuple[TargetTransformSpec, ...]:
+    """Search registered target-transform presets by text and metadata."""
+    normalized_transform = (
+        _normalize_spec_name(transform_name) if transform_name is not None else None
+    )
+    matches: list[TargetTransformSpec] = []
+    for spec in _TARGET_TRANSFORM_SPECS:
+        if query is not None and _normalize_spec_name(query) not in _target_spec_search_text(spec):
+            continue
+        if category is not None and _normalize_spec_name(category) != _normalize_spec_name(
+            spec.category
+        ):
+            continue
+        if tag is not None and _normalize_spec_name(tag) not in {
+            _normalize_spec_name(item) for item in spec.tags
+        }:
+            continue
+        if normalized_transform is not None and normalized_transform != _normalize_spec_name(
+            spec.transform_name
+        ):
+            continue
+        matches.append(spec)
+    return tuple(matches)
+
+
+def summarize_target_transform_specs(*, include_aliases: bool = True) -> pd.DataFrame:
+    """Return a dataframe summary of registered target-transform presets."""
+    rows = []
+    for spec in _TARGET_TRANSFORM_SPECS:
+        rows.append(
+            {
+                "name": spec.name,
+                "aliases": ", ".join(spec.aliases) if include_aliases else "",
+                "category": spec.category,
+                "transform_name": spec.transform_name,
+                "transform_kwargs": dict(spec.transform_kwargs),
+                "description": spec.description,
+                "target_units": spec.target_units,
+                "examples": ", ".join(spec.examples),
+                "assumptions": " ".join(spec.assumptions),
+                "tags": ", ".join(spec.tags),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+_TARGET_TRANSFORM_SPECS = (
+    TargetTransformSpec(
+        name="efficiency_percent",
+        aliases=("efficiency", "pce", "power_conversion_efficiency", "percent_efficiency"),
+        transform_name="bounded",
+        transform_kwargs={"lower_bound": 0.0, "upper_bound": 100.0},
+        category="bounded_fractional_response",
+        description="Efficiency reported as a percentage with finite 0 to 100 bounds.",
+        target_units="%",
+        examples=("solar-cell PCE", "catalyst conversion percent", "yield percent"),
+        assumptions=("Values are strictly between 0 and 100 before the logit transform.",),
+        notes=("Use the fraction preset when the target is stored from 0 to 1.",),
+        tags=("bounded", "efficiency", "percentage", "opv", "photovoltaics"),
+    ),
+    TargetTransformSpec(
+        name="fraction",
+        aliases=("probability", "phase_fraction", "volume_fraction", "mole_fraction"),
+        transform_name="bounded",
+        transform_kwargs={"lower_bound": 0.0, "upper_bound": 1.0},
+        category="bounded_fractional_response",
+        description="Fraction, probability, or normalized phase amount bounded by 0 and 1.",
+        target_units="dimensionless",
+        examples=("phase fraction", "volume fraction", "classification probability"),
+        assumptions=("Values are strictly between 0 and 1 before the logit transform.",),
+        tags=("bounded", "fraction", "probability", "mixture"),
+    ),
+    TargetTransformSpec(
+        name="percentage",
+        aliases=("percent", "percent_yield", "yield_percent", "selectivity_percent"),
+        transform_name="bounded",
+        transform_kwargs={"lower_bound": 0.0, "upper_bound": 100.0},
+        category="bounded_fractional_response",
+        description="Generic percentage-valued target bounded by 0 and 100.",
+        target_units="%",
+        examples=("reaction yield percent", "selectivity percent", "conversion percent"),
+        assumptions=("Values are strictly between 0 and 100 before the logit transform.",),
+        tags=("bounded", "percentage", "yield", "selectivity"),
+    ),
+    TargetTransformSpec(
+        name="diffusivity",
+        aliases=("diffusion_coefficient", "diffusion_constant"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_transport",
+        description="Positive transport coefficient often spanning orders of magnitude.",
+        target_units="dataset units",
+        examples=("solvent diffusivity", "ion diffusivity", "gas diffusion coefficient"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "transport", "diffusion"),
+    ),
+    TargetTransformSpec(
+        name="permeability",
+        aliases=("gas_permeability", "membrane_permeability"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_transport",
+        description="Positive permeability-like property often modeled on a log scale.",
+        target_units="dataset units",
+        examples=("polymer gas permeability", "membrane permeability"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "transport", "polymer"),
+    ),
+    TargetTransformSpec(
+        name="conductivity",
+        aliases=("electrical_conductivity", "ionic_conductivity", "thermal_conductivity"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_transport",
+        description="Positive conductivity-like property often spanning orders of magnitude.",
+        target_units="dataset units",
+        examples=("ionic conductivity", "electrical conductivity", "thermal conductivity"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "transport", "conductivity"),
+    ),
+    TargetTransformSpec(
+        name="rate_constant",
+        aliases=("rate", "reaction_rate", "kinetic_rate"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_kinetics",
+        description="Positive kinetic rate or rate constant.",
+        target_units="dataset units",
+        examples=("reaction rate constant", "degradation rate", "crystallization rate"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "kinetics", "rate"),
+    ),
+    TargetTransformSpec(
+        name="band_gap_ev",
+        aliases=("band_gap", "bandgap", "eg"),
+        transform_name="log",
+        transform_kwargs={"offset": 1e-8},
+        category="nonnegative_electronic_property",
+        description="Nonnegative electronic band gap in electronvolts.",
+        target_units="eV",
+        examples=("DFT band gap", "experimental optical band gap"),
+        assumptions=("Values are nonnegative; metals may have zero band gap.",),
+        notes=("Use standardization if the dataset contains signed gap corrections.",),
+        tags=("nonnegative", "log", "electronic", "band_gap"),
+    ),
+    TargetTransformSpec(
+        name="energy_above_hull",
+        aliases=("e_above_hull", "hull_energy", "decomposition_energy"),
+        transform_name="log",
+        transform_kwargs={"offset": 1e-8},
+        category="nonnegative_stability",
+        description="Nonnegative thermodynamic instability above the convex hull.",
+        target_units="eV/atom",
+        examples=("energy above hull", "decomposition energy"),
+        assumptions=("Values are nonnegative; stable phases may be exactly zero.",),
+        tags=("nonnegative", "log", "stability", "energy"),
+    ),
+    TargetTransformSpec(
+        name="modulus",
+        aliases=("elastic_modulus", "bulk_modulus", "shear_modulus", "youngs_modulus"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_mechanical_property",
+        description="Positive elastic modulus or stiffness property.",
+        target_units="dataset units",
+        examples=("bulk modulus", "shear modulus", "Young's modulus"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "mechanical", "elasticity"),
+    ),
+    TargetTransformSpec(
+        name="strength",
+        aliases=("yield_strength", "ultimate_strength", "tensile_strength", "spall_strength"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_mechanical_property",
+        description="Positive strength-like mechanical property.",
+        target_units="dataset units",
+        examples=("yield strength", "tensile strength", "spall strength"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "mechanical", "strength"),
+    ),
+    TargetTransformSpec(
+        name="hardness",
+        aliases=("vickers_hardness", "nanoindentation_hardness"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_mechanical_property",
+        description="Positive indentation hardness property.",
+        target_units="dataset units",
+        examples=("Vickers hardness", "nanoindentation hardness"),
+        assumptions=("Values are positive and measured on a ratio scale.",),
+        tags=("positive", "log", "mechanical", "hardness"),
+    ),
+    TargetTransformSpec(
+        name="transition_temperature_k",
+        aliases=("transition_temperature", "melting_temperature_k", "glass_transition_temperature_k"),
+        transform_name="log",
+        transform_kwargs={"offset": 0.0},
+        category="positive_temperature",
+        description="Positive absolute transition temperature in Kelvin.",
+        target_units="K",
+        examples=("melting temperature", "glass-transition temperature", "Curie temperature"),
+        assumptions=("Temperature is absolute Kelvin and positive.",),
+        notes=("Do not use this preset for Celsius targets that can be negative."),
+        tags=("positive", "log", "temperature"),
+    ),
+    TargetTransformSpec(
+        name="formation_energy",
+        aliases=("formation_energy_ev_atom", "formation_enthalpy"),
+        transform_name="standard",
+        category="signed_energy",
+        description="Signed formation energy or enthalpy that may be negative or positive.",
+        target_units="dataset units",
+        examples=("formation energy per atom", "formation enthalpy"),
+        assumptions=("The target is signed and does not have a strict positive domain.",),
+        tags=("signed", "standard", "energy", "stability"),
+    ),
+    TargetTransformSpec(
+        name="binding_energy",
+        aliases=("adsorption_energy", "interaction_energy", "cohesive_energy"),
+        transform_name="standard",
+        category="signed_energy",
+        description="Signed binding, adsorption, cohesive, or interaction energy.",
+        target_units="dataset units",
+        examples=("adsorption energy", "binding energy", "cohesive energy"),
+        assumptions=("The sign convention is dataset-specific and must be reported.",),
+        tags=("signed", "standard", "energy", "adsorption"),
+    ),
+)
 
 
 def _inverse_prediction_with_arrays(transform, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
@@ -388,3 +749,35 @@ def _sigmoid(values: np.ndarray) -> np.ndarray:
     exp_values = np.exp(values[~positive])
     result[~positive] = exp_values / (1.0 + exp_values)
     return result
+
+
+def _normalize_spec_name(name: str) -> str:
+    return str(name).lower().replace("-", "_").replace(" ", "_")
+
+
+def _target_transform_spec_lookup() -> dict[str, TargetTransformSpec]:
+    lookup: dict[str, TargetTransformSpec] = {}
+    for spec in _TARGET_TRANSFORM_SPECS:
+        keys = (spec.name, *spec.aliases)
+        for key in keys:
+            normalized = _normalize_spec_name(key)
+            if normalized in lookup:
+                raise ValueError(f"Duplicate target-transform preset name or alias: {key}")
+            lookup[normalized] = spec
+    return lookup
+
+
+def _target_spec_search_text(spec: TargetTransformSpec) -> str:
+    parts = [
+        spec.name,
+        spec.transform_name,
+        spec.category,
+        spec.description,
+        spec.target_units or "",
+        *spec.aliases,
+        *spec.examples,
+        *spec.assumptions,
+        *spec.notes,
+        *spec.tags,
+    ]
+    return " ".join(_normalize_spec_name(part) for part in parts)

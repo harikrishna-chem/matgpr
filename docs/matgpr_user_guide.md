@@ -70,6 +70,8 @@ from matgpr import (
     LogTargetTransform,
     PhysicsResidualTransform,
     StandardizedTargetTransform,
+    make_materials_target_transform,
+    summarize_target_transform_specs,
     build_sklearn_gpr_model,
     fit_gpytorch_gpr,
     fit_heteroscedastic_gpr,
@@ -824,7 +826,58 @@ deviations are estimated with Gauss-Hermite quadrature over the
 logistic-normal distribution, so uncertainty remains on the original bounded
 scale.
 
-### 7.3 Standardized Targets
+### 7.3 Materials-Property Presets
+
+For common materials targets, use a documented preset instead of choosing the
+transform from memory:
+
+```python
+from matgpr import (
+    make_materials_target_transform,
+    search_target_transform_specs,
+    summarize_target_transform_specs,
+)
+
+summary = summarize_target_transform_specs()
+transport_presets = search_target_transform_specs(tag="transport")
+
+target_transform = make_materials_target_transform("diffusivity")
+y_train_model = target_transform.fit_transform(y_train)
+```
+
+Useful presets include:
+
+| Preset | Transform | Typical use |
+| --- | --- | --- |
+| `efficiency_percent` | bounded 0 to 100 | OPV PCE, conversion percent, yield percent |
+| `fraction` | bounded 0 to 1 | phase fraction, volume fraction, probability |
+| `diffusivity` | log | solvent, ion, or gas diffusion coefficients |
+| `permeability` | log | gas and membrane permeability |
+| `conductivity` | log | electrical, ionic, and thermal conductivity |
+| `band_gap_ev` | log with small offset | nonnegative electronic band gaps |
+| `energy_above_hull` | log with small offset | nonnegative stability above the convex hull |
+| `modulus`, `strength`, `hardness` | log | positive mechanical properties |
+| `formation_energy`, `binding_energy` | standardize | signed energy targets |
+
+Aliases are supported, so `make_materials_target_transform("pce")` returns the
+same bounded transform as `efficiency_percent`, and
+`make_materials_target_transform("diffusion-coefficient")` returns the
+`diffusivity` preset.
+
+Preset defaults can be overridden when the dataset has a narrower known domain:
+
+```python
+target_transform = make_materials_target_transform(
+    "efficiency_percent",
+    upper_bound=35.0,
+)
+```
+
+The presets are not automatic truth. They are documented defaults. Always
+check the target units, sign convention, possible zero values, and physical
+domain before choosing a transform.
+
+### 7.4 Standardized Targets
 
 `fit_gpytorch_gpr(..., standardize_y=True)` already standardizes internally.
 Use `StandardizedTargetTransform` when you need explicit control outside the
@@ -845,7 +898,7 @@ prediction_model = result.predict(X_test_array, confidence_level=0.95)
 prediction = target_transform.inverse_prediction(prediction_model)
 ```
 
-### 7.4 Physics Residual Modeling
+### 7.5 Physics Residual Modeling
 
 Physics residual modeling is a simple alternative to changing the GP mean
 function. A baseline equation predicts the coarse physical trend, and GPR learns

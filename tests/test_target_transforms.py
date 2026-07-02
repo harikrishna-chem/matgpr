@@ -10,7 +10,14 @@ from matgpr import (
     LogTargetTransform,
     PhysicsResidualTransform,
     StandardizedTargetTransform,
+    TargetTransformSpec,
+    available_target_transform_specs,
+    describe_target_transform_spec,
+    get_target_transform_spec,
+    make_materials_target_transform,
     make_target_transform,
+    search_target_transform_specs,
+    summarize_target_transform_specs,
 )
 from matgpr.gpytorch_gpr import GPyTorchPrediction
 
@@ -133,6 +140,8 @@ class TargetTransformTests(unittest.TestCase):
         self.assertIsInstance(make_target_transform("standard"), StandardizedTargetTransform)
         self.assertIsInstance(make_target_transform("log", offset=1.0), LogTargetTransform)
         self.assertIsInstance(make_target_transform("positive"), LogTargetTransform)
+        self.assertIsInstance(make_target_transform("diffusivity"), LogTargetTransform)
+        self.assertIsInstance(make_target_transform("diffusion coefficient"), LogTargetTransform)
         self.assertIsInstance(
             make_target_transform("bounded", lower_bound=0.0, upper_bound=1.0),
             BoundedTargetTransform,
@@ -147,6 +156,47 @@ class TargetTransformTests(unittest.TestCase):
             LogTargetTransform().transform([0.0])
         with self.assertRaises(ValueError):
             PhysicsResidualTransform().transform([1.0, 2.0], baseline=[1.0])
+
+    def test_materials_target_transform_presets_build_expected_transforms(self):
+        pce_transform = make_materials_target_transform("pce")
+        diffusivity_transform = make_materials_target_transform("diffusion-coefficient")
+        formation_energy_transform = make_materials_target_transform("formation_energy")
+
+        self.assertIsInstance(pce_transform, BoundedTargetTransform)
+        self.assertEqual(pce_transform.lower_bound, 0.0)
+        self.assertEqual(pce_transform.upper_bound, 100.0)
+        self.assertIsInstance(diffusivity_transform, LogTargetTransform)
+        self.assertEqual(diffusivity_transform.offset, 0.0)
+        self.assertIsInstance(formation_energy_transform, StandardizedTargetTransform)
+
+    def test_materials_target_transform_presets_support_overrides(self):
+        transform = make_materials_target_transform(
+            "efficiency_percent",
+            upper_bound=35.0,
+            n_quadrature_points=9,
+        )
+
+        self.assertIsInstance(transform, BoundedTargetTransform)
+        self.assertEqual(transform.upper_bound, 35.0)
+        self.assertEqual(transform.n_quadrature_points, 9)
+
+    def test_target_transform_registry_discovery(self):
+        names = available_target_transform_specs(include_aliases=True)
+        spec = get_target_transform_spec("bandgap")
+        description = describe_target_transform_spec("band_gap_ev")
+        log_specs = search_target_transform_specs(transform_name="log")
+        mechanical_specs = search_target_transform_specs(tag="mechanical")
+        summary = summarize_target_transform_specs()
+
+        self.assertIn("efficiency_percent", names)
+        self.assertIn("pce", names)
+        self.assertIsInstance(spec, TargetTransformSpec)
+        self.assertEqual(spec.name, "band_gap_ev")
+        self.assertEqual(description["transform_kwargs"]["offset"], 1e-8)
+        self.assertTrue(any(item.name == "diffusivity" for item in log_specs))
+        self.assertTrue(any(item.name == "strength" for item in mechanical_specs))
+        self.assertIn("transform_name", summary.columns)
+        self.assertIn("efficiency_percent", set(summary["name"]))
 
 
 if __name__ == "__main__":

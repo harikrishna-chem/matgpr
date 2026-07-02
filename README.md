@@ -45,7 +45,7 @@ physics-informed mean functions and uncertainty-aware prediction.
   polymer fingerprints and element-fraction kernels for inorganic
   compositions plus structure-feature kernels for crystal descriptors.
 - Target transforms for positive, bounded, standardized, and physics-residual
-  modeling workflows.
+  modeling workflows, with materials-property presets for common target types.
 - Soft physics-constraint anchors for known limits and monotonic trends through
   virtual observations.
 - Exact RBF derivative-constrained GPR for slope-informed physics trends.
@@ -93,9 +93,9 @@ physics-informed mean functions and uncertainty-aware prediction.
 5. Choose a kernel, including `TanimotoKernel` for molecular or polymer
    fingerprints, `ElementFractionKernel` for elemental composition vectors, or
    `StructureFeatureKernel` for crystal-structure descriptors.
-6. Optionally transform targets with `LogTargetTransform`,
-   `BoundedTargetTransform`, `StandardizedTargetTransform`, or
-   `PhysicsResidualTransform`.
+6. Optionally transform targets with `make_materials_target_transform`,
+   `LogTargetTransform`, `BoundedTargetTransform`,
+   `StandardizedTargetTransform`, or `PhysicsResidualTransform`.
 7. Optionally add physics-derived virtual observations with
    `KnownLimitConstraint`, `MonotonicTrendConstraint`, and
    `append_virtual_observations`.
@@ -163,7 +163,7 @@ file alongside any published benchmark results.
 | `matgpr.preprocessing` | `identify_feature_types`, `build_scaler`, `build_preprocessor` | Reusable feature preprocessing |
 | `matgpr.featurizers` | `CompositionFeaturizer`, `MagpieCompositionFeaturizer`, `StructureFeaturizer`, `SmilesFeaturizer`, `PolymerSmilesFeaturizer` | Scikit-learn-style materials featurizers |
 | `matgpr.kernels` | `TanimotoKernel`, `ElementFractionKernel`, `StructureFeatureKernel`, `FeatureSubsetKernel`, `build_additive_kernel`, `build_product_kernel` | Physics-aware scikit-learn kernels |
-| `matgpr.target_transforms` | `LogTargetTransform`, `BoundedTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target constraints, transforms, and physics-residual modeling |
+| `matgpr.target_transforms` | `make_materials_target_transform`, `summarize_target_transform_specs`, `LogTargetTransform`, `BoundedTargetTransform`, `StandardizedTargetTransform`, `PhysicsResidualTransform` | Target constraints, property presets, transforms, and physics-residual modeling |
 | `matgpr.physics_constraints` | `KnownLimitConstraint`, `MonotonicTrendConstraint`, `VirtualObservationSet`, `append_virtual_observations` | Soft physics anchors and virtual observations |
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
