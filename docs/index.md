@@ -49,14 +49,16 @@ prediction accuracy.
 3. Read the [User Guide](matgpr_user_guide.md) for the end-to-end workflow.
 4. Read [Physics-Informed GPR](physics_informed_gpr.md) before defining custom
    equations.
-5. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
-6. Review [Versioning And Stability](versioning.md) before pinning a release
+5. Read [PI-GPR Guarantees](pi_gpr_guarantees.md) before interpreting a
+   physics-informed result.
+6. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
+7. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-7. Use the [Release Checklist](release_checklist.md) before tagging a public
+8. Use the [Release Checklist](release_checklist.md) before tagging a public
    package release.
-8. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
+9. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
    distribution.
-9. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+10. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 

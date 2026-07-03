@@ -50,6 +50,10 @@ The GP residual is still important. It captures systematic deviations caused by
 missing descriptors, approximations in the equation, experimental noise, and
 material-specific effects not included in the physics term.
 
+For scope and limitations, read
+[What PI-GPR Does And Does Not Guarantee](pi_gpr_guarantees.md). A physics term
+is an inductive bias, not proof that the fitted model is physically correct.
+
 ## Learned Heteroscedastic Noise
 
 The simplest GPR likelihood uses one learned observation-noise variance

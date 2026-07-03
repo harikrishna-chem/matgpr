@@ -219,14 +219,15 @@ Before enabling public hosted docs:
 - confirm the docs nav includes the release checklist, quickstart, user guide,
   example cards, physics-informed GPR guide, fingerprinting guide, versioning
   policy, API reference, and license page,
-- confirm GitHub Pages settings use the intended source,
-- update the docs workflow from build-only to deploy,
+- confirm GitHub Pages settings use GitHub Actions as the intended source,
+- confirm the MkDocs docs workflow uploads the `site/` artifact and deploys it
+  with GitHub Pages actions,
 - wait for the deploy workflow to pass.
 
 After deployment, confirm the public docs URL opens:
 
 ```text
-https://harikrishna-chem.github.io/matgpr/
+https://harikrishnasahu.com/matgpr/
 ```
 
 ## Post-Release Checks

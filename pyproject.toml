@@ -50,7 +50,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/harikrishna-chem/matgpr"
-Documentation = "https://harikrishna-chem.github.io/matgpr/"
+Documentation = "https://harikrishnasahu.com/matgpr/"
 Repository = "https://github.com/harikrishna-chem/matgpr"
 Issues = "https://github.com/harikrishna-chem/matgpr/issues"
 Changelog = "https://github.com/harikrishna-chem/matgpr/blob/main/CHANGELOG.md"

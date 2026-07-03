@@ -136,6 +136,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   model performance, and saving artifacts.
 - `docs/physics_informed_gpr.md` explains how physics equations enter the GP
   mean function and what users should report for PI-GPR models.
+- `docs/pi_gpr_guarantees.md` clarifies what PI-GPR does and does not
+  guarantee.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.

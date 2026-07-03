@@ -59,6 +59,7 @@ semantic-versioning conventions once the first public release is tagged.
 - Dataset cards and model cards for the OPV and solvent diffusivity public
   examples.
 - User guide and fingerprinting-options guide.
+- Documentation clarifying what PI-GPR does and does not guarantee.
 - Versioning and API-stability guide for active-development `0.x` releases.
 - Release checklist for `v0.1.0` and later `0.x` releases.
 - PyPI readiness audit documenting package metadata, artifact contents,

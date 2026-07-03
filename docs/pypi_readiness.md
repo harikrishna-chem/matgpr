@@ -38,7 +38,7 @@ because PyPI availability can change.
 | Public examples | Examples are not installed by the wheel; they remain repository examples | Intentional |
 | TestPyPI upload | Not yet performed | Blocking before live PyPI |
 | Clean install from TestPyPI | Not yet performed | Blocking before live PyPI |
-| Documentation URL | `pyproject.toml` points to GitHub Pages | Needs final decision before PyPI |
+| Documentation URL | `pyproject.toml` points to the configured GitHub Pages custom domain | Verify after each Pages deployment |
 | Live PyPI account/token | Not verified in this audit | Blocking before live PyPI |
 
 ## Metadata Notes
@@ -95,9 +95,8 @@ add an explicit `MANIFEST.in` policy and recheck the artifact contents.
 
 Do not upload to live PyPI until all of these are resolved:
 
-- Confirm whether the `Documentation` project URL should remain
-  `https://harikrishna-chem.github.io/matgpr/` or temporarily point to the
-  GitHub `docs/` folder until GitHub Pages is enabled.
+- Confirm `https://harikrishnasahu.com/matgpr/` opens after the GitHub Pages
+  deploy workflow runs.
 - Register or verify the PyPI owner account and project ownership plan.
 - Register or verify the TestPyPI account.
 - Create scoped API tokens for TestPyPI and PyPI.
@@ -178,10 +177,9 @@ python -m venv /tmp/matgpr-pypi
 
 `matgpr` is close to PyPI-ready, but the first live upload should wait until:
 
-- the documentation URL is finalized,
+- the documentation URL is deployed and verified,
 - TestPyPI upload and clean install are completed,
 - PyPI account ownership and token handling are confirmed.
 
 Until then, the best public installation path remains a pinned GitHub release
 or exact commit.
-

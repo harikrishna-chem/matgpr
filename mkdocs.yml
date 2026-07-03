@@ -1,6 +1,6 @@
 site_name: matgpr
 site_description: Physics-informed Gaussian Process Regression tools for materials informatics.
-site_url: https://harikrishna-chem.github.io/matgpr/
+site_url: https://harikrishnasahu.com/matgpr/
 repo_name: harikrishna-chem/matgpr
 repo_url: https://github.com/harikrishna-chem/matgpr
 edit_uri: edit/main/docs/
@@ -58,6 +58,7 @@ nav:
   - Example Cards: example_cards.md
   - User Guide: matgpr_user_guide.md
   - Physics-Informed GPR: physics_informed_gpr.md
+  - PI-GPR Guarantees: pi_gpr_guarantees.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
