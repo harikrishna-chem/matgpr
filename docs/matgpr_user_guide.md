@@ -52,6 +52,7 @@ from matgpr import (
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
     MultitaskGPRRegressor,
+    SparseMultitaskGPRRegressor,
     KnownLimitConstraint,
     MonotonicTrendConstraint,
     append_virtual_observations,
@@ -77,6 +78,7 @@ from matgpr import (
     fit_gpytorch_gpr,
     fit_heteroscedastic_gpr,
     fit_multitask_gpytorch_gpr,
+    fit_sparse_multitask_gpytorch_gpr,
     regression_metrics,
     train_test_regression_metrics,
     uncertainty_diagnostics,
@@ -626,8 +628,10 @@ metrics = regression_metrics(y_test, prediction.mean)
 
 Use `MultitaskGPRRegressor` or `fit_multitask_gpytorch_gpr` when the same
 material rows have multiple related target properties and every target is
-observed for every row. The model learns a shared input-space kernel and a task
-covariance, so correlated properties can share statistical strength:
+observed for every row. Use `SparseMultitaskGPRRegressor` or
+`fit_sparse_multitask_gpytorch_gpr` when the target matrix has `NaN` entries
+for unobserved task values. Both forms learn a shared input-space kernel and a
+task covariance, so correlated properties can share statistical strength:
 
 ```text
 cov[f_i(x), f_j(x')] = k_x(x, x') k_task(i, j)
@@ -674,8 +678,31 @@ validation.predictions
 
 `validation.task_metrics` contains one row per split and task with RMSE, MAE,
 R2, Pearson \(r\), sample count, and uncertainty diagnostics when predictive
-standard deviations are available. If some target values are missing, build
-separate single-task models for now or wait for the planned sparse multitask
+standard deviations are available.
+
+For incomplete target matrices, keep unobserved values as `NaN`:
+
+```python
+sparse_model = SparseMultitaskGPRRegressor(
+    task_names=target_columns,
+    task_covar_rank=1,
+    kernel="matern",
+    training_iter=1000,
+    min_observations_per_task=2,
+    verbose=False,
+)
+
+sparse_model.fit(X_train_array, train_data[target_columns])
+sparse_prediction = sparse_model.predict_distribution(
+    X_test_array,
+    confidence_level=0.95,
+)
+sparse_model.task_observation_counts_
+```
+
+The sparse estimator preserves partially observed rows and learns one task
+covariance across all finite target entries. The first implementation uses a
+shared Gaussian observation-noise model; per-task sparse noise is a planned
 extension.
 
 ## 6. Physics-Aware Kernels

@@ -71,6 +71,7 @@ from .estimators import (
     MissingValueReport,
     MultitaskGPRRegressor,
     PhysicsInformedGPRRegressor,
+    SparseMultitaskGPRRegressor,
 )
 from .experiment_logging import (
     BOCampaignState,
@@ -208,6 +209,15 @@ from .sklearn_gpr import (
     build_sklearn_gpr_kernel,
     build_sklearn_gpr_model,
 )
+from .sparse_multitask_gpr import (
+    ExactSparseMultitaskGPRModel,
+    SparseMultitaskGPyTorchResult,
+    SparseMultitaskObservationData,
+    fit_sparse_multitask_gpytorch_gpr,
+    predict_sparse_multitask_gpytorch_gpr,
+    prepare_sparse_multitask_observations,
+    train_sparse_multitask_gpytorch_gpr,
+)
 from .target_transforms import (
     BoundedTargetTransform,
     IdentityTargetTransform,
@@ -274,6 +284,7 @@ __all__ = [
     "EquationMeanFunction",
     "ExactGPRModel",
     "ExactMultitaskGPRModel",
+    "ExactSparseMultitaskGPRModel",
     "FeatureSubsetKernel",
     "GPyTorchGPRResult",
     "GPyTorchPrediction",
@@ -335,6 +346,9 @@ __all__ = [
     "SmilesFingerprintResult",
     "SmilesFeaturizer",
     "SourceNoiseModel",
+    "SparseMultitaskGPRRegressor",
+    "SparseMultitaskGPyTorchResult",
+    "SparseMultitaskObservationData",
     "StandardizedTargetTransform",
     "StructureFeatureKernel",
     "StructureFeaturizer",
@@ -405,6 +419,7 @@ __all__ = [
     "fit_heteroscedastic_gpr",
     "fit_multitask_gpytorch_gpr",
     "fit_pca",
+    "fit_sparse_multitask_gpytorch_gpr",
     "free_volume_exponential_equation",
     "gaussian_nlpd",
     "get_physics_equation_template",
@@ -447,6 +462,8 @@ __all__ = [
     "prediction_interval_bounds",
     "predict_gpytorch_gpr",
     "predict_multitask_gpytorch_gpr",
+    "predict_sparse_multitask_gpytorch_gpr",
+    "prepare_sparse_multitask_observations",
     "power_law_equation",
     "rank_discrete_candidates",
     "rank_multi_objective_discrete_candidates",
@@ -487,6 +504,7 @@ __all__ = [
     "summarize_pca",
     "train_gpytorch_gpr",
     "train_multitask_gpytorch_gpr",
+    "train_sparse_multitask_gpytorch_gpr",
     "train_test_regression_metrics",
     "transform_pca",
     "uncertainty_diagnostics",

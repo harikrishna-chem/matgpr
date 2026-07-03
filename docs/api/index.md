@@ -23,6 +23,8 @@ types, and class methods.
   observation noise with a residual-noise GP.
 - [Multitask GPR](multitask_gpr.md): correlated multi-output GPR for complete
   materials-property target matrices.
+- [Sparse Multitask GPR](sparse_multitask_gpr.md): correlated multi-output GPR
+  for incomplete target matrices with missing task observations.
 - [Physics Equation Templates](physics_equations.md): reusable Arrhenius,
   power-law, Hall-Petch, free-volume, and mixture mean equations.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and

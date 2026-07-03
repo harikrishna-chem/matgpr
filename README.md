@@ -35,8 +35,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   uncertainty.
 - Learned heteroscedastic GPR with a residual noise GP for input-dependent
   observation uncertainty.
-- Exact multitask GPR for complete multi-property materials datasets with
-  learned inter-task covariance and a scikit-learn-style wrapper.
+- Exact multitask GPR for complete or sparse multi-property materials datasets
+  with learned inter-task covariance and scikit-learn-style wrappers.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -113,7 +113,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    and `get_physics_equation_template`.
 12. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
    `build_sklearn_gpr_model`, lower-level `fit_gpytorch_gpr`,
-   `MultitaskGPRRegressor`, or `fit_multitask_gpytorch_gpr` for complete
+   `MultitaskGPRRegressor`, `SparseMultitaskGPRRegressor`,
+   `fit_multitask_gpytorch_gpr`, or `fit_sparse_multitask_gpytorch_gpr` for
    multi-property targets.
 13. Evaluate models with `evaluate_train_test_split`,
    `evaluate_multitask_train_test_split`, `cross_validate_regressor`,
@@ -143,8 +144,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   mean function and what users should report for PI-GPR models.
 - `docs/pi_gpr_guarantees.md` clarifies what PI-GPR does and does not
   guarantee.
-- `docs/multitask_gpr.md` explains the first correlated multitask GPR API for
-  complete multi-property materials datasets.
+- `docs/multitask_gpr.md` explains correlated multitask GPR APIs for complete
+  and sparse multi-property materials datasets.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.
@@ -191,6 +192,7 @@ file alongside any published benchmark results.
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `evaluate_multitask_train_test_split`, `cross_validate_regressor`, `learning_curve`, `summarize_multitask_predictions` | Reusable train/test, multitask task-summary, cross-validation, and learning-curve workflows |
+| `matgpr.sparse_multitask_gpr` | `fit_sparse_multitask_gpytorch_gpr`, `prepare_sparse_multitask_observations`, `predict_sparse_multitask_gpytorch_gpr` | Exact sparse multitask GPR for incomplete multi-property target matrices |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `summarize_candidate_pool`, `summarize_candidate_feature_coverage`, `summarize_candidate_category_coverage`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders and diagnostics for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `summarize_bo_recommendation_audit`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.bo_benchmarking` | `BOBenchmarkStrategy`, `simulate_bo_strategy`, `compare_bo_strategies`, `summarize_bo_benchmark` | Offline finite-pool BO strategy benchmarks |

@@ -15,8 +15,9 @@ share trends because data from one property can help stabilize another property.
 
 ## Current Scope
 
-The first `matgpr` multitask implementation supports complete multitask
-training data:
+`matgpr` now provides two exact multitask workflows.
+
+Use `MultitaskGPRRegressor` when the multitask target matrix is complete:
 
 - one shared feature matrix \(X\),
 - one target matrix \(Y\) with shape `(n_samples, n_tasks)`,
@@ -25,15 +26,25 @@ training data:
 - per-task target standardization,
 - per-task predictive means and uncertainties.
 
-This is the right starting point for published materials datasets where the
-same material candidates have multiple measured or computed properties.
+Use `SparseMultitaskGPRRegressor` when some target entries are missing:
+
+- one shared feature matrix \(X\),
+- one target matrix \(Y\) with `NaN` for unobserved task values,
+- every finite target value converted to one observed `(sample, task)` pair,
+- one learned input-space kernel multiplied by a learned task-index kernel,
+- per-task target standardization using only observed values,
+- dense per-task predictions for any new feature row.
+
+The sparse form is useful for materials datasets where different properties
+were measured for overlapping but incomplete sets of materials.
 
 ## What It Does Not Cover Yet
 
-The initial API does not yet support sparse task observations, task-specific
-feature matrices, explicit physics-informed task means, or simulation-plus-
-experiment multi-fidelity data. Those are planned extensions and should be
-implemented separately so the assumptions stay clear.
+The current sparse API starts with a shared Gaussian observation-noise model.
+It does not yet support per-task sparse noise, task-specific feature matrices,
+explicit physics-informed task means, or simulation-plus-experiment
+multi-fidelity data. Those are planned extensions and should be implemented
+separately so the assumptions stay clear.
 
 ## Minimal Example
 
@@ -65,11 +76,47 @@ For lower-level GPyTorch access, use `fit_multitask_gpytorch_gpr`, which
 returns a `MultitaskGPyTorchResult` containing the fitted model, likelihood,
 loss history, and task metadata.
 
+## Sparse Target Matrix Example
+
+```python
+import numpy as np
+import pandas as pd
+from matgpr import SparseMultitaskGPRRegressor
+
+x = np.linspace(0.0, 1.0, 20).reshape(-1, 1)
+y = pd.DataFrame({
+    "property_a": np.sin(2.0 * np.pi * x).ravel(),
+    "property_b": 0.5 * np.sin(2.0 * np.pi * x).ravel() + x.ravel(),
+})
+y.loc[[2, 7, 13], "property_a"] = np.nan
+y.loc[[4, 10], "property_b"] = np.nan
+
+model = SparseMultitaskGPRRegressor(
+    training_iter=200,
+    min_observations_per_task=2,
+    verbose=False,
+)
+
+model.fit(x, y)
+prediction = model.predict_distribution(x[:5], confidence_level=0.95)
+model.task_observation_counts_
+```
+
+The sparse estimator preserves partially observed rows. Rows with all targets
+missing provide no training signal. Missing feature values are still controlled
+by the estimator-level `missing` policy.
+
+For lower-level access, use `fit_sparse_multitask_gpytorch_gpr` or
+`prepare_sparse_multitask_observations`.
+
 ## Choosing The Task Covariance Rank
 
 Use `task_covar_rank=1` as a conservative default for small datasets. Increase
 the rank only when there are enough observations to justify a more flexible
-task-correlation structure and validation shows improvement.
+task-correlation structure and validation shows improvement. Sparse multitask
+models need enough observed values for each task; start with at least two
+observations per task and prefer substantially more for publication-quality
+comparisons.
 
 ## Reporting Guidance
 
@@ -77,6 +124,7 @@ For a materials-informatics study, report:
 
 - the task names and units,
 - whether every task is observed for every material,
+- for sparse models, the per-task observation counts,
 - target scaling or transforms,
 - the input descriptors and kernel,
 - the task covariance rank,

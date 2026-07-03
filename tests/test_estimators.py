@@ -24,6 +24,7 @@ from matgpr import (
     MissingValueReport,
     MultitaskGPRRegressor,
     PhysicsInformedGPRRegressor,
+    SparseMultitaskGPRRegressor,
 )
 from matgpr.gpytorch_gpr import GPyTorchPrediction
 from matgpr.multitask_gpr import MultitaskGPyTorchPrediction
@@ -400,6 +401,68 @@ class MultitaskGPRRegressorTests(unittest.TestCase):
         self.assertEqual(estimator.missing_report_.dropped_rows, 1)
         self.assertEqual(estimator.missing_report_.imputed_features, ("descriptor", "process"))
         self.assertEqual(prediction_report.imputed_features, ("descriptor", "process"))
+
+
+class SparseMultitaskGPRRegressorTests(unittest.TestCase):
+    def test_sparse_multitask_estimator_accepts_partial_target_matrix(self):
+        x_values = np.linspace(0.0, 1.0, 8)
+        x = pd.DataFrame({"descriptor": x_values})
+        y = pd.DataFrame(
+            {
+                "strength": 1.5 * x_values + 0.2,
+                "ductility": -0.5 * x_values + 1.1,
+            }
+        )
+        y.loc[1, "strength"] = np.nan
+        y.loc[4, "ductility"] = np.nan
+
+        estimator = SparseMultitaskGPRRegressor(
+            kernel="rbf",
+            training_iter=3,
+            initial_noise=0.05,
+            random_state=43,
+        )
+        estimator.fit(x, y)
+        prediction = estimator.predict_distribution(x.iloc[:2], confidence_level=0.90)
+        score = estimator.score(x, y)
+
+        self.assertEqual(estimator.task_names_, ("strength", "ductility"))
+        self.assertEqual(estimator.task_observation_counts_.tolist(), [7, 7])
+        self.assertEqual(estimator.observation_data_.X_observed.shape[0], 14)
+        self.assertIsInstance(prediction, MultitaskGPyTorchPrediction)
+        self.assertEqual(prediction.mean.shape, (2, 2))
+        self.assertEqual(prediction.lower.shape, (2, 2))
+        self.assertTrue(np.isfinite(score))
+
+    def test_sparse_multitask_missing_impute_keeps_partial_targets(self):
+        x = pd.DataFrame(
+            {
+                "descriptor": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "condition": [1.0, 1.1, 1.2, 1.3, np.nan, 1.5],
+            }
+        )
+        y = pd.DataFrame(
+            {
+                "strength": [0.2, np.nan, 0.8, 1.1, 1.3, 1.6],
+                "ductility": [1.1, 1.0, np.nan, 0.8, 0.7, 0.6],
+            }
+        )
+
+        estimator = SparseMultitaskGPRRegressor(
+            missing="impute",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=47,
+        )
+        estimator.fit(x, y)
+        prediction, std = estimator.predict(x.iloc[:2], return_std=True)
+
+        self.assertEqual(estimator.missing_report_.output_rows, 6)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_target, 2)
+        self.assertEqual(estimator.task_observation_counts_.tolist(), [5, 5])
+        self.assertEqual(prediction.shape, (2, 2))
+        self.assertEqual(std.shape, (2, 2))
 
 
 class EstimatorPipelineTests(unittest.TestCase):

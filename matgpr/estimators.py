@@ -22,12 +22,14 @@ except ImportError:  # pragma: no cover - compatibility with older scikit-learn
 
 from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMean, fit_gpytorch_gpr
 from .multitask_gpr import MultitaskGPyTorchPrediction, fit_multitask_gpytorch_gpr
+from .sparse_multitask_gpr import fit_sparse_multitask_gpytorch_gpr
 
 __all__ = [
     "MatGPRRegressor",
     "MissingValueReport",
     "MultitaskGPRRegressor",
     "PhysicsInformedGPRRegressor",
+    "SparseMultitaskGPRRegressor",
 ]
 
 
@@ -482,6 +484,147 @@ class MultitaskGPRRegressor(MatGPRRegressor):
         )
 
 
+class SparseMultitaskGPRRegressor(MatGPRRegressor):
+    """Scikit-learn-style sparse multitask GPyTorch GPR.
+
+    This estimator accepts a multitask target matrix with ``NaN`` entries for
+    unobserved task values. Each finite target value becomes one observed
+    ``(sample, task)`` training pair, so the model can learn from incomplete
+    materials-property matrices without discarding partially observed rows.
+    """
+
+    def __init__(
+        self,
+        *,
+        task_names: Sequence[str] | None = None,
+        task_covar_rank: int = 1,
+        kernel: str = "matern",
+        ard: bool = True,
+        lr: float = 0.01,
+        training_iter: int = 1000,
+        initial_noise: float | None = 0.1,
+        standardize_y: bool = True,
+        min_observations_per_task: int = 2,
+        missing: str = "error",
+        imputation_strategy: str = "median",
+        imputation_fill_value: object | None = None,
+        device: str = "cpu",
+        dtype: str | torch.dtype = "float64",
+        verbose: bool = False,
+        log_every: int = 100,
+        include_observation_noise: bool = True,
+        random_state: int | None = None,
+    ):
+        super().__init__(
+            kernel=kernel,
+            ard=ard,
+            lr=lr,
+            training_iter=training_iter,
+            initial_noise=initial_noise,
+            standardize_y=standardize_y,
+            missing=missing,
+            imputation_strategy=imputation_strategy,
+            imputation_fill_value=imputation_fill_value,
+            device=device,
+            dtype=dtype,
+            verbose=verbose,
+            log_every=log_every,
+            include_observation_noise=include_observation_noise,
+            random_state=random_state,
+        )
+        self.task_names = task_names
+        self.task_covar_rank = task_covar_rank
+        self.min_observations_per_task = min_observations_per_task
+
+    def fit(self, X, y):
+        """Fit sparse multitask GPR from a target matrix with ``NaN`` gaps.
+
+        ``NaN`` target values mean "task not observed" and are not imputed.
+        Missing feature values still follow the estimator-level ``missing``
+        policy: reject, drop feature-incomplete rows, or impute features.
+        """
+        X_checked, y_checked, task_names = _validate_sparse_multitask_fit_input(self, X, y)
+
+        _seed_torch(self.random_state)
+        dtype = _resolve_torch_dtype(self.dtype)
+
+        self.result_ = fit_sparse_multitask_gpytorch_gpr(
+            X_checked,
+            y_checked,
+            task_names=task_names,
+            task_covar_rank=self.task_covar_rank,
+            kernel=self.kernel,
+            ard=self.ard,
+            lr=self.lr,
+            training_iter=self.training_iter,
+            initial_noise=self.initial_noise,
+            standardize_y=self.standardize_y,
+            min_observations_per_task=self.min_observations_per_task,
+            device=self.device,
+            dtype=dtype,
+            verbose=self.verbose,
+            log_every=self.log_every,
+        )
+        self.model_ = self.result_.model
+        self.likelihood_ = self.result_.likelihood
+        self.loss_history_ = list(self.result_.loss_history)
+        self.target_mean_ = self.result_.target_mean.copy()
+        self.target_std_ = self.result_.target_std.copy()
+        self.task_names_ = self.result_.task_names
+        self.n_tasks_in_ = self.result_.num_tasks
+        self.n_outputs_ = self.result_.num_tasks
+        self.observation_data_ = self.result_.observation_data
+        self.observed_target_mask_ = self.observation_data_.observed_mask.copy()
+        self.task_observation_counts_ = self.observation_data_.task_observation_counts.copy()
+        return self
+
+    def predict_distribution(
+        self,
+        X,
+        *,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool | None = None,
+    ) -> MultitaskGPyTorchPrediction:
+        """Return per-task predictive means, uncertainties, and intervals."""
+        check_is_fitted(self, "result_")
+        X_checked = self._validate_prediction_input(X)
+        if include_observation_noise is None:
+            include_observation_noise = self.include_observation_noise
+
+        return self.result_.predict(
+            X_checked,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+
+    def score(self, X, y, sample_weight=None) -> float:
+        """Return R2 over observed target entries only."""
+        y_true = np.asarray(y, dtype=float)
+        if y_true.ndim != 2:
+            raise ValueError("Sparse multitask score expects a 2D target matrix")
+        y_pred = np.asarray(self.predict(X), dtype=float)
+        if y_true.shape != y_pred.shape:
+            raise ValueError("y and predictions must have the same shape")
+        observed_mask = np.isfinite(y_true)
+        if not observed_mask.any():
+            raise ValueError("Cannot score sparse multitask data with no observed targets")
+
+        entry_weights = None
+        if sample_weight is not None:
+            weights = np.asarray(sample_weight, dtype=float).reshape(-1)
+            if weights.shape[0] != y_true.shape[0]:
+                raise ValueError("sample_weight must contain one value per sample")
+            entry_weights = np.broadcast_to(weights.reshape(-1, 1), y_true.shape)[observed_mask]
+
+        return r2_score(
+            y_true[observed_mask],
+            y_pred[observed_mask],
+            sample_weight=entry_weights,
+        )
+
+
 def _feature_names_from_input(X) -> np.ndarray | None:
     if not hasattr(X, "columns"):
         return None
@@ -589,6 +732,73 @@ def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarr
 
     check_consistent_length(X_checked, y_checked)
     X_checked, y_checked = _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
+    return X_checked, y_checked, _resolve_estimator_task_names(estimator, inferred_task_names)
+
+
+def _validate_sparse_multitask_fit_input(
+    estimator,
+    X,
+    y,
+) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
+    _clear_missing_state(estimator)
+    if y is None:
+        raise ValueError("requires y to be passed, but the target y is None")
+    policy = _validate_missing_policy(estimator.missing)
+    _validate_imputation_strategy(estimator.imputation_strategy)
+
+    if validate_data is not None:
+        X_checked = validate_data(
+            estimator,
+            X,
+            reset=True,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",
+        )
+    else:
+        feature_names = _feature_names_from_input(X)
+        X_checked = check_array(
+            X,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",
+        )
+        estimator.n_features_in_ = X_checked.shape[1]
+        if feature_names is not None:
+            if len(feature_names) != estimator.n_features_in_:
+                raise ValueError("Number of dataframe columns does not match validated features")
+            estimator.feature_names_in_ = feature_names
+        elif hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
+
+    inferred_task_names = _task_names_from_target_input(y)
+    if inferred_task_names is not None:
+        estimator.target_names_in_ = np.asarray(inferred_task_names, dtype=object)
+    elif hasattr(estimator, "target_names_in_"):
+        delattr(estimator, "target_names_in_")
+
+    y_checked = check_array(
+        y,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+        input_name="y",
+    )
+    if y_checked.shape[1] < 2:
+        raise ValueError(
+            "SparseMultitaskGPRRegressor requires at least two target columns; "
+            f"got {y_checked.shape[1]}"
+        )
+    if np.isinf(y_checked).any():
+        raise ValueError("Sparse multitask targets must not contain infinite values")
+
+    check_consistent_length(X_checked, y_checked)
+    X_checked, y_checked = _apply_sparse_fit_missing_policy(
+        estimator,
+        X_checked,
+        y_checked,
+        policy,
+    )
     return X_checked, y_checked, _resolve_estimator_task_names(estimator, inferred_task_names)
 
 
@@ -714,6 +924,88 @@ def _apply_fit_missing_policy(
         y_out = y_checked[keep_mask]
         if X_to_impute.shape[0] == 0:
             raise ValueError("No training rows remain after dropping missing targets")
+
+        strategy = _validate_imputation_strategy(estimator.imputation_strategy)
+        _raise_for_unimputable_columns(estimator, X_to_impute, strategy)
+        imputer = SimpleImputer(
+            strategy=strategy,
+            fill_value=estimator.imputation_fill_value,
+            keep_empty_features=True,
+        )
+        X_out = imputer.fit_transform(X_to_impute)
+        estimator.feature_imputer_ = imputer
+        estimator.feature_imputation_statistics_ = np.asarray(imputer.statistics_).copy()
+        estimator.missing_report_ = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_out.shape[0],
+            imputed_features=_imputed_feature_names(estimator, X_to_impute),
+            imputation_strategy=strategy,
+        )
+        return X_out, y_out
+
+    estimator.missing_report_ = _make_missing_report(
+        estimator,
+        stage="fit",
+        policy=policy,
+        X_checked=X_checked,
+        y_checked=y_checked,
+        output_rows=X_checked.shape[0],
+    )
+    return X_checked, y_checked
+
+
+def _apply_sparse_fit_missing_policy(
+    estimator,
+    X_checked: np.ndarray,
+    y_checked: np.ndarray,
+    policy: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    feature_missing_mask = np.isnan(X_checked).any(axis=1)
+    all_targets_missing_mask = np.isnan(y_checked).all(axis=1)
+
+    if policy == "error" and (np.any(feature_missing_mask) or np.any(all_targets_missing_mask)):
+        report = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_checked.shape[0],
+        )
+        estimator.missing_report_ = report
+        raise ValueError(
+            "Sparse multitask fitting allows partially missing targets, but "
+            "feature values must be complete and every retained row must have "
+            "at least one observed target. Set missing='drop' or "
+            f"missing='impute'. Missing-value report: {report.to_dict()}"
+        )
+
+    if policy == "drop":
+        keep_mask = ~(feature_missing_mask | all_targets_missing_mask)
+        X_out = X_checked[keep_mask]
+        y_out = y_checked[keep_mask]
+        if X_out.shape[0] == 0:
+            raise ValueError("No training rows remain after sparse missing='drop'")
+        estimator.missing_report_ = _make_missing_report(
+            estimator,
+            stage="fit",
+            policy=policy,
+            X_checked=X_checked,
+            y_checked=y_checked,
+            output_rows=X_out.shape[0],
+        )
+        return X_out, y_out
+
+    if policy == "impute":
+        keep_mask = ~all_targets_missing_mask
+        X_to_impute = X_checked[keep_mask]
+        y_out = y_checked[keep_mask]
+        if X_to_impute.shape[0] == 0:
+            raise ValueError("No training rows remain after dropping rows with no observed targets")
 
         strategy = _validate_imputation_strategy(estimator.imputation_strategy)
         _raise_for_unimputable_columns(estimator, X_to_impute, strategy)

@@ -24,8 +24,8 @@ prediction accuracy.
 - Soft physics-constraint anchors for known limits and monotonic trends.
 - Derivative-constrained GPR for slope-informed physics trends.
 - Physics-aware observation-noise profiles for mixed-source and replicate data.
-- Multitask GPR for complete multi-property materials datasets with learned
-  inter-task covariance and a scikit-learn-style estimator wrapper.
+- Multitask GPR for complete and sparse multi-property materials datasets with
+  learned inter-task covariance and scikit-learn-style estimator wrappers.
 - Reusable validation workflows for train/test splits, cross-validation, and
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,
@@ -53,8 +53,8 @@ prediction accuracy.
    equations.
 5. Read [PI-GPR Guarantees](pi_gpr_guarantees.md) before interpreting a
    physics-informed result.
-6. Read [Multitask GPR](multitask_gpr.md) for complete multi-property target
-   matrices.
+6. Read [Multitask GPR](multitask_gpr.md) for complete or sparse
+   multi-property target matrices.
 7. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
 8. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
