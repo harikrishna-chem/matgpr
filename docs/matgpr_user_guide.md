@@ -705,6 +705,29 @@ covariance across all finite target entries. The first implementation uses a
 shared Gaussian observation-noise model; per-task sparse noise is a planned
 extension.
 
+Use the sparse validation helper when held-out target matrices also contain
+unobserved values:
+
+```python
+from matgpr import evaluate_sparse_multitask_train_test_split
+
+sparse_validation = evaluate_sparse_multitask_train_test_split(
+    sparse_model,
+    X_array,
+    data[target_columns],
+    test_size=0.2,
+    random_state=7,
+    model_name="sparse_multitask_gpr",
+)
+
+sparse_validation.task_metrics
+sparse_validation.observed_predictions
+```
+
+Sparse metrics are calculated only on observed target entries. The full
+prediction table keeps an `observed` column so users can separate parity-plot
+rows from predictions made for unmeasured tasks.
+
 ## 6. Physics-Aware Kernels
 
 Physics can also enter through the covariance function. The kernel controls

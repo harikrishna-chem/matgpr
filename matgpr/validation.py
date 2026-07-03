@@ -15,13 +15,16 @@ from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
 __all__ = [
     "CrossValidationResult",
     "LearningCurveResult",
+    "SparseMultitaskTrainTestValidationResult",
     "MultitaskTrainTestValidationResult",
     "TrainTestValidationResult",
     "cross_validate_regressor",
     "evaluate_multitask_train_test_split",
+    "evaluate_sparse_multitask_train_test_split",
     "evaluate_train_test_split",
     "learning_curve",
     "summarize_multitask_predictions",
+    "summarize_sparse_multitask_predictions",
 ]
 
 
@@ -161,6 +164,55 @@ class MultitaskTrainTestValidationResult:
     def test_predictions(self) -> pd.DataFrame:
         """Predictions for held-out test samples."""
         return self.predictions[self.predictions["split"] == "test"].reset_index(drop=True)
+
+
+@dataclass(frozen=True)
+class SparseMultitaskTrainTestValidationResult:
+    """Result from a sparse multitask train/test validation run.
+
+    The prediction table keeps one row per sample and task, including entries
+    where the target was unobserved. Use ``observed_predictions`` for
+    parity-plot-ready rows with finite ground-truth values.
+    """
+
+    model_name: str
+    fitted_estimator: object
+    task_metrics: pd.DataFrame
+    predictions: pd.DataFrame
+    train_indices: np.ndarray
+    test_indices: np.ndarray
+
+    def metrics_frame(self) -> pd.DataFrame:
+        """Return the per-task sparse metrics dataframe."""
+        return self.task_metrics.copy()
+
+    def summary(
+        self,
+        metric_columns: Sequence[str] | None = None,
+        *,
+        group_by: Sequence[str] = ("model", "split"),
+    ) -> pd.DataFrame:
+        """Summarize sparse per-task metrics across tasks for each split."""
+        return _summarize_metrics(
+            self.task_metrics,
+            group_by=group_by,
+            metric_columns=metric_columns,
+        )
+
+    @property
+    def train_predictions(self) -> pd.DataFrame:
+        """Predictions for training samples."""
+        return self.predictions[self.predictions["split"] == "train"].reset_index(drop=True)
+
+    @property
+    def test_predictions(self) -> pd.DataFrame:
+        """Predictions for held-out test samples."""
+        return self.predictions[self.predictions["split"] == "test"].reset_index(drop=True)
+
+    @property
+    def observed_predictions(self) -> pd.DataFrame:
+        """Prediction rows whose target values are observed."""
+        return self.predictions[self.predictions["observed"]].reset_index(drop=True)
 
 
 def evaluate_train_test_split(
@@ -314,6 +366,80 @@ def summarize_multitask_predictions(
     return pd.DataFrame(rows)
 
 
+def summarize_sparse_multitask_predictions(
+    y_true,
+    y_pred,
+    y_std=None,
+    *,
+    task_names: Sequence[str] | None = None,
+    model_name: str = "model",
+    split: str = "test",
+    confidence_level: float = 0.95,
+) -> pd.DataFrame:
+    """Return per-task metrics for sparse multitask targets.
+
+    ``NaN`` values in ``y_true`` are treated as unobserved task entries and are
+    ignored for regression and uncertainty metrics. The returned dataframe
+    keeps the total row count, observed count, and missing fraction for each
+    task so sparse validation protocols are transparent in reports.
+    """
+    prediction_task_names = getattr(y_pred, "task_names", None)
+    if y_std is None and _is_prediction_container(y_pred) and hasattr(y_pred, "std"):
+        y_std = getattr(y_pred, "std")
+    if _is_prediction_container(y_pred):
+        y_pred = getattr(y_pred, "mean")
+
+    y_true_array = _to_2d_float_allow_nan(y_true, "y_true")
+    y_pred_array = _to_2d_float(y_pred, "y_pred")
+    _validate_same_2d_shape(y_true_array, y_pred_array, "y_true", "y_pred")
+    y_std_array = _to_optional_2d_std(y_std) if y_std is not None else None
+    if y_std_array is not None:
+        _validate_same_2d_shape(y_true_array, y_std_array, "y_true", "y_std")
+
+    resolved_task_names = _resolve_multitask_names(
+        task_names=task_names,
+        n_tasks=y_true_array.shape[1],
+        y=y_true,
+        prediction_task_names=prediction_task_names,
+    )
+    rows = []
+    n_samples = y_true_array.shape[0]
+    for task_index, task_name in enumerate(resolved_task_names):
+        observed_mask = np.isfinite(y_true_array[:, task_index])
+        n_observed = int(observed_mask.sum())
+        n_missing = int(n_samples - n_observed)
+        metrics = _observed_regression_metrics(
+            y_true_array[observed_mask, task_index],
+            y_pred_array[observed_mask, task_index],
+        )
+        row = {
+            "model": str(model_name),
+            "split": str(split),
+            "task": task_name,
+            "task_index": task_index,
+            "n_samples": n_samples,
+            "n_observed": n_observed,
+            "n_missing": n_missing,
+            "observed_fraction": n_observed / n_samples,
+            "missing_fraction": n_missing / n_samples,
+            **metrics,
+        }
+        if y_std_array is not None:
+            if n_observed:
+                row.update(
+                    uncertainty_diagnostics(
+                        y_true_array[observed_mask, task_index],
+                        y_pred_array[observed_mask, task_index],
+                        y_std_array[observed_mask, task_index],
+                        confidence_level=confidence_level,
+                    )
+                )
+            else:
+                row.update(_empty_uncertainty_diagnostics(confidence_level))
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 def evaluate_multitask_train_test_split(
     estimator,
     X,
@@ -440,6 +566,142 @@ def evaluate_multitask_train_test_split(
         ignore_index=True,
     )
     return MultitaskTrainTestValidationResult(
+        model_name=model_name,
+        fitted_estimator=fitted_estimator,
+        task_metrics=pd.concat([train_metrics, test_metrics], ignore_index=True),
+        predictions=predictions,
+        train_indices=train_indices,
+        test_indices=test_indices,
+    )
+
+
+def evaluate_sparse_multitask_train_test_split(
+    estimator,
+    X,
+    y,
+    *,
+    train_indices: Sequence[int] | None = None,
+    test_indices: Sequence[int] | None = None,
+    test_size: float | int = 0.2,
+    train_size: float | int | None = None,
+    random_state: int | None = None,
+    shuffle: bool = True,
+    model_name: str | None = None,
+    task_names: Sequence[str] | None = None,
+    return_std: bool = True,
+    confidence_level: float = 0.95,
+    include_observation_noise: bool | None = None,
+    fit_params: Mapping[str, object] | None = None,
+) -> SparseMultitaskTrainTestValidationResult:
+    """Fit a sparse multitask estimator and evaluate observed target entries.
+
+    This function is intended for target matrices where ``NaN`` means a task
+    was not measured for that sample. Fitting receives the sparse target
+    matrix unchanged. Metrics are calculated only over finite target entries,
+    while the prediction table retains all sample-task predictions with an
+    ``observed`` flag for filtering parity plots and diagnostics.
+    """
+    n_samples, _ = _validate_sparse_multitask_xy_length(X, y)
+    labels = _sample_labels(y, n_samples)
+
+    if train_indices is None and test_indices is None:
+        train_indices, test_indices = train_test_split(
+            np.arange(n_samples),
+            train_size=train_size,
+            test_size=test_size,
+            random_state=random_state,
+            shuffle=shuffle,
+        )
+    elif train_indices is None or test_indices is None:
+        raise ValueError("train_indices and test_indices must be supplied together")
+    else:
+        train_indices = _to_index_array(train_indices, "train_indices", n_samples)
+        test_indices = _to_index_array(test_indices, "test_indices", n_samples)
+
+    train_indices = np.asarray(train_indices, dtype=int)
+    test_indices = np.asarray(test_indices, dtype=int)
+    _validate_split_indices(train_indices, test_indices, n_samples)
+
+    fitted_estimator = _clone_estimator(estimator, random_state=random_state)
+    X_train = _safe_index(X, train_indices)
+    X_test = _safe_index(X, test_indices)
+    y_train = _safe_index(y, train_indices)
+    y_test = _safe_index(y, test_indices)
+    model_name = model_name or _estimator_name(estimator)
+
+    fitted_estimator.fit(X_train, y_train, **dict(fit_params or {}))
+    y_train_pred, y_train_std, train_prediction_task_names = _predict_multitask_estimator(
+        fitted_estimator,
+        X_train,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+    y_test_pred, y_test_std, test_prediction_task_names = _predict_multitask_estimator(
+        fitted_estimator,
+        X_test,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+    fitted_task_names = getattr(fitted_estimator, "task_names_", None)
+    resolved_task_names = _resolve_multitask_names(
+        task_names=task_names,
+        n_tasks=_to_2d_float_allow_nan(y_train, "y_train").shape[1],
+        y=y,
+        prediction_task_names=_first_available_task_names(
+            fitted_task_names,
+            train_prediction_task_names,
+            test_prediction_task_names,
+        ),
+    )
+
+    train_metrics = summarize_sparse_multitask_predictions(
+        y_train,
+        y_train_pred,
+        y_train_std,
+        task_names=resolved_task_names,
+        model_name=model_name,
+        split="train",
+        confidence_level=confidence_level,
+    )
+    test_metrics = summarize_sparse_multitask_predictions(
+        y_test,
+        y_test_pred,
+        y_test_std,
+        task_names=resolved_task_names,
+        model_name=model_name,
+        split="test",
+        confidence_level=confidence_level,
+    )
+    predictions = pd.concat(
+        [
+            _sparse_multitask_prediction_frame(
+                model_name,
+                "train",
+                train_indices,
+                labels,
+                y_train,
+                y_train_pred,
+                y_train_std,
+                task_names=resolved_task_names,
+                confidence_level=confidence_level,
+            ),
+            _sparse_multitask_prediction_frame(
+                model_name,
+                "test",
+                test_indices,
+                labels,
+                y_test,
+                y_test_pred,
+                y_test_std,
+                task_names=resolved_task_names,
+                confidence_level=confidence_level,
+            ),
+        ],
+        ignore_index=True,
+    )
+    return SparseMultitaskTrainTestValidationResult(
         model_name=model_name,
         fitted_estimator=fitted_estimator,
         task_metrics=pd.concat([train_metrics, test_metrics], ignore_index=True),
@@ -983,6 +1245,55 @@ def _multitask_prediction_frame(
     return pd.concat(rows, ignore_index=True)
 
 
+def _sparse_multitask_prediction_frame(
+    model_name: str,
+    split: str,
+    positions: np.ndarray,
+    labels: np.ndarray,
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    task_names: Sequence[str],
+    confidence_level: float,
+) -> pd.DataFrame:
+    y_true_array = _to_2d_float_allow_nan(y_true, "y_true")
+    y_pred_array = _to_2d_float(y_pred, "y_pred")
+    _validate_same_2d_shape(y_true_array, y_pred_array, "y_true", "y_pred")
+    y_std_array = _to_optional_2d_std(y_std) if y_std is not None else None
+    if y_std_array is not None:
+        _validate_same_2d_shape(y_true_array, y_std_array, "y_true", "y_std")
+    resolved_task_names = _validate_task_names(task_names, y_true_array.shape[1])
+
+    rows = []
+    for task_index, task_name in enumerate(resolved_task_names):
+        observed = np.isfinite(y_true_array[:, task_index])
+        frame = pd.DataFrame(
+            {
+                "model": str(model_name),
+                "split": str(split),
+                "sample_position": positions,
+                "sample_label": labels[positions],
+                "task": task_name,
+                "task_index": task_index,
+                "observed": observed,
+                "y_true": y_true_array[:, task_index],
+                "y_pred": y_pred_array[:, task_index],
+            }
+        )
+        if y_std_array is not None:
+            frame["y_std"] = y_std_array[:, task_index]
+            lower, upper = prediction_interval_bounds(
+                y_pred_array[:, task_index],
+                y_std_array[:, task_index],
+                confidence_level=confidence_level,
+            )
+            frame["y_lower"] = lower
+            frame["y_upper"] = upper
+        rows.append(frame)
+    return pd.concat(rows, ignore_index=True)
+
+
 def _summarize_metrics(
     frame: pd.DataFrame,
     *,
@@ -1326,6 +1637,20 @@ def _validate_multitask_xy_length(X, y) -> tuple[int, int]:
     return int(n_x), int(y_values.shape[1])
 
 
+def _validate_sparse_multitask_xy_length(X, y) -> tuple[int, int]:
+    n_x = len(X)
+    y_values = _to_2d_float_allow_nan(y, "y")
+    if n_x != y_values.shape[0]:
+        raise ValueError("X and y must contain the same number of samples")
+    if n_x < 2:
+        raise ValueError("At least two samples are required")
+    if y_values.shape[1] < 2:
+        raise ValueError("Sparse multitask validation requires at least two target columns")
+    if not np.isfinite(y_values).any():
+        raise ValueError("Sparse multitask validation requires at least one observed target")
+    return int(n_x), int(y_values.shape[1])
+
+
 def _validate_xy_length(X, y) -> int:
     n_x = len(X)
     y_values = _to_1d_float(y, "y")
@@ -1377,6 +1702,17 @@ def _to_2d_float(values, name: str) -> np.ndarray:
         raise ValueError(f"{name} must contain at least one value")
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values")
+    return array
+
+
+def _to_2d_float_allow_nan(values, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 2:
+        raise ValueError(f"{name} must be a 2D matrix with shape (n_samples, n_tasks)")
+    if array.size == 0:
+        raise ValueError(f"{name} must contain at least one value")
+    if np.isinf(array).any():
+        raise ValueError(f"{name} must not contain infinite values")
     return array
 
 
@@ -1461,6 +1797,38 @@ def _validate_task_names(task_names: Sequence[str], n_tasks: int) -> tuple[str, 
     if len(set(names)) != len(names):
         raise ValueError("task_names must be unique")
     return names
+
+
+def _observed_regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
+    if y_true.shape[0] == 0:
+        return {"R2": np.nan, "RMSE": np.nan, "MAE": np.nan, "r": np.nan}
+    if y_true.shape[0] == 1:
+        error = float(y_true[0] - y_pred[0])
+        return {
+            "R2": np.nan,
+            "RMSE": abs(error),
+            "MAE": abs(error),
+            "r": np.nan,
+        }
+    return regression_metrics(y_true, y_pred)
+
+
+def _empty_uncertainty_diagnostics(confidence_level: float) -> dict[str, float]:
+    return {
+        "NLPD": np.nan,
+        "mean_std": np.nan,
+        "median_std": np.nan,
+        "mean_absolute_error": np.nan,
+        "mean_standardized_residual": np.nan,
+        "std_standardized_residual": np.nan,
+        "uncertainty_error_spearman": np.nan,
+        "confidence_level": float(confidence_level),
+        "expected_coverage": float(confidence_level),
+        "observed_coverage": np.nan,
+        "coverage_error": np.nan,
+        "mean_interval_width": np.nan,
+        "median_interval_width": np.nan,
+    }
 
 
 def _sample_labels(y, n_samples: int) -> np.ndarray:

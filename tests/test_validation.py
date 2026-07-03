@@ -11,12 +11,15 @@ from matgpr import (
     CrossValidationResult,
     LearningCurveResult,
     MultitaskTrainTestValidationResult,
+    SparseMultitaskTrainTestValidationResult,
     TrainTestValidationResult,
     cross_validate_regressor,
     evaluate_multitask_train_test_split,
+    evaluate_sparse_multitask_train_test_split,
     evaluate_train_test_split,
     learning_curve,
     summarize_multitask_predictions,
+    summarize_sparse_multitask_predictions,
 )
 
 
@@ -51,6 +54,36 @@ class MultiOutputMeanStdRegressor(RegressorMixin, BaseEstimator):
         y_array = np.asarray(y, dtype=float)
         design = np.column_stack([np.ones(X.shape[0]), X])
         self.coefficients_ = np.linalg.lstsq(design, y_array, rcond=None)[0]
+        if hasattr(y, "columns"):
+            self.task_names_ = tuple(str(column) for column in y.columns)
+        return self
+
+    def predict(self, X, return_std: bool = False):
+        X = np.asarray(X, dtype=float)
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        mean = design @ self.coefficients_
+        if return_std:
+            std = np.full(mean.shape, self.constant_std, dtype=float)
+            return mean, std
+        return mean
+
+
+class SparseMultiOutputMeanStdRegressor(RegressorMixin, BaseEstimator):
+    def __init__(self, constant_std: float = 0.25, random_state: int | None = None):
+        self.constant_std = constant_std
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        X = np.asarray(X, dtype=float)
+        y_array = np.asarray(y, dtype=float)
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        coefficients = []
+        for task_index in range(y_array.shape[1]):
+            observed = np.isfinite(y_array[:, task_index])
+            if not observed.any():
+                raise ValueError("Each task needs at least one observed target")
+            coefficients.append(np.linalg.lstsq(design[observed], y_array[observed, task_index], rcond=None)[0])
+        self.coefficients_ = np.column_stack(coefficients)
         if hasattr(y, "columns"):
             self.task_names_ = tuple(str(column) for column in y.columns)
         return self
@@ -230,6 +263,42 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("observed_coverage", summary.columns)
         self.assertTrue(np.all(summary["n_samples"] == 4))
 
+    def test_summarize_sparse_multitask_predictions_ignores_missing_targets(self):
+        y_true = pd.DataFrame(
+            {
+                "strength": [1.0, np.nan, 3.0, np.nan],
+                "ductility": [4.0, 3.0, np.nan, 1.0],
+            }
+        )
+        prediction = SimpleNamespace(
+            mean=np.asarray(
+                [
+                    [1.1, 3.8],
+                    [2.0, 2.9],
+                    [2.8, 2.0],
+                    [4.0, 1.2],
+                ]
+            ),
+            std=np.full((4, 2), 0.3),
+            task_names=("strength", "ductility"),
+        )
+
+        summary = summarize_sparse_multitask_predictions(
+            y_true,
+            prediction,
+            model_name="sparse",
+            split="test",
+            confidence_level=0.9,
+        )
+
+        self.assertEqual(summary.shape[0], 2)
+        self.assertEqual(summary["task"].tolist(), ["strength", "ductility"])
+        self.assertEqual(summary["n_samples"].tolist(), [4, 4])
+        self.assertEqual(summary["n_observed"].tolist(), [2, 3])
+        self.assertEqual(summary["n_missing"].tolist(), [2, 1])
+        self.assertIn("observed_coverage", summary.columns)
+        self.assertTrue(np.all(np.isfinite(summary["RMSE"])))
+
     def test_evaluate_multitask_train_test_split_returns_task_tables(self):
         x = np.linspace(0.0, 1.0, 12)
         X = pd.DataFrame({"x": x})
@@ -263,6 +332,42 @@ class ValidationApiTests(unittest.TestCase):
         self.assertEqual(result.test_predictions["sample_label"].iloc[0], "sample_8")
         self.assertIn("RMSE_mean", result.summary(metric_columns=["RMSE"]).columns)
 
+    def test_evaluate_sparse_multitask_train_test_split_returns_observed_tables(self):
+        x = np.linspace(0.0, 1.0, 12)
+        X = pd.DataFrame({"x": x})
+        y = pd.DataFrame(
+            {
+                "strength": 2.0 * x + 0.5,
+                "ductility": -1.5 * x + 2.0,
+            },
+            index=[f"sample_{index}" for index in range(len(x))],
+        )
+        y.iloc[[1, 3, 9], y.columns.get_loc("strength")] = np.nan
+        y.iloc[[2, 6, 10], y.columns.get_loc("ductility")] = np.nan
+
+        result = evaluate_sparse_multitask_train_test_split(
+            SparseMultiOutputMeanStdRegressor(constant_std=0.2),
+            X,
+            y,
+            train_indices=np.arange(8),
+            test_indices=np.arange(8, 12),
+            model_name="sparse_multi_linear",
+            confidence_level=0.9,
+        )
+
+        self.assertIsInstance(result, SparseMultitaskTrainTestValidationResult)
+        self.assertEqual(result.task_metrics.shape[0], 4)
+        self.assertEqual(set(result.task_metrics["split"]), {"train", "test"})
+        self.assertEqual(set(result.task_metrics["task"]), {"strength", "ductility"})
+        self.assertIn("n_observed", result.task_metrics.columns)
+        self.assertIn("missing_fraction", result.task_metrics.columns)
+        self.assertEqual(result.train_predictions.shape[0], 16)
+        self.assertEqual(result.test_predictions.shape[0], 8)
+        self.assertIn("observed", result.predictions.columns)
+        self.assertTrue(np.all(np.isfinite(result.observed_predictions["y_true"])))
+        self.assertLess(result.observed_predictions.shape[0], result.predictions.shape[0])
+        self.assertIn("RMSE_mean", result.summary(metric_columns=["RMSE"]).columns)
+
     def test_multitask_validation_errors_are_explicit(self):
         y_true = np.ones((3, 2))
         y_pred = np.ones((3, 1))
@@ -274,6 +379,16 @@ class ValidationApiTests(unittest.TestCase):
                 y_true,
                 y_true,
                 task_names=("only_one",),
+            )
+        with self.assertRaisesRegex(ValueError, "finite values"):
+            summarize_multitask_predictions(
+                np.asarray([[1.0, np.nan], [2.0, 3.0]]),
+                np.ones((2, 2)),
+            )
+        with self.assertRaisesRegex(ValueError, "same shape"):
+            summarize_sparse_multitask_predictions(
+                np.asarray([[1.0, np.nan], [2.0, 3.0]]),
+                np.ones((2, 1)),
             )
 
 

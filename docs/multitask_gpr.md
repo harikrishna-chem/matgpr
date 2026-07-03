@@ -132,7 +132,7 @@ For a materials-informatics study, report:
 - uncertainty diagnostics for each task.
 
 Use `evaluate_multitask_train_test_split` to generate these task-level tables
-from any compatible multitask estimator:
+from any compatible complete multitask estimator:
 
 ```python
 from matgpr import MultitaskGPRRegressor, evaluate_multitask_train_test_split
@@ -156,11 +156,44 @@ validation.task_metrics
 validation.predictions
 ```
 
-`task_metrics` contains one row per split and task with RMSE, MAE, R2,
-Pearson \(r\), sample count, mean predictive standard deviation, Gaussian
-negative log predictive density, and interval coverage when uncertainties are
-available. `predictions` is a long-form parity-plot table with one row per
-sample and task.
+For sparse targets with `NaN` entries, use
+`evaluate_sparse_multitask_train_test_split`:
+
+```python
+from matgpr import (
+    SparseMultitaskGPRRegressor,
+    evaluate_sparse_multitask_train_test_split,
+)
+
+model = SparseMultitaskGPRRegressor(
+    task_names=["property_a", "property_b"],
+    training_iter=200,
+    verbose=False,
+)
+
+validation = evaluate_sparse_multitask_train_test_split(
+    model,
+    X,
+    y_sparse,
+    test_size=0.2,
+    random_state=7,
+    model_name="sparse_multitask_gpr",
+)
+
+validation.task_metrics
+validation.observed_predictions
+```
+
+Sparse `task_metrics` includes `n_observed`, `n_missing`,
+`observed_fraction`, and `missing_fraction`. The full `predictions` table keeps
+every sample-task prediction with an `observed` flag, while
+`observed_predictions` is ready for parity plots and observed-entry metrics.
+
+Both validation functions return one `task_metrics` row per split and task with
+RMSE, MAE, R2, Pearson \(r\), sample counts, mean predictive standard
+deviation, Gaussian negative log predictive density, and interval coverage when
+uncertainties are available. `predictions` is a long-form table with one row
+per sample and task.
 
 Multitask GPR can improve low-data predictions when tasks are genuinely
 related. It can also hurt performance when tasks are weakly related, measured
