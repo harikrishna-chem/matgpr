@@ -36,7 +36,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Learned heteroscedastic GPR with a residual noise GP for input-dependent
   observation uncertainty.
 - Exact multitask GPR for complete multi-property materials datasets with
-  learned inter-task covariance.
+  learned inter-task covariance and a scikit-learn-style wrapper.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -112,8 +112,9 @@ physics-informed mean functions and uncertainty-aware prediction.
    `summarize_physics_equation_templates`, `search_physics_equation_templates`,
    and `get_physics_equation_template`.
 12. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
-   `build_sklearn_gpr_model`, lower-level `fit_gpytorch_gpr`, or
-   `fit_multitask_gpytorch_gpr` for complete multi-property targets.
+   `build_sklearn_gpr_model`, lower-level `fit_gpytorch_gpr`,
+   `MultitaskGPRRegressor`, or `fit_multitask_gpytorch_gpr` for complete
+   multi-property targets.
 13. Evaluate models with `evaluate_train_test_split`,
    `cross_validate_regressor`, `learning_curve`,
    `regression_metrics`, or `train_test_regression_metrics`.
@@ -185,7 +186,7 @@ file alongside any published benchmark results.
 | `matgpr.heteroscedastic_gpr` | `fit_heteroscedastic_gpr`, `HeteroscedasticGPRResult` | Learned input-dependent observation-noise GPR |
 | `matgpr.multitask_gpr` | `fit_multitask_gpytorch_gpr`, `train_multitask_gpytorch_gpr`, `predict_multitask_gpytorch_gpr` | Exact multitask GPR for complete multi-property target matrices |
 | `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `search_physics_equation_templates`, `summarize_physics_equation_templates` | Reusable materials-physics mean-equation templates and metadata discovery |
-| `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
+| `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MultitaskGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
 | `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |

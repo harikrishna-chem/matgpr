@@ -62,6 +62,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Documentation clarifying what PI-GPR does and does not guarantee.
 - Initial exact multitask GPR utilities for complete multi-property target
   matrices.
+- Scikit-learn-style multitask GPR estimator wrapper for complete
+  multi-property target matrices.
 - Versioning and API-stability guide for active-development `0.x` releases.
 - Release checklist for `v0.1.0` and later `0.x` releases.
 - PyPI readiness audit documenting package metadata, artifact contents,

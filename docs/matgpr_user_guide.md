@@ -51,6 +51,7 @@ from matgpr import (
     build_preprocessor,
     MatGPRRegressor,
     PhysicsInformedGPRRegressor,
+    MultitaskGPRRegressor,
     KnownLimitConstraint,
     MonotonicTrendConstraint,
     append_virtual_observations,
@@ -623,10 +624,10 @@ metrics = regression_metrics(y_test, prediction.mean)
 
 ### 5.4 Multitask GPyTorch GPR
 
-Use `fit_multitask_gpytorch_gpr` when the same material rows have multiple
-related target properties and every target is observed for every row. The model
-learns a shared input-space kernel and a task covariance, so correlated
-properties can share statistical strength:
+Use `MultitaskGPRRegressor` or `fit_multitask_gpytorch_gpr` when the same
+material rows have multiple related target properties and every target is
+observed for every row. The model learns a shared input-space kernel and a task
+covariance, so correlated properties can share statistical strength:
 
 ```text
 cov[f_i(x), f_j(x')] = k_x(x, x') k_task(i, j)
@@ -635,13 +636,11 @@ cov[f_i(x), f_j(x')] = k_x(x, x') k_task(i, j)
 Example:
 
 ```python
-from matgpr import fit_multitask_gpytorch_gpr
+from matgpr import MultitaskGPRRegressor
 
 target_columns = ["strength_mpa", "ductility_percent"]
 
-result = fit_multitask_gpytorch_gpr(
-    X_train_array,
-    train_data[target_columns].to_numpy(),
+model = MultitaskGPRRegressor(
     task_names=target_columns,
     task_covar_rank=1,
     kernel="matern",
@@ -649,11 +648,12 @@ result = fit_multitask_gpytorch_gpr(
     verbose=False,
 )
 
-prediction = result.predict(X_test_array, confidence_level=0.95)
+model.fit(X_train_array, train_data[target_columns].to_numpy())
+prediction = model.predict_distribution(X_test_array, confidence_level=0.95)
 ```
 
 The prediction arrays have shape `(n_samples, n_tasks)` in the same order as
-`result.task_names`. Report per-task metrics and uncertainty diagnostics rather
+`model.task_names_`. Report per-task metrics and uncertainty diagnostics rather
 than only an averaged score. If some target values are missing, build separate
 single-task models for now or wait for the planned sparse multitask extension.
 

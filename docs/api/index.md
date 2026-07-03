@@ -6,7 +6,8 @@ types, and class methods.
 
 ## Public Workflow Modules
 
-- [Estimators](estimators.md): scikit-learn-style GPR estimator classes.
+- [Estimators](estimators.md): scikit-learn-style single-task,
+  physics-informed, and multitask GPR estimator classes.
 - [Featurizers](featurizers.md): scikit-learn-style materials transformers.
 - [Kernels](kernels.md): Tanimoto, element-fraction, structure-feature, and
   feature-subset kernel helpers.

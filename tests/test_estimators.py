@@ -22,9 +22,11 @@ from matgpr import (
     CompositionFeaturizer,
     MatGPRRegressor,
     MissingValueReport,
+    MultitaskGPRRegressor,
     PhysicsInformedGPRRegressor,
 )
 from matgpr.gpytorch_gpr import GPyTorchPrediction
+from matgpr.multitask_gpr import MultitaskGPyTorchPrediction
 
 
 def linear_physics_equation(features, parameters):
@@ -278,6 +280,126 @@ class PhysicsInformedGPRRegressorTests(unittest.TestCase):
         self.assertEqual(estimator.mean_module_.feature_indices, {"x": 0})
         self.assertEqual(estimator.missing_report_.imputed_features, ("x", "descriptor"))
         self.assertIn("slope", estimator.learned_physics_parameters_)
+
+
+class MultitaskGPRRegressorTests(unittest.TestCase):
+    def test_multitask_estimator_fit_predict_and_score(self):
+        x_values = np.linspace(0.0, 1.0, 10)
+        x = pd.DataFrame({"descriptor": x_values})
+        y = pd.DataFrame(
+            {
+                "strength": 1.5 * x_values + 0.2,
+                "ductility": -0.4 * x_values + 1.1,
+            }
+        )
+
+        estimator = MultitaskGPRRegressor(
+            kernel="rbf",
+            training_iter=3,
+            initial_noise=0.05,
+            initial_task_noises=(0.05, 0.08),
+            random_state=31,
+        )
+        estimator.fit(x, y)
+        mean, std = estimator.predict(x.iloc[:3], return_std=True)
+        prediction = estimator.predict_distribution(x.iloc[:3], confidence_level=0.90)
+        score = estimator.score(x, y)
+
+        self.assertEqual(estimator.n_features_in_, 1)
+        self.assertEqual(estimator.n_outputs_, 2)
+        self.assertEqual(estimator.task_names_, ("strength", "ductility"))
+        self.assertEqual(estimator.target_names_in_.tolist(), ["strength", "ductility"])
+        self.assertEqual(len(estimator.loss_history_), 3)
+        self.assertEqual(mean.shape, (3, 2))
+        self.assertEqual(std.shape, (3, 2))
+        self.assertIsInstance(prediction, MultitaskGPyTorchPrediction)
+        self.assertEqual(prediction.lower.shape, (3, 2))
+        self.assertEqual(prediction.upper.shape, (3, 2))
+        self.assertTrue(np.isfinite(score))
+
+    def test_multitask_estimator_is_cloneable(self):
+        estimator = MultitaskGPRRegressor(
+            task_names=("hardness", "modulus"),
+            task_covar_rank=1,
+            kernel="matern",
+            training_iter=2,
+            dtype="float32",
+        )
+        cloned = clone(estimator)
+
+        self.assertEqual(cloned.task_names, ("hardness", "modulus"))
+        self.assertEqual(cloned.kernel, "matern")
+        self.assertEqual(cloned.training_iter, 2)
+        self.assertEqual(cloned.dtype, "float32")
+
+    def test_multitask_missing_drop_removes_rows_with_any_missing_target(self):
+        x = pd.DataFrame(
+            {
+                "descriptor": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "process": [1.0, 1.1, 1.2, 1.3, 1.4, 1.5],
+            }
+        )
+        y = pd.DataFrame(
+            {
+                "strength": [0.1, 0.4, 0.6, 0.9, 1.2, 1.5],
+                "ductility": [1.0, 0.9, 0.8, np.nan, 0.6, 0.5],
+            }
+        )
+        estimator = MultitaskGPRRegressor(
+            missing="drop",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=37,
+        )
+
+        estimator.fit(x, y)
+        prediction = estimator.predict(x.dropna().iloc[:2])
+
+        self.assertEqual(prediction.shape, (2, 2))
+        self.assertEqual(estimator.missing_report_.output_rows, 4)
+        self.assertEqual(estimator.missing_report_.dropped_rows, 2)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_features, 1)
+        self.assertEqual(estimator.missing_report_.rows_with_missing_target, 1)
+
+    def test_multitask_missing_impute_learns_feature_imputer(self):
+        x = pd.DataFrame(
+            {
+                "descriptor": [0.0, 0.2, np.nan, 0.6, 0.8, 1.0],
+                "process": [1.0, np.nan, 1.2, 1.3, 1.4, 1.5],
+            }
+        )
+        y = pd.DataFrame(
+            {
+                "strength": [0.1, 0.4, 0.6, 0.9, np.nan, 1.5],
+                "ductility": [1.0, 0.9, 0.8, 0.7, 0.6, 0.5],
+            }
+        )
+        estimator = MultitaskGPRRegressor(
+            missing="impute",
+            imputation_strategy="median",
+            kernel="rbf",
+            training_iter=2,
+            initial_noise=0.05,
+            random_state=41,
+        )
+
+        estimator.fit(x, y)
+        prediction_report = estimator.summarize_prediction_missing_values(
+            pd.DataFrame({"descriptor": [0.1, np.nan], "process": [np.nan, 1.4]})
+        )
+        prediction, std = estimator.predict(
+            pd.DataFrame({"descriptor": [0.1, np.nan], "process": [np.nan, 1.4]}),
+            return_std=True,
+        )
+
+        self.assertEqual(prediction.shape, (2, 2))
+        self.assertEqual(std.shape, (2, 2))
+        self.assertTrue(hasattr(estimator, "feature_imputer_"))
+        self.assertEqual(estimator.missing_report_.output_rows, 5)
+        self.assertEqual(estimator.missing_report_.dropped_rows, 1)
+        self.assertEqual(estimator.missing_report_.imputed_features, ("descriptor", "process"))
+        self.assertEqual(prediction_report.imputed_features, ("descriptor", "process"))
 
 
 class EstimatorPipelineTests(unittest.TestCase):

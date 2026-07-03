@@ -39,7 +39,7 @@ implemented separately so the assumptions stay clear.
 
 ```python
 import numpy as np
-from matgpr import fit_multitask_gpytorch_gpr
+from matgpr import MultitaskGPRRegressor
 
 x = np.linspace(0.0, 1.0, 20).reshape(-1, 1)
 y = np.column_stack([
@@ -47,20 +47,23 @@ y = np.column_stack([
     0.5 * np.sin(2.0 * np.pi * x).ravel() + x.ravel(),
 ])
 
-result = fit_multitask_gpytorch_gpr(
-    x,
-    y,
+model = MultitaskGPRRegressor(
     task_names=["property_a", "property_b"],
     training_iter=200,
     verbose=False,
 )
 
-prediction = result.predict(x[:5], confidence_level=0.95)
+model.fit(x, y)
+prediction = model.predict_distribution(x[:5], confidence_level=0.95)
 prediction.mean.shape
 ```
 
 The prediction arrays have shape `(n_samples, n_tasks)`, and
 `prediction.task_names` records the task-column order.
+
+For lower-level GPyTorch access, use `fit_multitask_gpytorch_gpr`, which
+returns a `MultitaskGPyTorchResult` containing the fitted model, likelihood,
+loss history, and task metadata.
 
 ## Choosing The Task Covariance Rank
 

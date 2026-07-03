@@ -25,7 +25,7 @@ prediction accuracy.
 - Derivative-constrained GPR for slope-informed physics trends.
 - Physics-aware observation-noise profiles for mixed-source and replicate data.
 - Multitask GPR for complete multi-property materials datasets with learned
-  inter-task covariance.
+  inter-task covariance and a scikit-learn-style estimator wrapper.
 - Reusable validation workflows for train/test splits, cross-validation, and
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,

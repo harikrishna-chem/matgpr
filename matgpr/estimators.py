@@ -21,10 +21,12 @@ except ImportError:  # pragma: no cover - compatibility with older scikit-learn
     validate_data = None
 
 from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMean, fit_gpytorch_gpr
+from .multitask_gpr import MultitaskGPyTorchPrediction, fit_multitask_gpytorch_gpr
 
 __all__ = [
     "MatGPRRegressor",
     "MissingValueReport",
+    "MultitaskGPRRegressor",
     "PhysicsInformedGPRRegressor",
 ]
 
@@ -353,6 +355,133 @@ class PhysicsInformedGPRRegressor(MatGPRRegressor):
         return {name: fitted_names.index(name) for name in self.physics_features}
 
 
+class MultitaskGPRRegressor(MatGPRRegressor):
+    """Scikit-learn-style wrapper around exact multitask GPyTorch GPR.
+
+    This estimator models complete multi-output target matrices with a shared
+    input-space kernel and a learned task covariance. It is intended for
+    materials datasets where each row has multiple related properties observed,
+    such as strength and ductility for the same alloy or permeability and
+    selectivity for the same polymer.
+    """
+
+    def __init__(
+        self,
+        *,
+        task_names: Sequence[str] | None = None,
+        task_covar_rank: int = 1,
+        kernel: str = "matern",
+        ard: bool = True,
+        lr: float = 0.01,
+        training_iter: int = 1000,
+        initial_noise: float | None = 0.1,
+        initial_task_noises: Sequence[float] | None = None,
+        standardize_y: bool = True,
+        missing: str = "error",
+        imputation_strategy: str = "median",
+        imputation_fill_value: object | None = None,
+        device: str = "cpu",
+        dtype: str | torch.dtype = "float64",
+        verbose: bool = False,
+        log_every: int = 100,
+        include_observation_noise: bool = True,
+        random_state: int | None = None,
+    ):
+        super().__init__(
+            kernel=kernel,
+            ard=ard,
+            lr=lr,
+            training_iter=training_iter,
+            initial_noise=initial_noise,
+            standardize_y=standardize_y,
+            missing=missing,
+            imputation_strategy=imputation_strategy,
+            imputation_fill_value=imputation_fill_value,
+            device=device,
+            dtype=dtype,
+            verbose=verbose,
+            log_every=log_every,
+            include_observation_noise=include_observation_noise,
+            random_state=random_state,
+        )
+        self.task_names = task_names
+        self.task_covar_rank = task_covar_rank
+        self.initial_task_noises = initial_task_noises
+
+    def fit(self, X, y):
+        """Fit the multitask Gaussian Process Regressor.
+
+        Parameters
+        ----------
+        X
+            Numeric feature matrix. Dataframes are accepted; string column
+            names are stored in ``feature_names_in_`` for prediction-time
+            consistency checks.
+        y
+            Two-dimensional numeric target matrix with shape
+            ``(n_samples, n_tasks)``. Dataframes are accepted; string target
+            columns are used as task names when ``task_names`` is not supplied.
+
+        Notes
+        -----
+        This first multitask estimator expects complete target observations.
+        Missing targets are rejected or row-dropped according to ``missing``;
+        target values are never imputed.
+        """
+        X_checked, y_checked, task_names = _validate_multitask_fit_input(self, X, y)
+
+        _seed_torch(self.random_state)
+        dtype = _resolve_torch_dtype(self.dtype)
+
+        self.result_ = fit_multitask_gpytorch_gpr(
+            X_checked,
+            y_checked,
+            task_names=task_names,
+            task_covar_rank=self.task_covar_rank,
+            kernel=self.kernel,
+            ard=self.ard,
+            lr=self.lr,
+            training_iter=self.training_iter,
+            initial_noise=self.initial_noise,
+            initial_task_noises=self.initial_task_noises,
+            standardize_y=self.standardize_y,
+            device=self.device,
+            dtype=dtype,
+            verbose=self.verbose,
+            log_every=self.log_every,
+        )
+        self.model_ = self.result_.model
+        self.likelihood_ = self.result_.likelihood
+        self.loss_history_ = list(self.result_.loss_history)
+        self.target_mean_ = self.result_.target_mean.copy()
+        self.target_std_ = self.result_.target_std.copy()
+        self.task_names_ = self.result_.task_names
+        self.n_tasks_in_ = self.result_.num_tasks
+        self.n_outputs_ = self.result_.num_tasks
+        return self
+
+    def predict_distribution(
+        self,
+        X,
+        *,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool | None = None,
+    ) -> MultitaskGPyTorchPrediction:
+        """Return per-task predictive means, uncertainties, and intervals."""
+        check_is_fitted(self, "result_")
+        X_checked = self._validate_prediction_input(X)
+        if include_observation_noise is None:
+            include_observation_noise = self.include_observation_noise
+
+        return self.result_.predict(
+            X_checked,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+
+
 def _feature_names_from_input(X) -> np.ndarray | None:
     if not hasattr(X, "columns"):
         return None
@@ -405,6 +534,62 @@ def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
 
     check_consistent_length(X_checked, y_checked)
     return _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
+
+
+def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
+    _clear_missing_state(estimator)
+    if y is None:
+        raise ValueError("requires y to be passed, but the target y is None")
+    policy = _validate_missing_policy(estimator.missing)
+    _validate_imputation_strategy(estimator.imputation_strategy)
+
+    if validate_data is not None:
+        X_checked = validate_data(
+            estimator,
+            X,
+            reset=True,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",
+        )
+    else:
+        feature_names = _feature_names_from_input(X)
+        X_checked = check_array(
+            X,
+            ensure_2d=True,
+            dtype="numeric",
+            ensure_all_finite="allow-nan",
+        )
+        estimator.n_features_in_ = X_checked.shape[1]
+        if feature_names is not None:
+            if len(feature_names) != estimator.n_features_in_:
+                raise ValueError("Number of dataframe columns does not match validated features")
+            estimator.feature_names_in_ = feature_names
+        elif hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
+
+    inferred_task_names = _task_names_from_target_input(y)
+    if inferred_task_names is not None:
+        estimator.target_names_in_ = np.asarray(inferred_task_names, dtype=object)
+    elif hasattr(estimator, "target_names_in_"):
+        delattr(estimator, "target_names_in_")
+
+    y_checked = check_array(
+        y,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+        input_name="y",
+    )
+    if y_checked.shape[1] < 2:
+        raise ValueError(
+            "MultitaskGPRRegressor requires at least two target columns; "
+            f"got {y_checked.shape[1]}"
+        )
+
+    check_consistent_length(X_checked, y_checked)
+    X_checked, y_checked = _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
+    return X_checked, y_checked, _resolve_estimator_task_names(estimator, inferred_task_names)
 
 
 def _validate_predict_input(estimator, X) -> np.ndarray:
@@ -488,7 +673,7 @@ def _apply_fit_missing_policy(
     policy: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     feature_missing_mask = np.isnan(X_checked).any(axis=1)
-    target_missing_mask = np.isnan(y_checked)
+    target_missing_mask = _target_missing_row_mask(y_checked)
     any_missing_mask = feature_missing_mask | target_missing_mask
 
     if policy == "error" and np.any(any_missing_mask):
@@ -585,7 +770,7 @@ def _make_missing_report(
     feature_missing_mask = np.isnan(X_checked).any(axis=1)
     target_missing_mask = np.zeros(X_checked.shape[0], dtype=bool)
     if y_checked is not None:
-        target_missing_mask = np.isnan(y_checked)
+        target_missing_mask = _target_missing_row_mask(y_checked)
 
     return MissingValueReport(
         stage=stage,
@@ -615,6 +800,30 @@ def _feature_labels(estimator, n_features: int) -> list[str]:
     if hasattr(estimator, "feature_names_in_"):
         return [str(name) for name in estimator.feature_names_in_]
     return [f"feature_{index}" for index in range(n_features)]
+
+
+def _target_missing_row_mask(y_checked: np.ndarray) -> np.ndarray:
+    missing = np.isnan(y_checked)
+    if missing.ndim == 1:
+        return missing
+    return missing.any(axis=1)
+
+
+def _task_names_from_target_input(y) -> tuple[str, ...] | None:
+    if not hasattr(y, "columns"):
+        return None
+    if not all(isinstance(name, str) and name for name in y.columns):
+        return None
+    return tuple(y.columns)
+
+
+def _resolve_estimator_task_names(
+    estimator,
+    inferred_task_names: tuple[str, ...] | None,
+) -> tuple[str, ...] | None:
+    if estimator.task_names is not None:
+        return tuple(str(name) for name in estimator.task_names)
+    return inferred_task_names
 
 
 def _imputed_feature_names(estimator, X_checked: np.ndarray) -> tuple[str, ...]:
