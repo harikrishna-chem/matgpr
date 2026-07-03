@@ -83,6 +83,37 @@ For a materials-informatics study, report:
 - per-task validation metrics,
 - uncertainty diagnostics for each task.
 
+Use `evaluate_multitask_train_test_split` to generate these task-level tables
+from any compatible multitask estimator:
+
+```python
+from matgpr import MultitaskGPRRegressor, evaluate_multitask_train_test_split
+
+model = MultitaskGPRRegressor(
+    task_names=["property_a", "property_b"],
+    training_iter=200,
+    verbose=False,
+)
+
+validation = evaluate_multitask_train_test_split(
+    model,
+    X,
+    y,
+    test_size=0.2,
+    random_state=7,
+    model_name="multitask_gpr",
+)
+
+validation.task_metrics
+validation.predictions
+```
+
+`task_metrics` contains one row per split and task with RMSE, MAE, R2,
+Pearson \(r\), sample count, mean predictive standard deviation, Gaussian
+negative log predictive density, and interval coverage when uncertainties are
+available. `predictions` is a long-form parity-plot table with one row per
+sample and task.
+
 Multitask GPR can improve low-data predictions when tasks are genuinely
 related. It can also hurt performance when tasks are weakly related, measured
 under incompatible protocols, or dominated by different noise sources.

@@ -9,16 +9,19 @@ import pandas as pd
 from sklearn.base import clone
 from sklearn.model_selection import KFold, ShuffleSplit, train_test_split
 
-from .metrics import train_test_regression_metrics
-from .uncertainty import uncertainty_diagnostics
+from .metrics import regression_metrics, train_test_regression_metrics
+from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
 
 __all__ = [
     "CrossValidationResult",
     "LearningCurveResult",
+    "MultitaskTrainTestValidationResult",
     "TrainTestValidationResult",
     "cross_validate_regressor",
+    "evaluate_multitask_train_test_split",
     "evaluate_train_test_split",
     "learning_curve",
+    "summarize_multitask_predictions",
 ]
 
 
@@ -107,6 +110,59 @@ class LearningCurveResult:
         )
 
 
+@dataclass(frozen=True)
+class MultitaskTrainTestValidationResult:
+    """Result from a multitask train/test validation run.
+
+    Attributes
+    ----------
+    model_name
+        Human-readable model label used in reports.
+    fitted_estimator
+        Estimator fitted on the training split.
+    task_metrics
+        Per-task metrics with one row per split and task.
+    predictions
+        Long-form prediction table with one row per sample, split, and task.
+    train_indices, test_indices
+        Integer sample positions used for the split.
+    """
+
+    model_name: str
+    fitted_estimator: object
+    task_metrics: pd.DataFrame
+    predictions: pd.DataFrame
+    train_indices: np.ndarray
+    test_indices: np.ndarray
+
+    def metrics_frame(self) -> pd.DataFrame:
+        """Return the per-task metrics dataframe."""
+        return self.task_metrics.copy()
+
+    def summary(
+        self,
+        metric_columns: Sequence[str] | None = None,
+        *,
+        group_by: Sequence[str] = ("model", "split"),
+    ) -> pd.DataFrame:
+        """Summarize per-task metrics across tasks for each split."""
+        return _summarize_metrics(
+            self.task_metrics,
+            group_by=group_by,
+            metric_columns=metric_columns,
+        )
+
+    @property
+    def train_predictions(self) -> pd.DataFrame:
+        """Predictions for training samples."""
+        return self.predictions[self.predictions["split"] == "train"].reset_index(drop=True)
+
+    @property
+    def test_predictions(self) -> pd.DataFrame:
+        """Predictions for held-out test samples."""
+        return self.predictions[self.predictions["split"] == "test"].reset_index(drop=True)
+
+
 def evaluate_train_test_split(
     estimator,
     X,
@@ -169,6 +225,227 @@ def evaluate_train_test_split(
         predictions=result["predictions"],
         train_indices=np.asarray(train_indices, dtype=int),
         test_indices=np.asarray(test_indices, dtype=int),
+    )
+
+
+def summarize_multitask_predictions(
+    y_true,
+    y_pred,
+    y_std=None,
+    *,
+    task_names: Sequence[str] | None = None,
+    model_name: str = "model",
+    split: str = "test",
+    confidence_level: float = 0.95,
+) -> pd.DataFrame:
+    """Return per-task regression and uncertainty metrics.
+
+    Parameters
+    ----------
+    y_true
+        True target matrix with shape ``(n_samples, n_tasks)``. Dataframes are
+        accepted; their columns are used as task names when ``task_names`` is
+        not supplied.
+    y_pred
+        Predicted target matrix with the same shape as ``y_true``. Objects with
+        ``mean``, ``std``, and ``task_names`` attributes, such as
+        :class:`matgpr.MultitaskGPyTorchPrediction`, are also accepted.
+    y_std
+        Optional predictive standard deviations with the same shape as
+        ``y_true``. If omitted and ``y_pred`` has a ``std`` attribute, that
+        attribute is used.
+    task_names
+        Optional task names in target-column order.
+    model_name, split
+        Labels stored in the returned dataframe for report tables.
+    confidence_level
+        Gaussian interval level used for uncertainty coverage diagnostics.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per task with RMSE, MAE, R2, Pearson ``r``, sample count, and
+        uncertainty diagnostics when predictive standard deviations are
+        available.
+    """
+    prediction_task_names = getattr(y_pred, "task_names", None)
+    if y_std is None and _is_prediction_container(y_pred) and hasattr(y_pred, "std"):
+        y_std = getattr(y_pred, "std")
+    if _is_prediction_container(y_pred):
+        y_pred = getattr(y_pred, "mean")
+
+    y_true_array = _to_2d_float(y_true, "y_true")
+    y_pred_array = _to_2d_float(y_pred, "y_pred")
+    _validate_same_2d_shape(y_true_array, y_pred_array, "y_true", "y_pred")
+    y_std_array = _to_optional_2d_std(y_std) if y_std is not None else None
+    if y_std_array is not None:
+        _validate_same_2d_shape(y_true_array, y_std_array, "y_true", "y_std")
+
+    resolved_task_names = _resolve_multitask_names(
+        task_names=task_names,
+        n_tasks=y_true_array.shape[1],
+        y=y_true,
+        prediction_task_names=prediction_task_names,
+    )
+    rows = []
+    for task_index, task_name in enumerate(resolved_task_names):
+        metrics = regression_metrics(
+            y_true_array[:, task_index],
+            y_pred_array[:, task_index],
+        )
+        row = {
+            "model": str(model_name),
+            "split": str(split),
+            "task": task_name,
+            "task_index": task_index,
+            "n_samples": y_true_array.shape[0],
+            **metrics,
+        }
+        if y_std_array is not None:
+            row.update(
+                uncertainty_diagnostics(
+                    y_true_array[:, task_index],
+                    y_pred_array[:, task_index],
+                    y_std_array[:, task_index],
+                    confidence_level=confidence_level,
+                )
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def evaluate_multitask_train_test_split(
+    estimator,
+    X,
+    y,
+    *,
+    train_indices: Sequence[int] | None = None,
+    test_indices: Sequence[int] | None = None,
+    test_size: float | int = 0.2,
+    train_size: float | int | None = None,
+    random_state: int | None = None,
+    shuffle: bool = True,
+    model_name: str | None = None,
+    task_names: Sequence[str] | None = None,
+    return_std: bool = True,
+    confidence_level: float = 0.95,
+    include_observation_noise: bool | None = None,
+    fit_params: Mapping[str, object] | None = None,
+) -> MultitaskTrainTestValidationResult:
+    """Fit a multitask estimator on one split and return per-task summaries.
+
+    This is the multitask counterpart of :func:`evaluate_train_test_split`.
+    It keeps validation outputs in report-ready form: per-task metrics for the
+    train and held-out test splits plus a long-form parity-plot table with
+    predictive uncertainty when the estimator provides it.
+    """
+    n_samples, _ = _validate_multitask_xy_length(X, y)
+    labels = _sample_labels(y, n_samples)
+
+    if train_indices is None and test_indices is None:
+        train_indices, test_indices = train_test_split(
+            np.arange(n_samples),
+            train_size=train_size,
+            test_size=test_size,
+            random_state=random_state,
+            shuffle=shuffle,
+        )
+    elif train_indices is None or test_indices is None:
+        raise ValueError("train_indices and test_indices must be supplied together")
+    else:
+        train_indices = _to_index_array(train_indices, "train_indices", n_samples)
+        test_indices = _to_index_array(test_indices, "test_indices", n_samples)
+
+    train_indices = np.asarray(train_indices, dtype=int)
+    test_indices = np.asarray(test_indices, dtype=int)
+    _validate_split_indices(train_indices, test_indices, n_samples)
+
+    fitted_estimator = _clone_estimator(estimator, random_state=random_state)
+    X_train = _safe_index(X, train_indices)
+    X_test = _safe_index(X, test_indices)
+    y_train = _safe_index(y, train_indices)
+    y_test = _safe_index(y, test_indices)
+    model_name = model_name or _estimator_name(estimator)
+
+    fitted_estimator.fit(X_train, y_train, **dict(fit_params or {}))
+    y_train_pred, y_train_std, train_prediction_task_names = _predict_multitask_estimator(
+        fitted_estimator,
+        X_train,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+    y_test_pred, y_test_std, test_prediction_task_names = _predict_multitask_estimator(
+        fitted_estimator,
+        X_test,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+    fitted_task_names = getattr(fitted_estimator, "task_names_", None)
+    resolved_task_names = _resolve_multitask_names(
+        task_names=task_names,
+        n_tasks=_to_2d_float(y_train, "y_train").shape[1],
+        y=y,
+        prediction_task_names=_first_available_task_names(
+            fitted_task_names,
+            train_prediction_task_names,
+            test_prediction_task_names,
+        ),
+    )
+
+    train_metrics = summarize_multitask_predictions(
+        y_train,
+        y_train_pred,
+        y_train_std,
+        task_names=resolved_task_names,
+        model_name=model_name,
+        split="train",
+        confidence_level=confidence_level,
+    )
+    test_metrics = summarize_multitask_predictions(
+        y_test,
+        y_test_pred,
+        y_test_std,
+        task_names=resolved_task_names,
+        model_name=model_name,
+        split="test",
+        confidence_level=confidence_level,
+    )
+    predictions = pd.concat(
+        [
+            _multitask_prediction_frame(
+                model_name,
+                "train",
+                train_indices,
+                labels,
+                y_train,
+                y_train_pred,
+                y_train_std,
+                task_names=resolved_task_names,
+                confidence_level=confidence_level,
+            ),
+            _multitask_prediction_frame(
+                model_name,
+                "test",
+                test_indices,
+                labels,
+                y_test,
+                y_test_pred,
+                y_test_std,
+                task_names=resolved_task_names,
+                confidence_level=confidence_level,
+            ),
+        ],
+        ignore_index=True,
+    )
+    return MultitaskTrainTestValidationResult(
+        model_name=model_name,
+        fitted_estimator=fitted_estimator,
+        task_metrics=pd.concat([train_metrics, test_metrics], ignore_index=True),
+        predictions=predictions,
+        train_indices=train_indices,
+        test_indices=test_indices,
     )
 
 
@@ -562,6 +839,150 @@ def _prediction_frame(
     return frame
 
 
+def _predict_multitask_estimator(
+    estimator,
+    X,
+    *,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+) -> tuple[np.ndarray, np.ndarray | None, tuple[str, ...] | None]:
+    if hasattr(estimator, "predict_distribution"):
+        prediction = _call_multitask_predict_distribution(
+            estimator,
+            X,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+        return _coerce_multitask_prediction_output(prediction)
+
+    if return_std:
+        try:
+            if include_observation_noise is None:
+                prediction = estimator.predict(X, return_std=True)
+            else:
+                prediction = estimator.predict(
+                    X,
+                    return_std=True,
+                    include_observation_noise=include_observation_noise,
+                )
+            return _coerce_multitask_prediction_output(prediction)
+        except TypeError:
+            pass
+
+    return _to_2d_float(estimator.predict(X), "y_pred"), None, None
+
+
+def _call_multitask_predict_distribution(
+    estimator,
+    X,
+    *,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+):
+    keyword_options = [
+        {
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+            "include_observation_noise": include_observation_noise,
+        },
+        {
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+        },
+        {"return_std": return_std},
+        {},
+    ]
+    for keywords in keyword_options:
+        if keywords.get("include_observation_noise") is None:
+            keywords = {
+                key: value
+                for key, value in keywords.items()
+                if key != "include_observation_noise"
+            }
+        try:
+            return estimator.predict_distribution(X, **keywords)
+        except TypeError:
+            continue
+    return estimator.predict_distribution(X)
+
+
+def _coerce_multitask_prediction_output(
+    prediction,
+) -> tuple[np.ndarray, np.ndarray | None, tuple[str, ...] | None]:
+    task_names = getattr(prediction, "task_names", None)
+    if isinstance(prediction, tuple) and len(prediction) >= 2:
+        return (
+            _to_2d_float(prediction[0], "y_pred"),
+            _to_optional_2d_std(prediction[1]),
+            _normalize_optional_task_names(task_names),
+        )
+    if _is_prediction_container(prediction):
+        y_std = getattr(prediction, "std", None)
+        return (
+            _to_2d_float(getattr(prediction, "mean"), "y_pred"),
+            _to_optional_2d_std(y_std) if y_std is not None else None,
+            _normalize_optional_task_names(task_names),
+        )
+    return _to_2d_float(prediction, "y_pred"), None, _normalize_optional_task_names(task_names)
+
+
+def _is_prediction_container(value) -> bool:
+    return (
+        hasattr(value, "mean")
+        and not isinstance(value, (np.ndarray, pd.DataFrame, pd.Series, list, tuple))
+    )
+
+
+def _multitask_prediction_frame(
+    model_name: str,
+    split: str,
+    positions: np.ndarray,
+    labels: np.ndarray,
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    task_names: Sequence[str],
+    confidence_level: float,
+) -> pd.DataFrame:
+    y_true_array = _to_2d_float(y_true, "y_true")
+    y_pred_array = _to_2d_float(y_pred, "y_pred")
+    _validate_same_2d_shape(y_true_array, y_pred_array, "y_true", "y_pred")
+    y_std_array = _to_optional_2d_std(y_std) if y_std is not None else None
+    if y_std_array is not None:
+        _validate_same_2d_shape(y_true_array, y_std_array, "y_true", "y_std")
+    resolved_task_names = _validate_task_names(task_names, y_true_array.shape[1])
+
+    rows = []
+    for task_index, task_name in enumerate(resolved_task_names):
+        frame = pd.DataFrame(
+            {
+                "model": str(model_name),
+                "split": str(split),
+                "sample_position": positions,
+                "sample_label": labels[positions],
+                "task": task_name,
+                "task_index": task_index,
+                "y_true": y_true_array[:, task_index],
+                "y_pred": y_pred_array[:, task_index],
+            }
+        )
+        if y_std_array is not None:
+            frame["y_std"] = y_std_array[:, task_index]
+            lower, upper = prediction_interval_bounds(
+                y_pred_array[:, task_index],
+                y_std_array[:, task_index],
+                confidence_level=confidence_level,
+            )
+            frame["y_lower"] = lower
+            frame["y_upper"] = upper
+        rows.append(frame)
+    return pd.concat(rows, ignore_index=True)
+
+
 def _summarize_metrics(
     frame: pd.DataFrame,
     *,
@@ -893,6 +1314,18 @@ def _clone_estimator(estimator, *, random_state: int | None):
     return cloned
 
 
+def _validate_multitask_xy_length(X, y) -> tuple[int, int]:
+    n_x = len(X)
+    y_values = _to_2d_float(y, "y")
+    if n_x != y_values.shape[0]:
+        raise ValueError("X and y must contain the same number of samples")
+    if n_x < 2:
+        raise ValueError("At least two samples are required")
+    if y_values.shape[1] < 2:
+        raise ValueError("Multitask validation requires at least two target columns")
+    return int(n_x), int(y_values.shape[1])
+
+
 def _validate_xy_length(X, y) -> int:
     n_x = len(X)
     y_values = _to_1d_float(y, "y")
@@ -936,6 +1369,17 @@ def _safe_index_y(y, indices: np.ndarray) -> np.ndarray:
     return _to_1d_float(_safe_index(y, indices), "y")
 
 
+def _to_2d_float(values, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 2:
+        raise ValueError(f"{name} must be a 2D matrix with shape (n_samples, n_tasks)")
+    if array.size == 0:
+        raise ValueError(f"{name} must contain at least one value")
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} must contain only finite values")
+    return array
+
+
 def _to_1d_float(values, name: str) -> np.ndarray:
     array = np.asarray(values, dtype=float).ravel()
     if array.size == 0:
@@ -950,6 +1394,73 @@ def _to_optional_std(values) -> np.ndarray:
     if np.any(std <= 0):
         raise ValueError("y_std must contain only positive values")
     return std
+
+
+def _to_optional_2d_std(values) -> np.ndarray:
+    std = _to_2d_float(values, "y_std")
+    if np.any(std <= 0):
+        raise ValueError("y_std must contain only positive values")
+    return std
+
+
+def _validate_same_2d_shape(
+    first: np.ndarray,
+    second: np.ndarray,
+    first_name: str,
+    second_name: str,
+) -> None:
+    if first.shape != second.shape:
+        raise ValueError(f"{first_name} and {second_name} must have the same shape")
+
+
+def _resolve_multitask_names(
+    *,
+    task_names: Sequence[str] | None,
+    n_tasks: int,
+    y=None,
+    prediction_task_names: Sequence[str] | None = None,
+) -> tuple[str, ...]:
+    if task_names is not None:
+        return _validate_task_names(task_names, n_tasks)
+    if prediction_task_names is not None:
+        return _validate_task_names(prediction_task_names, n_tasks)
+    inferred = _task_names_from_multitask_target(y)
+    if inferred is not None:
+        return _validate_task_names(inferred, n_tasks)
+    return tuple(f"task_{index}" for index in range(n_tasks))
+
+
+def _normalize_optional_task_names(task_names) -> tuple[str, ...] | None:
+    if task_names is None:
+        return None
+    return tuple(str(name) for name in task_names)
+
+
+def _first_available_task_names(*task_name_sources) -> tuple[str, ...] | None:
+    for task_names in task_name_sources:
+        normalized = _normalize_optional_task_names(task_names)
+        if normalized is not None:
+            return normalized
+    return None
+
+
+def _task_names_from_multitask_target(y) -> tuple[str, ...] | None:
+    if hasattr(y, "columns"):
+        columns = tuple(str(column) for column in y.columns)
+        if columns:
+            return columns
+    return None
+
+
+def _validate_task_names(task_names: Sequence[str], n_tasks: int) -> tuple[str, ...]:
+    names = tuple(str(name) for name in task_names)
+    if len(names) != n_tasks:
+        raise ValueError(f"task_names must contain {n_tasks} names; got {len(names)}")
+    if any(not name for name in names):
+        raise ValueError("task_names must be non-empty strings")
+    if len(set(names)) != len(names):
+        raise ValueError("task_names must be unique")
+    return names
 
 
 def _sample_labels(y, n_samples: int) -> np.ndarray:

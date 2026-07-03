@@ -116,8 +116,9 @@ physics-informed mean functions and uncertainty-aware prediction.
    `MultitaskGPRRegressor`, or `fit_multitask_gpytorch_gpr` for complete
    multi-property targets.
 13. Evaluate models with `evaluate_train_test_split`,
-   `cross_validate_regressor`, `learning_curve`,
-   `regression_metrics`, or `train_test_regression_metrics`.
+   `evaluate_multitask_train_test_split`, `cross_validate_regressor`,
+   `learning_curve`, `regression_metrics`, `train_test_regression_metrics`,
+   or `summarize_multitask_predictions`.
 14. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
    `plot_distribution`, `plot_correlation_matrix`, BO progress plots, or the
@@ -189,7 +190,7 @@ file alongside any published benchmark results.
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MultitaskGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
-| `matgpr.validation` | `evaluate_train_test_split`, `cross_validate_regressor`, `learning_curve` | Reusable train/test, cross-validation, and learning-curve workflows |
+| `matgpr.validation` | `evaluate_train_test_split`, `evaluate_multitask_train_test_split`, `cross_validate_regressor`, `learning_curve`, `summarize_multitask_predictions` | Reusable train/test, multitask task-summary, cross-validation, and learning-curve workflows |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `summarize_candidate_pool`, `summarize_candidate_feature_coverage`, `summarize_candidate_category_coverage`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders and diagnostics for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `summarize_bo_recommendation_audit`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
 | `matgpr.bo_benchmarking` | `BOBenchmarkStrategy`, `simulate_bo_strategy`, `compare_bo_strategies`, `summarize_bo_benchmark` | Offline finite-pool BO strategy benchmarks |

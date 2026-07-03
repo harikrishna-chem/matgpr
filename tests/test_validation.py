@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -9,10 +10,13 @@ from sklearn.base import BaseEstimator, RegressorMixin
 from matgpr import (
     CrossValidationResult,
     LearningCurveResult,
+    MultitaskTrainTestValidationResult,
     TrainTestValidationResult,
     cross_validate_regressor,
+    evaluate_multitask_train_test_split,
     evaluate_train_test_split,
     learning_curve,
+    summarize_multitask_predictions,
 )
 
 
@@ -34,6 +38,30 @@ class LinearMeanStdRegressor(RegressorMixin, BaseEstimator):
         mean = design @ self.coefficients_
         if return_std:
             return mean, np.full(mean.shape, self.constant_std, dtype=float)
+        return mean
+
+
+class MultiOutputMeanStdRegressor(RegressorMixin, BaseEstimator):
+    def __init__(self, constant_std: float = 0.25, random_state: int | None = None):
+        self.constant_std = constant_std
+        self.random_state = random_state
+
+    def fit(self, X, y):
+        X = np.asarray(X, dtype=float)
+        y_array = np.asarray(y, dtype=float)
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        self.coefficients_ = np.linalg.lstsq(design, y_array, rcond=None)[0]
+        if hasattr(y, "columns"):
+            self.task_names_ = tuple(str(column) for column in y.columns)
+        return self
+
+    def predict(self, X, return_std: bool = False):
+        X = np.asarray(X, dtype=float)
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        mean = design @ self.coefficients_
+        if return_std:
+            std = np.full(mean.shape, self.constant_std, dtype=float)
+            return mean, std
         return mean
 
 
@@ -173,6 +201,79 @@ class ValidationApiTests(unittest.TestCase):
                 self.y,
                 train_sizes=(2.5,),
                 train_size_unit="count",
+            )
+
+    def test_summarize_multitask_predictions_returns_per_task_metrics(self):
+        y_true = pd.DataFrame(
+            {
+                "strength": [1.0, 2.0, 3.0, 4.0],
+                "ductility": [4.0, 3.0, 2.0, 1.0],
+            }
+        )
+        prediction = SimpleNamespace(
+            mean=np.asarray(y_true) + np.array([[0.1, -0.1]]),
+            std=np.full((4, 2), 0.3),
+            task_names=("strength", "ductility"),
+        )
+
+        summary = summarize_multitask_predictions(
+            y_true,
+            prediction,
+            model_name="multi",
+            split="test",
+            confidence_level=0.9,
+        )
+
+        self.assertEqual(summary.shape[0], 2)
+        self.assertEqual(summary["task"].tolist(), ["strength", "ductility"])
+        self.assertIn("RMSE", summary.columns)
+        self.assertIn("observed_coverage", summary.columns)
+        self.assertTrue(np.all(summary["n_samples"] == 4))
+
+    def test_evaluate_multitask_train_test_split_returns_task_tables(self):
+        x = np.linspace(0.0, 1.0, 12)
+        X = pd.DataFrame({"x": x})
+        y = pd.DataFrame(
+            {
+                "strength": 2.0 * x + 0.5,
+                "ductility": -1.5 * x + 2.0,
+            },
+            index=[f"sample_{index}" for index in range(len(x))],
+        )
+
+        result = evaluate_multitask_train_test_split(
+            MultiOutputMeanStdRegressor(constant_std=0.2),
+            X,
+            y,
+            train_indices=np.arange(8),
+            test_indices=np.arange(8, 12),
+            model_name="multi_linear",
+            confidence_level=0.9,
+        )
+
+        self.assertIsInstance(result, MultitaskTrainTestValidationResult)
+        self.assertEqual(result.task_metrics.shape[0], 4)
+        self.assertEqual(set(result.task_metrics["split"]), {"train", "test"})
+        self.assertEqual(set(result.task_metrics["task"]), {"strength", "ductility"})
+        self.assertEqual(result.train_predictions.shape[0], 16)
+        self.assertEqual(result.test_predictions.shape[0], 8)
+        self.assertIn("y_std", result.predictions.columns)
+        self.assertIn("y_lower", result.predictions.columns)
+        self.assertIn("y_upper", result.predictions.columns)
+        self.assertEqual(result.test_predictions["sample_label"].iloc[0], "sample_8")
+        self.assertIn("RMSE_mean", result.summary(metric_columns=["RMSE"]).columns)
+
+    def test_multitask_validation_errors_are_explicit(self):
+        y_true = np.ones((3, 2))
+        y_pred = np.ones((3, 1))
+
+        with self.assertRaisesRegex(ValueError, "same shape"):
+            summarize_multitask_predictions(y_true, y_pred)
+        with self.assertRaisesRegex(ValueError, "task_names"):
+            summarize_multitask_predictions(
+                y_true,
+                y_true,
+                task_names=("only_one",),
             )
 
 

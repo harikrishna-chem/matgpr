@@ -236,10 +236,13 @@ from .uncertainty import (
 from .validation import (
     CrossValidationResult,
     LearningCurveResult,
+    MultitaskTrainTestValidationResult,
     TrainTestValidationResult,
     cross_validate_regressor,
+    evaluate_multitask_train_test_split,
     evaluate_train_test_split,
     learning_curve,
+    summarize_multitask_predictions,
 )
 from .visualization import (
     plot_bo_benchmark_trace,
@@ -303,6 +306,7 @@ __all__ = [
     "MultitaskGPRRegressor",
     "MultitaskGPyTorchPrediction",
     "MultitaskGPyTorchResult",
+    "MultitaskTrainTestValidationResult",
     "PhysicsInformedMean",
     "PhysicsInformedGPRRegressor",
     "PhysicsResidualTransform",
@@ -383,6 +387,7 @@ __all__ = [
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",
     "element_fraction_fingerprint",
+    "evaluate_multitask_train_test_split",
     "evaluate_train_test_split",
     "exclude_existing_candidates",
     "featurize_compositions",
@@ -468,6 +473,7 @@ __all__ = [
     "summarize_bo_benchmark",
     "summarize_closed_loop_log",
     "summarize_missingness",
+    "summarize_multitask_predictions",
     "summarize_numeric_columns",
     "summarize_physics_equation_templates",
     "summarize_target_transform_specs",

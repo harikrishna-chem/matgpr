@@ -648,14 +648,35 @@ model = MultitaskGPRRegressor(
     verbose=False,
 )
 
-model.fit(X_train_array, train_data[target_columns].to_numpy())
+model.fit(X_train_array, train_data[target_columns])
 prediction = model.predict_distribution(X_test_array, confidence_level=0.95)
 ```
 
 The prediction arrays have shape `(n_samples, n_tasks)` in the same order as
 `model.task_names_`. Report per-task metrics and uncertainty diagnostics rather
-than only an averaged score. If some target values are missing, build separate
-single-task models for now or wait for the planned sparse multitask extension.
+than only an averaged score:
+
+```python
+from matgpr import evaluate_multitask_train_test_split
+
+validation = evaluate_multitask_train_test_split(
+    model,
+    X_array,
+    data[target_columns],
+    test_size=0.2,
+    random_state=7,
+    model_name="multitask_gpr",
+)
+
+validation.task_metrics
+validation.predictions
+```
+
+`validation.task_metrics` contains one row per split and task with RMSE, MAE,
+R2, Pearson \(r\), sample count, and uncertainty diagnostics when predictive
+standard deviations are available. If some target values are missing, build
+separate single-task models for now or wait for the planned sparse multitask
+extension.
 
 ## 6. Physics-Aware Kernels
 
