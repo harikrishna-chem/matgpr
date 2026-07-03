@@ -687,6 +687,8 @@ sparse_model = SparseMultitaskGPRRegressor(
     task_names=target_columns,
     task_covar_rank=1,
     kernel="matern",
+    noise_mode="task",
+    initial_task_noises={name: 0.1 for name in target_columns},
     training_iter=1000,
     min_observations_per_task=2,
     verbose=False,
@@ -701,10 +703,10 @@ sparse_model.task_observation_counts_
 ```
 
 The sparse estimator preserves partially observed rows and learns one task
-covariance across all finite target entries. The first implementation uses a
-shared Gaussian observation-noise model; per-task sparse noise is a planned
-extension described in
-[Sparse Multitask Noise Design](sparse_multitask_noise_design.md).
+covariance across all finite target entries. Use `noise_mode="shared"` for one
+global observation-noise variance, or `noise_mode="task"` for one learned noise
+variance per target property. See
+[Sparse Multitask Noise](sparse_multitask_noise_design.md) for details.
 
 Use the sparse validation helper when held-out target matrices also contain
 unobserved values:

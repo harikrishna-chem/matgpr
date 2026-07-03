@@ -33,6 +33,7 @@ Use `SparseMultitaskGPRRegressor` when some target entries are missing:
 - every finite target value converted to one observed `(sample, task)` pair,
 - one learned input-space kernel multiplied by a learned task-index kernel,
 - per-task target standardization using only observed values,
+- shared or task-specific observation noise,
 - dense per-task predictions for any new feature row.
 
 The sparse form is useful for materials datasets where different properties
@@ -42,12 +43,13 @@ end-to-end workflow.
 
 ## What It Does Not Cover Yet
 
-The current sparse API starts with a shared Gaussian observation-noise model.
-It does not yet support per-task sparse noise, task-specific feature matrices,
-explicit physics-informed task means, or simulation-plus-experiment
-multi-fidelity data. Those are planned extensions and should be implemented
-separately so the assumptions stay clear. The planned per-task noise extension
-is outlined in [Sparse Multitask Noise Design](sparse_multitask_noise_design.md).
+The current sparse API supports shared or task-specific Gaussian observation
+noise. It does not yet support known per-observation sparse noise,
+task-specific feature matrices, explicit physics-informed task means, or
+simulation-plus-experiment multi-fidelity data. Those are planned extensions
+and should be implemented separately so the assumptions stay clear. See
+[Sparse Multitask Noise](sparse_multitask_noise_design.md) for the current
+noise API and later noise extensions.
 
 ## Minimal Example
 
@@ -97,6 +99,8 @@ y.loc[[4, 10], "property_b"] = np.nan
 model = SparseMultitaskGPRRegressor(
     training_iter=200,
     min_observations_per_task=2,
+    noise_mode="task",
+    initial_task_noises={"property_a": 0.05, "property_b": 0.10},
     verbose=False,
 )
 

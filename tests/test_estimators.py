@@ -427,12 +427,44 @@ class SparseMultitaskGPRRegressorTests(unittest.TestCase):
         score = estimator.score(x, y)
 
         self.assertEqual(estimator.task_names_, ("strength", "ductility"))
+        self.assertEqual(estimator.noise_mode_, "shared")
         self.assertEqual(estimator.task_observation_counts_.tolist(), [7, 7])
+        self.assertEqual(estimator.task_noise_std_.shape, (2,))
         self.assertEqual(estimator.observation_data_.X_observed.shape[0], 14)
         self.assertIsInstance(prediction, MultitaskGPyTorchPrediction)
         self.assertEqual(prediction.mean.shape, (2, 2))
         self.assertEqual(prediction.lower.shape, (2, 2))
         self.assertTrue(np.isfinite(score))
+
+    def test_sparse_multitask_estimator_supports_task_noise(self):
+        x_values = np.linspace(0.0, 1.0, 10)
+        x = pd.DataFrame({"descriptor": x_values})
+        y = pd.DataFrame(
+            {
+                "strength": 1.5 * x_values + 0.2,
+                "ductility": -0.5 * x_values + 1.1,
+            }
+        )
+        y.loc[1, "strength"] = np.nan
+        y.loc[4, "ductility"] = np.nan
+
+        estimator = SparseMultitaskGPRRegressor(
+            kernel="rbf",
+            training_iter=3,
+            noise_mode="task",
+            initial_task_noises={"strength": 0.05, "ductility": 0.20},
+            random_state=43,
+        )
+        estimator.fit(x, y)
+        prediction = estimator.predict_distribution(x.iloc[:2], confidence_level=0.90)
+
+        self.assertEqual(estimator.noise_mode_, "task")
+        self.assertEqual(estimator.standardized_task_noise_variance_.shape, (2,))
+        self.assertEqual(estimator.task_noise_variance_.shape, (2,))
+        self.assertEqual(estimator.task_noise_std_.shape, (2,))
+        self.assertTrue(np.all(estimator.task_noise_std_ > 0))
+        self.assertEqual(prediction.mean.shape, (2, 2))
+        self.assertEqual(prediction.std.shape, (2, 2))
 
     def test_sparse_multitask_missing_impute_keeps_partial_targets(self):
         x = pd.DataFrame(

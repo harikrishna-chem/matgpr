@@ -36,7 +36,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Learned heteroscedastic GPR with a residual noise GP for input-dependent
   observation uncertainty.
 - Exact multitask GPR for complete or sparse multi-property materials datasets
-  with learned inter-task covariance and scikit-learn-style wrappers.
+  with learned inter-task covariance, shared or task-specific sparse noise, and
+  scikit-learn-style wrappers.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -150,8 +151,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   and sparse multi-property materials datasets.
 - `docs/sparse_multitask_walkthrough.md` provides a compact sparse multitask
   workflow for incomplete multi-property target matrices.
-- `docs/sparse_multitask_noise_design.md` outlines the planned per-task sparse
-  observation-noise extension.
+- `docs/sparse_multitask_noise_design.md` explains shared and task-specific
+  sparse multitask observation noise.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.

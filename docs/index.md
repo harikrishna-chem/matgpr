@@ -57,8 +57,8 @@ prediction accuracy.
    multi-property target matrices.
 7. Follow the [Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md)
    for incomplete multi-property datasets.
-8. Review [Sparse Multitask Noise Design](sparse_multitask_noise_design.md)
-   for planned per-task sparse observation noise.
+8. Review [Sparse Multitask Noise](sparse_multitask_noise_design.md)
+   for shared and task-specific sparse observation noise.
 9. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
 10. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.

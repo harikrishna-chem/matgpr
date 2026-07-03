@@ -115,6 +115,8 @@ model = SparseMultitaskGPRRegressor(
     ard=True,
     training_iter=250,
     initial_noise=0.1,
+    noise_mode="task",
+    initial_task_noises={name: 0.1 for name in target_columns},
     standardize_y=True,
     min_observations_per_task=8,
     missing="drop",
@@ -195,6 +197,8 @@ final_model = SparseMultitaskGPRRegressor(
     ard=True,
     training_iter=400,
     initial_noise=0.1,
+    noise_mode="task",
+    initial_task_noises={name: 0.1 for name in target_columns},
     standardize_y=True,
     min_observations_per_task=8,
     missing="drop",
@@ -234,6 +238,16 @@ imputed_property_table.head()
 
 Call these values predictions, not measurements. Keep the uncertainty columns
 attached so downstream decisions can account for risk.
+
+Inspect learned task-specific noise after fitting:
+
+```python
+pd.Series(
+    final_model.task_noise_std_,
+    index=final_model.task_names_,
+    name="learned_noise_std",
+)
+```
 
 ## 5. Reporting Checklist
 

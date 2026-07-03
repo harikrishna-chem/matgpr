@@ -503,6 +503,9 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         lr: float = 0.01,
         training_iter: int = 1000,
         initial_noise: float | None = 0.1,
+        initial_task_noises: Sequence[float] | Mapping[str, float] | None = None,
+        noise_mode: str = "shared",
+        noise_lower_bound: float = 1e-4,
         standardize_y: bool = True,
         min_observations_per_task: int = 2,
         missing: str = "error",
@@ -534,6 +537,9 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         )
         self.task_names = task_names
         self.task_covar_rank = task_covar_rank
+        self.initial_task_noises = initial_task_noises
+        self.noise_mode = noise_mode
+        self.noise_lower_bound = noise_lower_bound
         self.min_observations_per_task = min_observations_per_task
 
     def fit(self, X, y):
@@ -558,6 +564,9 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
             lr=self.lr,
             training_iter=self.training_iter,
             initial_noise=self.initial_noise,
+            initial_task_noises=self.initial_task_noises,
+            noise_mode=self.noise_mode,
+            noise_lower_bound=self.noise_lower_bound,
             standardize_y=self.standardize_y,
             min_observations_per_task=self.min_observations_per_task,
             device=self.device,
@@ -570,6 +579,10 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         self.loss_history_ = list(self.result_.loss_history)
         self.target_mean_ = self.result_.target_mean.copy()
         self.target_std_ = self.result_.target_std.copy()
+        self.noise_mode_ = self.result_.noise_mode
+        self.standardized_task_noise_variance_ = self.result_.standardized_task_noise_variance.copy()
+        self.task_noise_variance_ = self.result_.task_noise_variance.copy()
+        self.task_noise_std_ = self.result_.task_noise_std.copy()
         self.task_names_ = self.result_.task_names
         self.n_tasks_in_ = self.result_.num_tasks
         self.n_outputs_ = self.result_.num_tasks

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from statistics import NormalDist
 
@@ -65,7 +65,7 @@ class SparseMultitaskGPyTorchResult:
     """Container returned by :func:`fit_sparse_multitask_gpytorch_gpr`."""
 
     model: ExactSparseMultitaskGPRModel
-    likelihood: gpytorch.likelihoods.GaussianLikelihood
+    likelihood: gpytorch.likelihoods.Likelihood
     observation_data: SparseMultitaskObservationData
     loss_history: list[float]
     target_mean: np.ndarray
@@ -76,6 +76,10 @@ class SparseMultitaskGPyTorchResult:
     num_tasks: int
     task_names: tuple[str, ...]
     task_covar_rank: int
+    noise_mode: str
+    standardized_task_noise_variance: np.ndarray
+    task_noise_variance: np.ndarray
+    task_noise_std: np.ndarray
     device: str
     dtype: torch.dtype
 
@@ -130,7 +134,7 @@ class ExactSparseMultitaskGPRModel(gpytorch.models.ExactGP):
         train_x: torch.Tensor,
         train_task_indices: torch.Tensor,
         train_y: torch.Tensor,
-        likelihood: gpytorch.likelihoods.GaussianLikelihood,
+        likelihood: gpytorch.likelihoods.Likelihood,
         *,
         num_tasks: int,
         task_covar_rank: int = 1,
@@ -226,6 +230,9 @@ def fit_sparse_multitask_gpytorch_gpr(
     lr: float = 0.01,
     training_iter: int = 1000,
     initial_noise: float | None = 0.1,
+    initial_task_noises: Sequence[float] | Mapping[str, float] | None = None,
+    noise_mode: str = "shared",
+    noise_lower_bound: float = 1e-4,
     standardize_y: bool = True,
     min_observations_per_task: int = 2,
     device: str = "cpu",
@@ -233,7 +240,12 @@ def fit_sparse_multitask_gpytorch_gpr(
     verbose: bool = True,
     log_every: int = 100,
 ) -> SparseMultitaskGPyTorchResult:
-    """Fit exact sparse multitask GPR from a target matrix with ``NaN`` gaps."""
+    """Fit exact sparse multitask GPR from a target matrix with ``NaN`` gaps.
+
+    Set ``noise_mode="shared"`` for one learned observation-noise variance
+    across all observed task values, or ``noise_mode="task"`` for one learned
+    noise variance per target task.
+    """
     _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
     observation_data = prepare_sparse_multitask_observations(
         X_train,
@@ -259,8 +271,17 @@ def fit_sparse_multitask_gpytorch_gpr(
     )
     train_y_model = (train_y - target_mean[train_task_indices]) / target_std[train_task_indices]
 
-    likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device=device, dtype=dtype)
-    _initialize_sparse_likelihood(likelihood, initial_noise=initial_noise)
+    noise_mode = _validate_sparse_noise_mode(noise_mode)
+    likelihood = _make_sparse_likelihood(
+        noise_mode=noise_mode,
+        num_tasks=num_tasks,
+        task_names=observation_data.task_names,
+        initial_noise=initial_noise,
+        initial_task_noises=initial_task_noises,
+        noise_lower_bound=noise_lower_bound,
+        device=device,
+        dtype=dtype,
+    )
     if mean_module is not None:
         mean_module = mean_module.to(device=device, dtype=dtype)
 
@@ -279,6 +300,7 @@ def fit_sparse_multitask_gpytorch_gpr(
     model.target_std = target_std.detach()
     model.standardize_y = standardize_y
     model.task_names = observation_data.task_names
+    model.noise_mode = noise_mode
 
     model.train()
     likelihood.train()
@@ -290,7 +312,13 @@ def fit_sparse_multitask_gpytorch_gpr(
     for iteration in range(training_iter):
         optimizer.zero_grad()
         output = model(train_x, train_task_indices)
-        loss = -marginal_log_likelihood(output, train_y_model)
+        loss = -_sparse_marginal_log_likelihood(
+            marginal_log_likelihood,
+            output,
+            train_y_model,
+            train_task_indices,
+            likelihood=likelihood,
+        )
         loss.backward()
         optimizer.step()
         loss_history.append(float(loss.detach().cpu().item()))
@@ -299,6 +327,16 @@ def fit_sparse_multitask_gpytorch_gpr(
             _print_sparse_multitask_training_status(iteration, training_iter, loss, likelihood, model)
 
     model.training_loss_history = loss_history
+    standardized_noise_variance = _standardized_sparse_task_noise_variance(
+        likelihood,
+        noise_mode=noise_mode,
+        num_tasks=num_tasks,
+    )
+    task_noise_variance = standardized_noise_variance * target_std.detach().cpu().numpy() ** 2
+    task_noise_std = np.sqrt(task_noise_variance)
+    model.standardized_task_noise_variance = standardized_noise_variance.copy()
+    model.task_noise_variance = task_noise_variance.copy()
+    model.task_noise_std = task_noise_std.copy()
 
     return SparseMultitaskGPyTorchResult(
         model=model,
@@ -313,6 +351,10 @@ def fit_sparse_multitask_gpytorch_gpr(
         num_tasks=num_tasks,
         task_names=observation_data.task_names,
         task_covar_rank=task_covar_rank,
+        noise_mode=noise_mode,
+        standardized_task_noise_variance=standardized_noise_variance,
+        task_noise_variance=task_noise_variance,
+        task_noise_std=task_noise_std,
         device=device,
         dtype=dtype,
     )
@@ -330,6 +372,9 @@ def train_sparse_multitask_gpytorch_gpr(
     lr: float = 0.01,
     training_iter: int = 1000,
     initial_noise: float | None = 0.1,
+    initial_task_noises: Sequence[float] | Mapping[str, float] | None = None,
+    noise_mode: str = "shared",
+    noise_lower_bound: float = 1e-4,
     standardize_y: bool = True,
     min_observations_per_task: int = 2,
     device: str = "cpu",
@@ -350,6 +395,9 @@ def train_sparse_multitask_gpytorch_gpr(
         lr=lr,
         training_iter=training_iter,
         initial_noise=initial_noise,
+        initial_task_noises=initial_task_noises,
+        noise_mode=noise_mode,
+        noise_lower_bound=noise_lower_bound,
         standardize_y=standardize_y,
         min_observations_per_task=min_observations_per_task,
         device=device,
@@ -364,7 +412,7 @@ def train_sparse_multitask_gpytorch_gpr(
 
 def predict_sparse_multitask_gpytorch_gpr(
     model: ExactSparseMultitaskGPRModel,
-    likelihood: gpytorch.likelihoods.GaussianLikelihood,
+    likelihood: gpytorch.likelihoods.Likelihood,
     X,
     *,
     device: str = "cpu",
@@ -394,7 +442,7 @@ def predict_sparse_multitask_gpytorch_gpr(
 
 def _predict_sparse_multitask_gpytorch_gpr(
     model: ExactSparseMultitaskGPRModel,
-    likelihood: gpytorch.likelihoods.GaussianLikelihood,
+    likelihood: gpytorch.likelihoods.Likelihood,
     X,
     *,
     device: str,
@@ -416,7 +464,9 @@ def _predict_sparse_multitask_gpytorch_gpr(
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         latent_distribution = model(pred_x, pred_task_indices)
         prediction_distribution = (
-            likelihood(latent_distribution) if include_observation_noise else latent_distribution
+            _apply_sparse_likelihood(likelihood, latent_distribution, pred_task_indices)
+            if include_observation_noise
+            else latent_distribution
         )
         mean = prediction_distribution.mean
         std = prediction_distribution.stddev if return_std or confidence_level is not None else None
@@ -543,8 +593,70 @@ def _validate_min_observations_per_task(value: int) -> int:
     return value
 
 
+def _validate_sparse_noise_mode(noise_mode: str) -> str:
+    normalized = str(noise_mode).strip().lower()
+    aliases = {
+        "shared": "shared",
+        "global": "shared",
+        "task": "task",
+        "taskwise": "task",
+        "task-wise": "task",
+        "per_task": "task",
+        "per-task": "task",
+    }
+    if normalized not in aliases:
+        raise ValueError("noise_mode must be either 'shared' or 'task'")
+    return aliases[normalized]
+
+
+def _validate_noise_lower_bound(noise_lower_bound: float) -> float:
+    value = float(noise_lower_bound)
+    if value <= 0:
+        raise ValueError("noise_lower_bound must be positive")
+    return value
+
+
+def _make_sparse_likelihood(
+    *,
+    noise_mode: str,
+    num_tasks: int,
+    task_names: Sequence[str],
+    initial_noise: float | None,
+    initial_task_noises: Sequence[float] | Mapping[str, float] | None,
+    noise_lower_bound: float,
+    device: str,
+    dtype: torch.dtype,
+) -> gpytorch.likelihoods.Likelihood:
+    noise_lower_bound = _validate_noise_lower_bound(noise_lower_bound)
+    noise_constraint = gpytorch.constraints.GreaterThan(noise_lower_bound)
+
+    if noise_mode == "shared":
+        if initial_task_noises is not None:
+            raise ValueError("initial_task_noises can only be used with noise_mode='task'")
+        likelihood = gpytorch.likelihoods.GaussianLikelihood(
+            noise_constraint=noise_constraint,
+        ).to(device=device, dtype=dtype)
+        _initialize_sparse_likelihood(likelihood, initial_noise=initial_noise)
+        return likelihood
+
+    likelihood = gpytorch.likelihoods.HadamardGaussianLikelihood(
+        num_tasks=num_tasks,
+        noise_constraint=noise_constraint,
+    ).to(device=device, dtype=dtype)
+    initial_values = _resolve_initial_task_noises(
+        initial_task_noises,
+        task_names=task_names,
+        fallback_initial_noise=initial_noise,
+    )
+    if initial_values is not None:
+        likelihood.initialize(
+            noise=torch.as_tensor(initial_values, dtype=dtype, device=device),
+        )
+    return likelihood
+
+
 def _initialize_sparse_likelihood(
-    likelihood: gpytorch.likelihoods.GaussianLikelihood,
+    likelihood: gpytorch.likelihoods.Likelihood,
     *,
     initial_noise: float | None,
 ) -> None:
@@ -553,6 +665,115 @@ def _initialize_sparse_likelihood(
     if initial_noise <= 0:
         raise ValueError("initial_noise must be positive")
     likelihood.initialize(noise=float(initial_noise))
+
+
+def _resolve_initial_task_noises(
+    initial_task_noises: Sequence[float] | Mapping[str, float] | None,
+    *,
+    task_names: Sequence[str],
+    fallback_initial_noise: float | None,
+) -> np.ndarray | None:
+    if initial_task_noises is None:
+        if fallback_initial_noise is None:
+            return None
+        if fallback_initial_noise <= 0:
+            raise ValueError("initial_noise must be positive")
+        return np.full(len(task_names), float(fallback_initial_noise), dtype=float)
+
+    if isinstance(initial_task_noises, Mapping):
+        return _initial_task_noises_from_mapping(initial_task_noises, task_names=task_names)
+
+    values = np.asarray(initial_task_noises, dtype=float).reshape(-1)
+    if values.shape[0] != len(task_names):
+        raise ValueError(
+            "initial_task_noises must contain one value per task; "
+            f"expected {len(task_names)}, got {values.shape[0]}"
+        )
+    return _validate_initial_noise_values(values, name="initial_task_noises")
+
+
+def _initial_task_noises_from_mapping(
+    initial_task_noises: Mapping[str, float],
+    *,
+    task_names: Sequence[str],
+) -> np.ndarray:
+    task_names = tuple(str(name) for name in task_names)
+    provided = {str(name): value for name, value in initial_task_noises.items()}
+    missing = [name for name in task_names if name not in provided]
+    unknown = sorted(set(provided).difference(task_names))
+    if missing or unknown:
+        message_parts = []
+        if missing:
+            message_parts.append(f"missing task(s): {missing}")
+        if unknown:
+            message_parts.append(f"unknown task(s): {unknown}")
+        raise ValueError("initial_task_noises mapping must match task_names; " + "; ".join(message_parts))
+    values = np.asarray([provided[name] for name in task_names], dtype=float)
+    return _validate_initial_noise_values(values, name="initial_task_noises")
+
+
+def _validate_initial_noise_values(values: np.ndarray, *, name: str) -> np.ndarray:
+    if values.size == 0:
+        raise ValueError(f"{name} must contain at least one value")
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{name} must contain only finite values")
+    if np.any(values <= 0):
+        raise ValueError(f"{name} must contain only positive values")
+    return values.astype(float, copy=True)
+
+
+def _sparse_marginal_log_likelihood(
+    marginal_log_likelihood: gpytorch.mlls.ExactMarginalLogLikelihood,
+    output: gpytorch.distributions.MultivariateNormal,
+    train_y: torch.Tensor,
+    train_task_indices: torch.Tensor,
+    *,
+    likelihood: gpytorch.likelihoods.Likelihood,
+) -> torch.Tensor:
+    if _likelihood_uses_task_indices(likelihood):
+        return marginal_log_likelihood(
+            output,
+            train_y,
+            _task_likelihood_inputs(train_task_indices),
+        )
+    return marginal_log_likelihood(output, train_y)
+
+
+def _apply_sparse_likelihood(
+    likelihood: gpytorch.likelihoods.Likelihood,
+    latent_distribution: gpytorch.distributions.MultivariateNormal,
+    task_indices: torch.Tensor,
+) -> gpytorch.distributions.MultivariateNormal:
+    if _likelihood_uses_task_indices(likelihood):
+        return likelihood(latent_distribution, _task_likelihood_inputs(task_indices))
+    return likelihood(latent_distribution)
+
+
+def _likelihood_uses_task_indices(likelihood: gpytorch.likelihoods.Likelihood) -> bool:
+    return isinstance(likelihood, gpytorch.likelihoods.HadamardGaussianLikelihood)
+
+
+def _task_likelihood_inputs(task_indices: torch.Tensor) -> torch.Tensor:
+    return task_indices.long().reshape(-1, 1)
+
+
+def _standardized_sparse_task_noise_variance(
+    likelihood: gpytorch.likelihoods.Likelihood,
+    *,
+    noise_mode: str,
+    num_tasks: int,
+) -> np.ndarray:
+    noise = likelihood.noise.detach().cpu().numpy().reshape(-1).astype(float)
+    if noise_mode == "shared":
+        if noise.size != 1:
+            raise ValueError("Shared sparse likelihood must expose one noise value")
+        return np.full(num_tasks, float(noise[0]), dtype=float)
+    if noise.size != num_tasks:
+        raise ValueError(
+            "Task sparse likelihood must expose one noise value per task; "
+            f"expected {num_tasks}, got {noise.size}"
+        )
+    return noise.copy()
 
 
 def _validate_sparse_prediction_features(

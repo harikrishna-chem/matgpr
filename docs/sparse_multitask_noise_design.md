@@ -1,7 +1,7 @@
-# Sparse Multitask Noise Design
+# Sparse Multitask Noise
 
-This page records the planned design for per-task observation noise in sparse
-multitask GPR. The goal is to support incomplete multi-property materials
+This page explains shared and task-specific observation noise in sparse
+multitask GPR. Use task-specific noise for incomplete multi-property materials
 datasets where different targets have different measurement uncertainty.
 
 ## Current Model
@@ -29,9 +29,9 @@ $$
 This is simple and robust, but it assumes all target properties have the same
 noise level after optional per-task standardization.
 
-## Planned Per-Task Noise Model
+## Task-Specific Noise Model
 
-The first extension should learn one observation-noise variance per task:
+`matgpr` can learn one observation-noise variance per task:
 
 $$
 \epsilon_{n,t} \sim \mathcal{N}(0, \sigma_t^2)
@@ -52,7 +52,7 @@ precision, different measurement protocols, or different data sources. It
 should not be used as a substitute for source-specific, replicate-specific, or
 input-dependent noise when that richer information is available.
 
-## Proposed Public API
+## Public API
 
 Keep the current behavior as the default:
 
@@ -63,7 +63,8 @@ model = SparseMultitaskGPRRegressor(
 )
 ```
 
-Add a task-wise mode:
+Use task-wise noise when target properties have different measurement
+precision:
 
 ```python
 model = SparseMultitaskGPRRegressor(
@@ -76,7 +77,7 @@ model = SparseMultitaskGPRRegressor(
 )
 ```
 
-Low-level functions should mirror the estimator:
+Low-level functions mirror the estimator:
 
 ```python
 result = fit_sparse_multitask_gpytorch_gpr(
@@ -88,27 +89,33 @@ result = fit_sparse_multitask_gpytorch_gpr(
 )
 ```
 
-Recommended parameter names:
+Key parameters:
 
 - `noise_mode`: `"shared"` or `"task"`.
 - `initial_noise`: scalar initialization for shared noise.
-- `initial_task_noises`: sequence or mapping of task-wise noise variances.
+- `initial_task_noises`: sequence or mapping of task-wise noise variances in
+  the model training scale. With `standardize_y=True`, these are standardized
+  target-unit variances.
 - `noise_lower_bound`: positive lower constraint for learned noise variances.
 
-Result objects and estimators should expose:
+Result objects expose:
 
 - `noise_mode`,
-- `task_noise_variance_` in original target units,
-- `task_noise_std_` in original target units,
-- `standardized_task_noise_variance_` for debugging and reproducibility.
+- `task_noise_variance` in original target units,
+- `task_noise_std` in original target units,
+- `standardized_task_noise_variance` for debugging and reproducibility.
 
-## Implementation Plan
+`SparseMultitaskGPRRegressor` exposes the same learned values as fitted
+attributes with trailing underscores: `noise_mode_`, `task_noise_variance_`,
+`task_noise_std_`, and `standardized_task_noise_variance_`.
+
+## Implementation Notes
 
 Use `gpytorch.likelihoods.HadamardGaussianLikelihood` for `noise_mode="task"`.
 It learns constant task-wise noise and expects task indices to be supplied to
 the likelihood call.
 
-Training changes:
+For task-wise noise, training uses:
 
 ```python
 likelihood = gpytorch.likelihoods.HadamardGaussianLikelihood(
@@ -125,7 +132,7 @@ task_inputs = train_task_indices.reshape(-1, 1)
 loss = -mll(output, train_y_model, task_inputs)
 ```
 
-Prediction changes:
+Prediction uses the same task-index convention:
 
 ```python
 latent = model(pred_x, pred_task_indices)
@@ -138,9 +145,9 @@ The existing `include_observation_noise` option should keep its meaning:
 - `False`: return latent GP uncertainty.
 - `True`: add learned task-specific observation noise.
 
-## Tests To Add
+## Test Coverage
 
-Minimum tests:
+The test suite covers:
 
 - `noise_mode="shared"` keeps current behavior and public defaults.
 - `noise_mode="task"` fits and predicts dense `(n_samples, n_tasks)` outputs.
