@@ -726,7 +726,8 @@ sparse_validation.observed_predictions
 
 Sparse metrics are calculated only on observed target entries. The full
 prediction table keeps an `observed` column so users can separate parity-plot
-rows from predictions made for unmeasured tasks.
+rows from predictions made for unmeasured tasks. For a complete sparse
+workflow, see the [Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md).
 
 ## 6. Physics-Aware Kernels
 

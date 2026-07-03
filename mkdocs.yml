@@ -60,6 +60,7 @@ nav:
   - Physics-Informed GPR: physics_informed_gpr.md
   - PI-GPR Guarantees: pi_gpr_guarantees.md
   - Multitask GPR: multitask_gpr.md
+  - Sparse Multitask Walkthrough: sparse_multitask_walkthrough.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md

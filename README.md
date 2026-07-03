@@ -148,6 +148,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   guarantee.
 - `docs/multitask_gpr.md` explains correlated multitask GPR APIs for complete
   and sparse multi-property materials datasets.
+- `docs/sparse_multitask_walkthrough.md` provides a compact sparse multitask
+  workflow for incomplete multi-property target matrices.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.

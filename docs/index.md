@@ -55,14 +55,16 @@ prediction accuracy.
    physics-informed result.
 6. Read [Multitask GPR](multitask_gpr.md) for complete or sparse
    multi-property target matrices.
-7. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
-8. Review [Versioning And Stability](versioning.md) before pinning a release
+7. Follow the [Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md)
+   for incomplete multi-property datasets.
+8. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
+9. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-9. Use the [Release Checklist](release_checklist.md) before tagging a public
+10. Use the [Release Checklist](release_checklist.md) before tagging a public
    package release.
-10. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
+11. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
    distribution.
-11. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+12. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 

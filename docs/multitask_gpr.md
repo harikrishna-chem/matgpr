@@ -36,7 +36,9 @@ Use `SparseMultitaskGPRRegressor` when some target entries are missing:
 - dense per-task predictions for any new feature row.
 
 The sparse form is useful for materials datasets where different properties
-were measured for overlapping but incomplete sets of materials.
+were measured for overlapping but incomplete sets of materials. See the
+[Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md) for a compact
+end-to-end workflow.
 
 ## What It Does Not Cover Yet
 
