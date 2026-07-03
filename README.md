@@ -35,6 +35,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   uncertainty.
 - Learned heteroscedastic GPR with a residual noise GP for input-dependent
   observation uncertainty.
+- Exact multitask GPR for complete multi-property materials datasets with
+  learned inter-task covariance.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -110,7 +112,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    `summarize_physics_equation_templates`, `search_physics_equation_templates`,
    and `get_physics_equation_template`.
 12. Train other models with `MatGPRRegressor`, `PhysicsInformedGPRRegressor`,
-   `build_sklearn_gpr_model`, or the lower-level `fit_gpytorch_gpr`.
+   `build_sklearn_gpr_model`, lower-level `fit_gpytorch_gpr`, or
+   `fit_multitask_gpytorch_gpr` for complete multi-property targets.
 13. Evaluate models with `evaluate_train_test_split`,
    `cross_validate_regressor`, `learning_curve`,
    `regression_metrics`, or `train_test_regression_metrics`.
@@ -138,6 +141,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   mean function and what users should report for PI-GPR models.
 - `docs/pi_gpr_guarantees.md` clarifies what PI-GPR does and does not
   guarantee.
+- `docs/multitask_gpr.md` explains the first correlated multitask GPR API for
+  complete multi-property materials datasets.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.
@@ -178,6 +183,7 @@ file alongside any published benchmark results.
 | `matgpr.derivative_gpr` | `DerivativeObservationSet`, `MonotonicDerivativeConstraint`, `fit_derivative_constrained_gpr` | Exact derivative-constrained RBF GPR |
 | `matgpr.noise_models` | `SourceNoiseModel`, `ReplicateNoiseModel`, `FeatureNoiseModel`, `combine_noise_profiles` | Physics-aware observation-noise profiles |
 | `matgpr.heteroscedastic_gpr` | `fit_heteroscedastic_gpr`, `HeteroscedasticGPRResult` | Learned input-dependent observation-noise GPR |
+| `matgpr.multitask_gpr` | `fit_multitask_gpytorch_gpr`, `train_multitask_gpytorch_gpr`, `predict_multitask_gpytorch_gpr` | Exact multitask GPR for complete multi-property target matrices |
 | `matgpr.physics_equations` | `PhysicsEquationTemplate`, `get_physics_equation_template`, `search_physics_equation_templates`, `summarize_physics_equation_templates` | Reusable materials-physics mean-equation templates and metadata discovery |
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |

@@ -75,6 +75,7 @@ from matgpr import (
     build_sklearn_gpr_model,
     fit_gpytorch_gpr,
     fit_heteroscedastic_gpr,
+    fit_multitask_gpytorch_gpr,
     regression_metrics,
     train_test_regression_metrics,
     uncertainty_diagnostics,
@@ -619,6 +620,42 @@ metrics = regression_metrics(y_test, prediction.mean)
 | `mean` | Predictive mean in original target units. |
 | `std` | Predictive standard deviation in original target units. |
 | `lower`, `upper` | Confidence bounds when `confidence_level` is supplied. |
+
+### 5.4 Multitask GPyTorch GPR
+
+Use `fit_multitask_gpytorch_gpr` when the same material rows have multiple
+related target properties and every target is observed for every row. The model
+learns a shared input-space kernel and a task covariance, so correlated
+properties can share statistical strength:
+
+```text
+cov[f_i(x), f_j(x')] = k_x(x, x') k_task(i, j)
+```
+
+Example:
+
+```python
+from matgpr import fit_multitask_gpytorch_gpr
+
+target_columns = ["strength_mpa", "ductility_percent"]
+
+result = fit_multitask_gpytorch_gpr(
+    X_train_array,
+    train_data[target_columns].to_numpy(),
+    task_names=target_columns,
+    task_covar_rank=1,
+    kernel="matern",
+    training_iter=1000,
+    verbose=False,
+)
+
+prediction = result.predict(X_test_array, confidence_level=0.95)
+```
+
+The prediction arrays have shape `(n_samples, n_tasks)` in the same order as
+`result.task_names`. Report per-task metrics and uncertainty diagnostics rather
+than only an averaged score. If some target values are missing, build separate
+single-task models for now or wait for the planned sparse multitask extension.
 
 ## 6. Physics-Aware Kernels
 

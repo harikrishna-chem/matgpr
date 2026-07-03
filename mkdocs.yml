@@ -59,6 +59,7 @@ nav:
   - User Guide: matgpr_user_guide.md
   - Physics-Informed GPR: physics_informed_gpr.md
   - PI-GPR Guarantees: pi_gpr_guarantees.md
+  - Multitask GPR: multitask_gpr.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
@@ -73,6 +74,7 @@ nav:
       - Derivative-Constrained GPR: api/derivative_gpr.md
       - Noise Models: api/noise_models.md
       - Heteroscedastic GPR: api/heteroscedastic_gpr.md
+      - Multitask GPR: api/multitask_gpr.md
       - Physics Equation Templates: api/physics_equations.md
       - Physics-Informed GPR: api/gpytorch_gpr.md
       - Validation: api/validation.md

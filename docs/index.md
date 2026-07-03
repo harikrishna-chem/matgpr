@@ -24,6 +24,8 @@ prediction accuracy.
 - Soft physics-constraint anchors for known limits and monotonic trends.
 - Derivative-constrained GPR for slope-informed physics trends.
 - Physics-aware observation-noise profiles for mixed-source and replicate data.
+- Multitask GPR for complete multi-property materials datasets with learned
+  inter-task covariance.
 - Reusable validation workflows for train/test splits, cross-validation, and
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,
@@ -51,14 +53,16 @@ prediction accuracy.
    equations.
 5. Read [PI-GPR Guarantees](pi_gpr_guarantees.md) before interpreting a
    physics-informed result.
-6. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
-7. Review [Versioning And Stability](versioning.md) before pinning a release
+6. Read [Multitask GPR](multitask_gpr.md) for complete multi-property target
+   matrices.
+7. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
+8. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-8. Use the [Release Checklist](release_checklist.md) before tagging a public
+9. Use the [Release Checklist](release_checklist.md) before tagging a public
    package release.
-9. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
+10. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
    distribution.
-10. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+11. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 
