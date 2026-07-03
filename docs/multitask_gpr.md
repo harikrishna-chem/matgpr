@@ -46,7 +46,8 @@ The current sparse API starts with a shared Gaussian observation-noise model.
 It does not yet support per-task sparse noise, task-specific feature matrices,
 explicit physics-informed task means, or simulation-plus-experiment
 multi-fidelity data. Those are planned extensions and should be implemented
-separately so the assumptions stay clear.
+separately so the assumptions stay clear. The planned per-task noise extension
+is outlined in [Sparse Multitask Noise Design](sparse_multitask_noise_design.md).
 
 ## Minimal Example
 

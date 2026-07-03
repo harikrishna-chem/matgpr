@@ -150,6 +150,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   and sparse multi-property materials datasets.
 - `docs/sparse_multitask_walkthrough.md` provides a compact sparse multitask
   workflow for incomplete multi-property target matrices.
+- `docs/sparse_multitask_noise_design.md` outlines the planned per-task sparse
+  observation-noise extension.
 - `docs/fingerprinting_options.md` explains available fingerprinting backends,
   when to use each option, which dependencies are core versus optional, and how
   to implement them in `matgpr` workflows.

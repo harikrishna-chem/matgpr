@@ -703,7 +703,8 @@ sparse_model.task_observation_counts_
 The sparse estimator preserves partially observed rows and learns one task
 covariance across all finite target entries. The first implementation uses a
 shared Gaussian observation-noise model; per-task sparse noise is a planned
-extension.
+extension described in
+[Sparse Multitask Noise Design](sparse_multitask_noise_design.md).
 
 Use the sparse validation helper when held-out target matrices also contain
 unobserved values:

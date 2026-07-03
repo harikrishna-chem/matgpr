@@ -61,6 +61,7 @@ nav:
   - PI-GPR Guarantees: pi_gpr_guarantees.md
   - Multitask GPR: multitask_gpr.md
   - Sparse Multitask Walkthrough: sparse_multitask_walkthrough.md
+  - Sparse Multitask Noise Design: sparse_multitask_noise_design.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
