@@ -58,7 +58,7 @@ prediction accuracy.
 7. Follow the [Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md)
    for incomplete multi-property datasets.
 8. Review [Sparse Multitask Noise](sparse_multitask_noise_design.md)
-   for shared and task-specific sparse observation noise.
+   for shared, task-specific, and known sparse observation noise.
 9. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
 10. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.

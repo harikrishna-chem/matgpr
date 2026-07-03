@@ -466,6 +466,47 @@ class SparseMultitaskGPRRegressorTests(unittest.TestCase):
         self.assertEqual(prediction.mean.shape, (2, 2))
         self.assertEqual(prediction.std.shape, (2, 2))
 
+    def test_sparse_multitask_estimator_supports_known_noise(self):
+        x_values = np.linspace(0.0, 1.0, 10)
+        x = pd.DataFrame({"descriptor": x_values})
+        y = pd.DataFrame(
+            {
+                "strength": 1.5 * x_values + 0.2,
+                "ductility": -0.5 * x_values + 1.1,
+            }
+        )
+        y.loc[1, "strength"] = np.nan
+        y.loc[4, "ductility"] = np.nan
+        known_noise = pd.DataFrame(
+            0.02,
+            index=y.index,
+            columns=y.columns,
+        )
+        known_noise = known_noise.mask(y.isna())
+        known_noise.loc[y["ductility"].notna(), "ductility"] = 0.05
+
+        estimator = SparseMultitaskGPRRegressor(
+            kernel="rbf",
+            training_iter=3,
+            noise_mode="known",
+            known_noise_variance=known_noise,
+            random_state=43,
+        )
+        estimator.fit(x, y)
+        prediction = estimator.predict_distribution(
+            x.iloc[:2],
+            confidence_level=0.90,
+            prediction_noise_variance=np.full((2, 2), 0.03),
+        )
+
+        self.assertEqual(estimator.noise_mode_, "known")
+        self.assertEqual(estimator.observation_noise_variance_.shape, (18,))
+        self.assertEqual(estimator.standardized_observation_noise_variance_.shape, (18,))
+        self.assertEqual(estimator.task_noise_std_.shape, (2,))
+        self.assertTrue(np.all(estimator.observation_noise_variance_ > 0))
+        self.assertEqual(prediction.mean.shape, (2, 2))
+        self.assertEqual(prediction.std.shape, (2, 2))
+
     def test_sparse_multitask_missing_impute_keeps_partial_targets(self):
         x = pd.DataFrame(
             {

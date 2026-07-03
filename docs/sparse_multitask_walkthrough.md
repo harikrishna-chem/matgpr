@@ -134,6 +134,25 @@ Use `task_covar_rank=1` as a conservative default for low-data materials
 datasets. Increase it only when validation shows that a more flexible task
 correlation structure helps.
 
+If the training table includes reported measurement uncertainty, provide a
+target-shaped variance matrix and set `noise_mode="known"`. Keep `NaN` in the
+noise matrix wherever the corresponding target is unobserved.
+
+```python
+known_noise_variance = reported_std[target_columns] ** 2
+known_noise_variance = known_noise_variance.mask(sparse_targets.isna())
+
+known_noise_model = SparseMultitaskGPRRegressor(
+    task_names=target_columns,
+    noise_mode="known",
+    known_noise_variance=known_noise_variance,
+    training_iter=250,
+    missing="drop",
+    random_state=42,
+    verbose=False,
+)
+```
+
 ## 3. Validate Observed Entries
 
 Sparse validation must ignore unobserved target entries. The helper below keeps

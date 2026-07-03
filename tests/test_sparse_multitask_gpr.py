@@ -111,6 +111,51 @@ class SparseMultitaskGPyTorchTests(unittest.TestCase):
         self.assertEqual(prediction.std.shape, (3, 2))
         self.assertTrue(np.all(prediction.std >= latent_prediction.std))
 
+    def test_fit_predict_sparse_multitask_model_with_known_observation_noise(self):
+        x = np.linspace(0.0, 1.0, 10).reshape(-1, 1)
+        y = np.column_stack(
+            [
+                1.5 * x.ravel() + 0.2,
+                -0.5 * x.ravel() + 1.1,
+            ]
+        )
+        y[1, 0] = np.nan
+        y[4, 1] = np.nan
+        known_noise = np.full_like(y, np.nan)
+        known_noise[np.isfinite(y)] = 0.01
+        known_noise[np.isfinite(y[:, 1]), 1] = 0.04
+
+        result = fit_sparse_multitask_gpytorch_gpr(
+            x,
+            y,
+            task_names=("strength", "ductility"),
+            kernel="rbf",
+            training_iter=3,
+            noise_mode="known",
+            known_noise_variance=known_noise,
+            verbose=False,
+        )
+        prediction = result.predict(x[:3], confidence_level=0.90)
+        prediction_with_new_noise = result.predict(
+            x[:3],
+            prediction_noise_variance=np.full((3, 2), 0.02),
+        )
+        latent_prediction = result.predict(
+            x[:3],
+            include_observation_noise=False,
+        )
+
+        self.assertEqual(result.noise_mode, "known")
+        self.assertEqual(result.observation_noise_variance.shape, (18,))
+        self.assertEqual(result.standardized_observation_noise_variance.shape, (18,))
+        self.assertEqual(result.task_noise_variance.shape, (2,))
+        self.assertEqual(result.task_noise_std.shape, (2,))
+        self.assertTrue(np.all(result.observation_noise_variance > 0))
+        self.assertEqual(prediction.mean.shape, (3, 2))
+        self.assertEqual(prediction.std.shape, (3, 2))
+        self.assertTrue(np.all(prediction.std >= latent_prediction.std))
+        self.assertTrue(np.all(prediction_with_new_noise.std >= latent_prediction.std))
+
     def test_train_wrapper_preserves_tuple_return(self):
         x = np.linspace(0.0, 1.0, 6).reshape(-1, 1)
         y = np.column_stack([x.ravel(), 1.0 - x.ravel()])
@@ -181,6 +226,55 @@ class SparseMultitaskGPyTorchTests(unittest.TestCase):
                 task_names=("hardness", "modulus"),
                 noise_mode="task",
                 initial_task_noises={"hardness": 0.1, "wrong": 0.2},
+                training_iter=1,
+                verbose=False,
+            )
+
+    def test_rejects_wrong_known_noise_variance(self):
+        x = np.linspace(0.0, 1.0, 6).reshape(-1, 1)
+        y = np.column_stack([x.ravel(), 1.0 - x.ravel()])
+        known_noise = np.full_like(y, 0.05)
+
+        with self.assertRaisesRegex(ValueError, "required"):
+            fit_sparse_multitask_gpytorch_gpr(
+                x,
+                y,
+                task_names=("hardness", "modulus"),
+                noise_mode="known",
+                training_iter=1,
+                verbose=False,
+            )
+
+        with self.assertRaisesRegex(ValueError, "only be used"):
+            fit_sparse_multitask_gpytorch_gpr(
+                x,
+                y,
+                task_names=("hardness", "modulus"),
+                noise_mode="shared",
+                known_noise_variance=known_noise,
+                training_iter=1,
+                verbose=False,
+            )
+
+        with self.assertRaisesRegex(ValueError, "same shape"):
+            fit_sparse_multitask_gpytorch_gpr(
+                x,
+                y,
+                task_names=("hardness", "modulus"),
+                noise_mode="known",
+                known_noise_variance=np.ones((3, 2)),
+                training_iter=1,
+                verbose=False,
+            )
+
+        known_noise[0, 0] = np.nan
+        with self.assertRaisesRegex(ValueError, "finite"):
+            fit_sparse_multitask_gpytorch_gpr(
+                x,
+                y,
+                task_names=("hardness", "modulus"),
+                noise_mode="known",
+                known_noise_variance=known_noise,
                 training_iter=1,
                 verbose=False,
             )

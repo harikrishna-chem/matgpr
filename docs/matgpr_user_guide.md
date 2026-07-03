@@ -705,8 +705,27 @@ sparse_model.task_observation_counts_
 The sparse estimator preserves partially observed rows and learns one task
 covariance across all finite target entries. Use `noise_mode="shared"` for one
 global observation-noise variance, or `noise_mode="task"` for one learned noise
-variance per target property. See
+variance per target property. Use `noise_mode="known"` with
+`known_noise_variance` when each observed entry has a reported or estimated
+measurement variance in original target units. See
 [Sparse Multitask Noise](sparse_multitask_noise_design.md) for details.
+
+Example with known per-observation variances:
+
+```python
+known_noise_variance = reported_std[target_columns] ** 2
+known_noise_variance = known_noise_variance.mask(train_data[target_columns].isna())
+
+known_noise_model = SparseMultitaskGPRRegressor(
+    task_names=target_columns,
+    noise_mode="known",
+    known_noise_variance=known_noise_variance,
+    training_iter=1000,
+    verbose=False,
+)
+
+known_noise_model.fit(X_train_array, train_data[target_columns])
+```
 
 Use the sparse validation helper when held-out target matrices also contain
 unobserved values:

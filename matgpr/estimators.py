@@ -504,6 +504,7 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         training_iter: int = 1000,
         initial_noise: float | None = 0.1,
         initial_task_noises: Sequence[float] | Mapping[str, float] | None = None,
+        known_noise_variance=None,
         noise_mode: str = "shared",
         noise_lower_bound: float = 1e-4,
         standardize_y: bool = True,
@@ -538,6 +539,7 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         self.task_names = task_names
         self.task_covar_rank = task_covar_rank
         self.initial_task_noises = initial_task_noises
+        self.known_noise_variance = known_noise_variance
         self.noise_mode = noise_mode
         self.noise_lower_bound = noise_lower_bound
         self.min_observations_per_task = min_observations_per_task
@@ -549,7 +551,11 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         Missing feature values still follow the estimator-level ``missing``
         policy: reject, drop feature-incomplete rows, or impute features.
         """
-        X_checked, y_checked, task_names = _validate_sparse_multitask_fit_input(self, X, y)
+        X_checked, y_checked, task_names, known_noise_variance = _validate_sparse_multitask_fit_input(
+            self,
+            X,
+            y,
+        )
 
         _seed_torch(self.random_state)
         dtype = _resolve_torch_dtype(self.dtype)
@@ -565,6 +571,7 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
             training_iter=self.training_iter,
             initial_noise=self.initial_noise,
             initial_task_noises=self.initial_task_noises,
+            known_noise_variance=known_noise_variance,
             noise_mode=self.noise_mode,
             noise_lower_bound=self.noise_lower_bound,
             standardize_y=self.standardize_y,
@@ -583,6 +590,16 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         self.standardized_task_noise_variance_ = self.result_.standardized_task_noise_variance.copy()
         self.task_noise_variance_ = self.result_.task_noise_variance.copy()
         self.task_noise_std_ = self.result_.task_noise_std.copy()
+        self.standardized_observation_noise_variance_ = (
+            None
+            if self.result_.standardized_observation_noise_variance is None
+            else self.result_.standardized_observation_noise_variance.copy()
+        )
+        self.observation_noise_variance_ = (
+            None
+            if self.result_.observation_noise_variance is None
+            else self.result_.observation_noise_variance.copy()
+        )
         self.task_names_ = self.result_.task_names
         self.n_tasks_in_ = self.result_.num_tasks
         self.n_outputs_ = self.result_.num_tasks
@@ -598,6 +615,7 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         return_std: bool = True,
         confidence_level: float | None = None,
         include_observation_noise: bool | None = None,
+        prediction_noise_variance=None,
     ) -> MultitaskGPyTorchPrediction:
         """Return per-task predictive means, uncertainties, and intervals."""
         check_is_fitted(self, "result_")
@@ -610,6 +628,7 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
             return_std=return_std,
             confidence_level=confidence_level,
             include_observation_noise=include_observation_noise,
+            prediction_noise_variance=prediction_noise_variance,
         )
 
     def score(self, X, y, sample_weight=None) -> float:
@@ -752,7 +771,7 @@ def _validate_sparse_multitask_fit_input(
     estimator,
     X,
     y,
-) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
+) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None, np.ndarray | None]:
     _clear_missing_state(estimator)
     if y is None:
         raise ValueError("requires y to be passed, but the target y is None")
@@ -804,15 +823,27 @@ def _validate_sparse_multitask_fit_input(
         )
     if np.isinf(y_checked).any():
         raise ValueError("Sparse multitask targets must not contain infinite values")
+    known_noise_variance = _validate_sparse_estimator_known_noise_variance(
+        getattr(estimator, "known_noise_variance", None),
+        y_checked=y_checked,
+    )
 
     check_consistent_length(X_checked, y_checked)
-    X_checked, y_checked = _apply_sparse_fit_missing_policy(
+    if known_noise_variance is not None:
+        check_consistent_length(X_checked, known_noise_variance)
+    X_checked, y_checked, known_noise_variance = _apply_sparse_fit_missing_policy(
         estimator,
         X_checked,
         y_checked,
         policy,
+        known_noise_variance=known_noise_variance,
     )
-    return X_checked, y_checked, _resolve_estimator_task_names(estimator, inferred_task_names)
+    return (
+        X_checked,
+        y_checked,
+        _resolve_estimator_task_names(estimator, inferred_task_names),
+        known_noise_variance,
+    )
 
 
 def _validate_predict_input(estimator, X) -> np.ndarray:
@@ -976,7 +1007,9 @@ def _apply_sparse_fit_missing_policy(
     X_checked: np.ndarray,
     y_checked: np.ndarray,
     policy: str,
-) -> tuple[np.ndarray, np.ndarray]:
+    *,
+    known_noise_variance: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     feature_missing_mask = np.isnan(X_checked).any(axis=1)
     all_targets_missing_mask = np.isnan(y_checked).all(axis=1)
 
@@ -1001,6 +1034,7 @@ def _apply_sparse_fit_missing_policy(
         keep_mask = ~(feature_missing_mask | all_targets_missing_mask)
         X_out = X_checked[keep_mask]
         y_out = y_checked[keep_mask]
+        noise_out = None if known_noise_variance is None else known_noise_variance[keep_mask]
         if X_out.shape[0] == 0:
             raise ValueError("No training rows remain after sparse missing='drop'")
         estimator.missing_report_ = _make_missing_report(
@@ -1011,12 +1045,13 @@ def _apply_sparse_fit_missing_policy(
             y_checked=y_checked,
             output_rows=X_out.shape[0],
         )
-        return X_out, y_out
+        return X_out, y_out, noise_out
 
     if policy == "impute":
         keep_mask = ~all_targets_missing_mask
         X_to_impute = X_checked[keep_mask]
         y_out = y_checked[keep_mask]
+        noise_out = None if known_noise_variance is None else known_noise_variance[keep_mask]
         if X_to_impute.shape[0] == 0:
             raise ValueError("No training rows remain after dropping rows with no observed targets")
 
@@ -1040,7 +1075,7 @@ def _apply_sparse_fit_missing_policy(
             imputed_features=_imputed_feature_names(estimator, X_to_impute),
             imputation_strategy=strategy,
         )
-        return X_out, y_out
+        return X_out, y_out, noise_out
 
     estimator.missing_report_ = _make_missing_report(
         estimator,
@@ -1050,7 +1085,31 @@ def _apply_sparse_fit_missing_policy(
         y_checked=y_checked,
         output_rows=X_checked.shape[0],
     )
-    return X_checked, y_checked
+    return X_checked, y_checked, known_noise_variance
+
+
+def _validate_sparse_estimator_known_noise_variance(
+    known_noise_variance,
+    *,
+    y_checked: np.ndarray,
+) -> np.ndarray | None:
+    if known_noise_variance is None:
+        return None
+    noise = check_array(
+        known_noise_variance,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+        input_name="known_noise_variance",
+    )
+    if noise.shape != y_checked.shape:
+        raise ValueError(
+            "known_noise_variance must have the same shape as y when used with "
+            "SparseMultitaskGPRRegressor"
+        )
+    if np.isinf(noise).any():
+        raise ValueError("known_noise_variance must not contain infinite values")
+    return np.asarray(noise, dtype=float)
 
 
 def _apply_predict_missing_policy(estimator, X_checked: np.ndarray, policy: str) -> np.ndarray:
