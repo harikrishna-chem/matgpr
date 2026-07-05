@@ -260,6 +260,7 @@ from .validation import (
     evaluate_sparse_multitask_train_test_split,
     evaluate_train_test_split,
     learning_curve,
+    multifidelity_learning_curve,
     summarize_multitask_predictions,
     summarize_sparse_multitask_predictions,
 )
@@ -455,6 +456,7 @@ __all__ = [
     "log_selected_experiments",
     "list_physics_equation_templates",
     "learning_curve",
+    "multifidelity_learning_curve",
     "make_materials_target_transform",
     "make_target_transform",
     "normalize_column_names",

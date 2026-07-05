@@ -18,6 +18,7 @@ from matgpr import (
     evaluate_sparse_multitask_train_test_split,
     evaluate_train_test_split,
     learning_curve,
+    multifidelity_learning_curve,
     summarize_multitask_predictions,
     summarize_sparse_multitask_predictions,
 )
@@ -42,6 +43,104 @@ class LinearMeanStdRegressor(RegressorMixin, BaseEstimator):
         if return_std:
             return mean, np.full(mean.shape, self.constant_std, dtype=float)
         return mean
+
+
+class SimpleMultiFidelityRegressor(RegressorMixin, BaseEstimator):
+    def __init__(self, constant_std: float = 0.15, random_state: int | None = None):
+        self.constant_std = constant_std
+        self.random_state = random_state
+
+    def fit(self, X, y, *, low_fidelity=None, X_low=None, y_low=None):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float).ravel()
+        if low_fidelity is None:
+            if X_low is None or y_low is None:
+                raise ValueError("low_fidelity or X_low/y_low is required")
+            self.low_coefficients_ = self._fit_linear_model(X_low, y_low)
+            low_fidelity = self._predict_low_fidelity(X)
+        else:
+            self.low_coefficients_ = None
+
+        low = np.asarray(low_fidelity, dtype=float).ravel()
+        design = np.column_stack([low, np.ones_like(low), X])
+        coefficients = np.linalg.lstsq(design, y, rcond=None)[0]
+        self.rho_ = float(coefficients[0])
+        self.intercept_ = float(coefficients[1])
+        self.correction_coefficients_ = coefficients[2:]
+        return self
+
+    def predict(
+        self,
+        X,
+        *,
+        low_fidelity=None,
+        return_std: bool = False,
+        include_observation_noise: bool | None = None,
+        include_low_fidelity_uncertainty: bool | None = None,
+    ):
+        prediction = self.predict_distribution(
+            X,
+            low_fidelity=low_fidelity,
+            return_std=return_std,
+            include_observation_noise=include_observation_noise,
+            include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+        )
+        if return_std:
+            return prediction.mean, prediction.std
+        return prediction.mean
+
+    def predict_distribution(
+        self,
+        X,
+        *,
+        low_fidelity=None,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool | None = None,
+        include_low_fidelity_uncertainty: bool | None = None,
+    ):
+        del confidence_level, include_observation_noise
+        X = np.asarray(X, dtype=float)
+        if low_fidelity is None:
+            low_mean = self._predict_low_fidelity(X)
+            low_std = np.full(low_mean.shape, self.constant_std, dtype=float)
+        else:
+            low_mean = np.asarray(low_fidelity, dtype=float).ravel()
+            low_std = None
+
+        correction_mean = X @ self.correction_coefficients_
+        mean = self.rho_ * low_mean + self.intercept_ + correction_mean
+        correction_std = np.full(mean.shape, self.constant_std, dtype=float)
+        std = None
+        if return_std:
+            std = correction_std.copy()
+            include_low = True if include_low_fidelity_uncertainty is None else include_low_fidelity_uncertainty
+            if include_low and low_std is not None:
+                std = np.sqrt(std**2 + (self.rho_ * low_std) ** 2)
+
+        return SimpleNamespace(
+            mean=mean,
+            std=std,
+            low_fidelity_mean=low_mean,
+            low_fidelity_std=low_std,
+            correction_mean=correction_mean,
+            correction_std=correction_std if return_std else None,
+            rho=self.rho_,
+            intercept=self.intercept_,
+        )
+
+    @staticmethod
+    def _fit_linear_model(X, y):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float).ravel()
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        return np.linalg.lstsq(design, y, rcond=None)[0]
+
+    def _predict_low_fidelity(self, X):
+        if self.low_coefficients_ is None:
+            raise ValueError("low_fidelity is required because no low-fidelity model was fitted")
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        return design @ self.low_coefficients_
 
 
 class MultiOutputMeanStdRegressor(RegressorMixin, BaseEstimator):
@@ -208,6 +307,71 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("test_R2_std", summary.columns)
         self.assertEqual(summary.shape[0], 6)
 
+    def test_multifidelity_learning_curve_accepts_supplied_low_fidelity_values(self):
+        x = np.linspace(0.0, 1.0, 18)
+        X = pd.DataFrame({"x": x, "x2": x**2})
+        low_fidelity = 0.8 + 0.6 * x - 0.2 * x**2
+        y = pd.Series(1.35 * low_fidelity + 0.15 + 0.05 * x, index=[f"sample_{i}" for i in range(len(x))])
+
+        result = multifidelity_learning_curve(
+            SimpleMultiFidelityRegressor(constant_std=0.12),
+            X,
+            y,
+            low_fidelity_high=low_fidelity,
+            train_sizes=(50, 100),
+            train_size_unit="percent",
+            n_splits=3,
+            test_size=6,
+            random_state=15,
+            model_names="delta_mf",
+            metric_splits=("train", "test"),
+            store_predictions=True,
+        )
+        summary = result.summary(metric_columns=["test_RMSE"])
+
+        self.assertIsInstance(result, LearningCurveResult)
+        self.assertEqual(result.runs.shape[0], 6)
+        self.assertEqual(set(result.runs["train_size_percent"]), {50.0, 100.0})
+        self.assertTrue(np.all(np.isfinite(result.runs["rho"])))
+        self.assertTrue(np.all(np.isfinite(result.runs["intercept"])))
+        self.assertIsNotNone(result.predictions)
+        self.assertIn("low_fidelity_input", result.predictions.columns)
+        self.assertIn("low_fidelity_pred", result.predictions.columns)
+        self.assertIn("correction_pred", result.predictions.columns)
+        self.assertIn("rho", result.predictions.columns)
+        self.assertIn("test_RMSE_mean", summary.columns)
+
+    def test_multifidelity_learning_curve_accepts_low_fidelity_surrogate_data(self):
+        x_low = np.linspace(-0.2, 1.2, 30)
+        X_low = pd.DataFrame({"x": x_low, "x2": x_low**2})
+        y_low = 0.8 + 0.6 * x_low - 0.2 * x_low**2
+        x_high = np.linspace(0.0, 1.0, 16)
+        X_high = pd.DataFrame({"x": x_high, "x2": x_high**2})
+        low_at_high = 0.8 + 0.6 * x_high - 0.2 * x_high**2
+        y_high = 1.25 * low_at_high + 0.1 + 0.04 * x_high
+
+        result = multifidelity_learning_curve(
+            SimpleMultiFidelityRegressor(constant_std=0.1),
+            X_high,
+            y_high,
+            X_low=X_low,
+            y_low=y_low,
+            train_sizes=(100,),
+            train_size_unit="percent",
+            n_splits=2,
+            test_size=4,
+            random_state=21,
+            model_names="delta_surrogate",
+            store_predictions=True,
+        )
+
+        self.assertEqual(result.runs.shape[0], 2)
+        self.assertIsNotNone(result.predictions)
+        self.assertIn("low_fidelity_pred", result.predictions.columns)
+        self.assertIn("low_fidelity_std", result.predictions.columns)
+        self.assertIn("correction_std", result.predictions.columns)
+        self.assertTrue(np.all(result.predictions["low_fidelity_std"] > 0.0))
+
     def test_validation_errors_are_explicit(self):
         with self.assertRaises(ValueError):
             evaluate_train_test_split(self.estimator, self.X.iloc[:3], self.y.iloc[:2])
@@ -234,6 +398,34 @@ class ValidationApiTests(unittest.TestCase):
                 self.y,
                 train_sizes=(2.5,),
                 train_size_unit="count",
+            )
+        with self.assertRaisesRegex(ValueError, "Provide low_fidelity_high"):
+            multifidelity_learning_curve(
+                SimpleMultiFidelityRegressor(),
+                self.X,
+                self.y,
+                train_sizes=(50,),
+                n_splits=1,
+            )
+        with self.assertRaisesRegex(ValueError, "Use either low_fidelity_high"):
+            multifidelity_learning_curve(
+                SimpleMultiFidelityRegressor(),
+                self.X,
+                self.y,
+                low_fidelity_high=np.ones(len(self.y)),
+                X_low=self.X,
+                y_low=self.y,
+                train_sizes=(50,),
+                n_splits=1,
+            )
+        with self.assertRaisesRegex(ValueError, "one value per high-fidelity sample"):
+            multifidelity_learning_curve(
+                SimpleMultiFidelityRegressor(),
+                self.X,
+                self.y,
+                low_fidelity_high=np.ones(len(self.y) - 1),
+                train_sizes=(50,),
+                n_splits=1,
             )
 
     def test_summarize_multitask_predictions_returns_per_task_metrics(self):

@@ -799,6 +799,27 @@ model.fit(
 prediction = model.predict_distribution(X_test, confidence_level=0.95)
 ```
 
+For low-data studies, use `multifidelity_learning_curve` so the number of
+high-fidelity training points is varied while the low-fidelity source is kept
+fixed:
+
+```python
+from matgpr import multifidelity_learning_curve
+
+
+lc_result = multifidelity_learning_curve(
+    {"delta multi-fidelity GPR": model},
+    X_high,
+    y_high,
+    low_fidelity_high=simulation_at_high_points,
+    train_size_start=10,
+    train_size_stop=100,
+    train_size_step=10,
+    n_splits=20,
+    random_state=42,
+)
+```
+
 Report validation metrics on held-out high-fidelity data and compare against a
 high-fidelity-only GPR baseline. See [Multi-Fidelity GPR](multifidelity_gpr.md)
 for assumptions and reporting guidance.
@@ -1924,6 +1945,12 @@ Use `metric_splits=("train", "test")` when train and held-out learning curves
 should be compared. The result table always includes `train_size`,
 `train_size_percent`, and `n_train`; choose the displayed x-axis in
 `plot_learning_curve(...)`.
+
+For multi-fidelity GPR, use `multifidelity_learning_curve(...)` with
+`low_fidelity_high=...` or `X_low=..., y_low=...`. It returns the same
+`LearningCurveResult` shape as `learning_curve(...)`, plus fitted fidelity-map
+columns such as `rho` and `intercept` and component prediction columns when
+`store_predictions=True`.
 
 ### 10.2 Regression Metrics
 

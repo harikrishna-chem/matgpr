@@ -23,6 +23,7 @@ __all__ = [
     "evaluate_sparse_multitask_train_test_split",
     "evaluate_train_test_split",
     "learning_curve",
+    "multifidelity_learning_curve",
     "summarize_multitask_predictions",
     "summarize_sparse_multitask_predictions",
 ]
@@ -924,6 +925,261 @@ def learning_curve(
     )
 
 
+def multifidelity_learning_curve(
+    estimators,
+    X_high,
+    y_high,
+    *,
+    low_fidelity_high=None,
+    X_low=None,
+    y_low=None,
+    train_sizes: Sequence[float | int] | None = None,
+    train_size_start: float | int = 10,
+    train_size_stop: float | int = 100,
+    train_size_step: float | int = 10,
+    train_size_unit: str = "percent",
+    n_splits: int = 20,
+    test_size: float | int = 0.2,
+    random_state: int | None = None,
+    model_names: str | Sequence[str] | None = None,
+    metrics: Sequence[str] | str = ("RMSE", "R2", "MAE", "r"),
+    metric_splits: Sequence[str] | str = ("test",),
+    return_std: bool = True,
+    confidence_level: float = 0.95,
+    include_observation_noise: bool | None = None,
+    include_low_fidelity_uncertainty: bool | None = None,
+    fit_params: Mapping[str, object] | None = None,
+    store_predictions: bool = False,
+    min_train_samples: int = 2,
+) -> LearningCurveResult:
+    """Evaluate high-fidelity learning curves for multi-fidelity estimators.
+
+    ``X_high`` and ``y_high`` define the scarce high-fidelity dataset whose
+    train size is varied. Use ``low_fidelity_high`` when low-fidelity values
+    are available at the same high-fidelity rows. Alternatively, provide a
+    fixed low-fidelity training set through ``X_low`` and ``y_low`` so each
+    fitted estimator can build or reuse a low-fidelity surrogate.
+
+    The returned ``runs`` dataframe contains high-fidelity train/test metrics.
+    When ``store_predictions=True``, the prediction table also includes
+    low-fidelity and correction components when the estimator exposes them.
+    """
+    n_samples = _validate_xy_length(X_high, y_high)
+    if n_splits <= 0:
+        raise ValueError("n_splits must be positive")
+    if min_train_samples <= 0:
+        raise ValueError("min_train_samples must be positive")
+    _validate_multifidelity_low_inputs(
+        X_high,
+        low_fidelity_high=low_fidelity_high,
+        X_low=X_low,
+        y_low=y_low,
+    )
+
+    model_specs = _normalize_estimators(estimators, model_names=model_names)
+    normalized_train_sizes = _resolve_learning_curve_train_sizes(
+        train_sizes,
+        start=train_size_start,
+        stop=train_size_stop,
+        step=train_size_step,
+        unit=train_size_unit,
+    )
+    metric_names = _normalize_metric_names(metrics)
+    split_names = _normalize_metric_splits(metric_splits)
+    labels = _sample_labels(y_high, n_samples)
+    splitter = ShuffleSplit(
+        n_splits=int(n_splits),
+        test_size=test_size,
+        random_state=random_state,
+    )
+    metric_rows = []
+    prediction_tables = []
+
+    for repeat, (train_pool_indices, test_indices) in enumerate(splitter.split(np.arange(n_samples)), start=1):
+        train_pool_indices = np.asarray(train_pool_indices, dtype=int)
+        test_indices = np.asarray(test_indices, dtype=int)
+        rng = np.random.default_rng(_derive_seed(random_state, repeat))
+
+        for size_position, train_size_spec in enumerate(normalized_train_sizes, start=1):
+            train_indices = _subsample_train_indices(
+                train_pool_indices,
+                train_size_spec["model_train_size"],
+                rng=rng,
+                min_train_samples=min_train_samples,
+            )
+            train_fraction = len(train_indices) / len(train_pool_indices)
+            for model_position, (model_name, estimator) in enumerate(model_specs, start=1):
+                seed = _derive_seed(random_state, repeat, size_position, model_position)
+                result = _fit_evaluate_multifidelity_indices(
+                    estimator,
+                    X_high,
+                    y_high,
+                    low_fidelity_high=low_fidelity_high,
+                    X_low=X_low,
+                    y_low=y_low,
+                    train_indices=train_indices,
+                    test_indices=test_indices,
+                    labels=labels,
+                    model_name=model_name,
+                    return_std=return_std,
+                    confidence_level=confidence_level,
+                    include_observation_noise=include_observation_noise,
+                    include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+                    fit_params=fit_params,
+                    random_state=seed,
+                    context={
+                        "repeat": repeat,
+                        "train_size": train_fraction,
+                        "train_size_percent": 100.0 * train_fraction,
+                        "requested_train_size": train_size_spec["requested_train_size"],
+                        "requested_train_size_unit": train_size_spec["requested_train_size_unit"],
+                    },
+                )
+                metric_rows.append(
+                    {
+                        "model": model_name,
+                        "repeat": repeat,
+                        "train_size": train_fraction,
+                        "train_size_percent": 100.0 * train_fraction,
+                        "requested_train_size": train_size_spec["requested_train_size"],
+                        "requested_train_size_unit": train_size_spec["requested_train_size_unit"],
+                        "n_train": len(train_indices),
+                        "n_test": len(test_indices),
+                        "rho": result["rho"],
+                        "intercept": result["intercept"],
+                        **result["metrics"],
+                    }
+                )
+                if store_predictions:
+                    prediction_tables.append(result["predictions"])
+
+    predictions = _concat_prediction_tables(prediction_tables) if store_predictions else None
+    return LearningCurveResult(
+        model_name=", ".join(name for name, _ in model_specs),
+        runs=pd.DataFrame(metric_rows),
+        predictions=predictions,
+        metric_names=metric_names,
+        metric_splits=split_names,
+    )
+
+
+def _fit_evaluate_multifidelity_indices(
+    estimator,
+    X_high,
+    y_high,
+    *,
+    low_fidelity_high,
+    X_low,
+    y_low,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    labels: np.ndarray,
+    model_name: str,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+    include_low_fidelity_uncertainty: bool | None,
+    fit_params: Mapping[str, object] | None,
+    random_state: int | None,
+    context: Mapping[str, object],
+) -> dict[str, object]:
+    _validate_split_indices(train_indices, test_indices, len(labels))
+    fitted_estimator = _clone_estimator(estimator, random_state=random_state)
+    X_train = _safe_index(X_high, train_indices)
+    X_test = _safe_index(X_high, test_indices)
+    y_train = _safe_index_y(y_high, train_indices)
+    y_test = _safe_index_y(y_high, test_indices)
+    train_low = _safe_index_y(low_fidelity_high, train_indices) if low_fidelity_high is not None else None
+    test_low = _safe_index_y(low_fidelity_high, test_indices) if low_fidelity_high is not None else None
+
+    estimator_fit_params = dict(fit_params or {})
+    if train_low is not None:
+        estimator_fit_params["low_fidelity"] = train_low
+    else:
+        estimator_fit_params["X_low"] = X_low
+        estimator_fit_params["y_low"] = y_low
+
+    fitted_estimator.fit(X_train, y_train, **estimator_fit_params)
+    y_train_pred, y_train_std, train_components = _predict_multifidelity_estimator(
+        fitted_estimator,
+        X_train,
+        low_fidelity=train_low,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+        include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+    )
+    y_test_pred, y_test_std, test_components = _predict_multifidelity_estimator(
+        fitted_estimator,
+        X_test,
+        low_fidelity=test_low,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+        include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+    )
+
+    metrics = train_test_regression_metrics(y_train, y_train_pred, y_test, y_test_pred)
+    metrics.update(
+        _prefixed_uncertainty_diagnostics(
+            y_train,
+            y_train_pred,
+            y_train_std,
+            prefix="train",
+            confidence_level=confidence_level,
+        )
+    )
+    metrics.update(
+        _prefixed_uncertainty_diagnostics(
+            y_test,
+            y_test_pred,
+            y_test_std,
+            prefix="test",
+            confidence_level=confidence_level,
+        )
+    )
+
+    rho = _component_or_attribute(test_components, fitted_estimator, "rho", "rho_")
+    intercept = _component_or_attribute(test_components, fitted_estimator, "intercept", "intercept_")
+    predictions = pd.concat(
+        [
+            _multifidelity_prediction_frame(
+                model_name,
+                "train",
+                train_indices,
+                labels,
+                y_train,
+                y_train_pred,
+                y_train_std,
+                low_fidelity_input=train_low,
+                components=train_components,
+                context=context,
+            ),
+            _multifidelity_prediction_frame(
+                model_name,
+                "test",
+                test_indices,
+                labels,
+                y_test,
+                y_test_pred,
+                y_test_std,
+                low_fidelity_input=test_low,
+                components=test_components,
+                context=context,
+            ),
+        ],
+        ignore_index=True,
+    )
+    return {
+        "model_name": model_name,
+        "estimator": fitted_estimator,
+        "metrics": metrics,
+        "predictions": predictions,
+        "rho": rho,
+        "intercept": intercept,
+    }
+
+
 def _fit_evaluate_indices(
     estimator,
     X,
@@ -1099,6 +1355,218 @@ def _prediction_frame(
     for key, value in context.items():
         frame[key] = value
     return frame
+
+
+def _predict_multifidelity_estimator(
+    estimator,
+    X,
+    *,
+    low_fidelity,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+    include_low_fidelity_uncertainty: bool | None,
+) -> tuple[np.ndarray, np.ndarray | None, dict[str, np.ndarray | float | None]]:
+    if hasattr(estimator, "predict_distribution"):
+        prediction = _call_multifidelity_predict_distribution(
+            estimator,
+            X,
+            low_fidelity=low_fidelity,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+            include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+        )
+        return _coerce_multifidelity_prediction_output(prediction)
+
+    if return_std:
+        try:
+            prediction = _predict_multifidelity_with_std(
+                estimator,
+                X,
+                low_fidelity=low_fidelity,
+                include_observation_noise=include_observation_noise,
+                include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
+            )
+            y_pred, y_std = _coerce_prediction_output(prediction)
+            return y_pred, y_std, {}
+        except TypeError:
+            pass
+
+    try:
+        prediction = estimator.predict(X, low_fidelity=low_fidelity)
+    except TypeError:
+        prediction = estimator.predict(X)
+    return _to_1d_float(prediction, "y_pred"), None, {}
+
+
+def _call_multifidelity_predict_distribution(
+    estimator,
+    X,
+    *,
+    low_fidelity,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+    include_low_fidelity_uncertainty: bool | None,
+):
+    keyword_options = [
+        {
+            "low_fidelity": low_fidelity,
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+            "include_observation_noise": include_observation_noise,
+            "include_low_fidelity_uncertainty": include_low_fidelity_uncertainty,
+        },
+        {
+            "low_fidelity": low_fidelity,
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+            "include_observation_noise": include_observation_noise,
+        },
+        {
+            "low_fidelity": low_fidelity,
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+        },
+        {"low_fidelity": low_fidelity, "return_std": return_std},
+        {"low_fidelity": low_fidelity},
+        {"return_std": return_std},
+        {},
+    ]
+    for keywords in keyword_options:
+        keywords = {
+            key: value
+            for key, value in keywords.items()
+            if value is not None or key == "low_fidelity"
+        }
+        if keywords.get("low_fidelity") is None:
+            keywords = {key: value for key, value in keywords.items() if key != "low_fidelity"}
+        try:
+            return estimator.predict_distribution(X, **keywords)
+        except TypeError:
+            continue
+    return estimator.predict_distribution(X)
+
+
+def _predict_multifidelity_with_std(
+    estimator,
+    X,
+    *,
+    low_fidelity,
+    include_observation_noise: bool | None,
+    include_low_fidelity_uncertainty: bool | None,
+):
+    keyword_options = [
+        {
+            "low_fidelity": low_fidelity,
+            "return_std": True,
+            "include_observation_noise": include_observation_noise,
+            "include_low_fidelity_uncertainty": include_low_fidelity_uncertainty,
+        },
+        {
+            "low_fidelity": low_fidelity,
+            "return_std": True,
+            "include_observation_noise": include_observation_noise,
+        },
+        {"low_fidelity": low_fidelity, "return_std": True},
+        {"return_std": True},
+    ]
+    for keywords in keyword_options:
+        keywords = {
+            key: value
+            for key, value in keywords.items()
+            if value is not None or key == "low_fidelity"
+        }
+        if keywords.get("low_fidelity") is None:
+            keywords = {key: value for key, value in keywords.items() if key != "low_fidelity"}
+        try:
+            return estimator.predict(X, **keywords)
+        except TypeError:
+            continue
+    return estimator.predict(X, return_std=True)
+
+
+def _coerce_multifidelity_prediction_output(
+    prediction,
+) -> tuple[np.ndarray, np.ndarray | None, dict[str, np.ndarray | float | None]]:
+    if isinstance(prediction, tuple) and len(prediction) >= 2:
+        return _to_1d_float(prediction[0], "y_pred"), _to_optional_std(prediction[1]), {}
+    if _is_prediction_container(prediction):
+        y_std = getattr(prediction, "std", None)
+        components = {
+            "low_fidelity_mean": getattr(prediction, "low_fidelity_mean", None),
+            "low_fidelity_std": getattr(prediction, "low_fidelity_std", None),
+            "correction_mean": getattr(prediction, "correction_mean", None),
+            "correction_std": getattr(prediction, "correction_std", None),
+            "rho": getattr(prediction, "rho", None),
+            "intercept": getattr(prediction, "intercept", None),
+        }
+        return (
+            _to_1d_float(getattr(prediction, "mean"), "y_pred"),
+            _to_optional_std(y_std) if y_std is not None else None,
+            components,
+        )
+    return _to_1d_float(prediction, "y_pred"), None, {}
+
+
+def _multifidelity_prediction_frame(
+    model_name: str,
+    split: str,
+    positions: np.ndarray,
+    labels: np.ndarray,
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    low_fidelity_input,
+    components: Mapping[str, np.ndarray | float | None],
+    context: Mapping[str, object],
+) -> pd.DataFrame:
+    frame = _prediction_frame(
+        model_name,
+        split,
+        positions,
+        labels,
+        y_true,
+        y_pred,
+        y_std,
+        context=context,
+    )
+    if low_fidelity_input is not None:
+        frame["low_fidelity_input"] = _to_1d_float(low_fidelity_input, "low_fidelity_input")
+    _add_optional_component_column(frame, "low_fidelity_pred", components.get("low_fidelity_mean"))
+    _add_optional_component_column(frame, "low_fidelity_std", components.get("low_fidelity_std"))
+    _add_optional_component_column(frame, "correction_pred", components.get("correction_mean"))
+    _add_optional_component_column(frame, "correction_std", components.get("correction_std"))
+    if components.get("rho") is not None:
+        frame["rho"] = float(components["rho"])
+    if components.get("intercept") is not None:
+        frame["intercept"] = float(components["intercept"])
+    return frame
+
+
+def _add_optional_component_column(frame: pd.DataFrame, column: str, values) -> None:
+    if values is None:
+        return
+    array = _to_1d_float(values, column)
+    if array.shape[0] != frame.shape[0]:
+        raise ValueError(f"{column} must contain one value per prediction row")
+    frame[column] = array
+
+
+def _component_or_attribute(
+    components: Mapping[str, np.ndarray | float | None],
+    estimator,
+    component_name: str,
+    attribute_name: str,
+) -> float:
+    value = components.get(component_name)
+    if value is None and hasattr(estimator, attribute_name):
+        value = getattr(estimator, attribute_name)
+    if value is None:
+        return np.nan
+    return float(value)
 
 
 def _predict_multitask_estimator(
@@ -1659,6 +2127,45 @@ def _validate_xy_length(X, y) -> int:
     if n_x < 2:
         raise ValueError("At least two samples are required")
     return int(n_x)
+
+
+def _validate_multifidelity_low_inputs(
+    X_high,
+    *,
+    low_fidelity_high,
+    X_low,
+    y_low,
+) -> None:
+    if low_fidelity_high is not None:
+        if X_low is not None or y_low is not None:
+            raise ValueError("Use either low_fidelity_high or X_low/y_low, not both")
+        low_values = _to_1d_float(low_fidelity_high, "low_fidelity_high")
+        if len(X_high) != low_values.shape[0]:
+            raise ValueError("low_fidelity_high must contain one value per high-fidelity sample")
+        return
+
+    if X_low is None or y_low is None:
+        raise ValueError(
+            "Provide low_fidelity_high, or provide both X_low and y_low for a "
+            "low-fidelity surrogate"
+        )
+    _validate_xy_length(X_low, y_low)
+    high_width = _feature_count(X_high, "X_high")
+    low_width = _feature_count(X_low, "X_low")
+    if high_width != low_width:
+        raise ValueError(
+            f"X_high has {high_width} features, but X_low has {low_width} features"
+        )
+
+
+def _feature_count(values, name: str) -> int:
+    shape = getattr(values, "shape", None)
+    if shape is not None and len(shape) == 2:
+        return int(shape[1])
+    array = np.asarray(values)
+    if array.ndim != 2:
+        raise ValueError(f"{name} must be a 2D feature matrix")
+    return int(array.shape[1])
 
 
 def _to_index_array(indices: Sequence[int], name: str, n_samples: int) -> np.ndarray:

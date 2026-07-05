@@ -82,6 +82,48 @@ The prediction object exposes:
 - `correction_mean`, `correction_std`: learned high-fidelity correction,
 - `rho`, `intercept`: fitted linear fidelity mapping.
 
+## High-Fidelity Learning Curves
+
+Use `multifidelity_learning_curve` to test whether low-fidelity information
+helps in the low-data high-fidelity regime. The train-size axis always varies
+the number of high-fidelity samples. Low-fidelity inputs are either supplied at
+the same high-fidelity rows or held fixed as a separate low-fidelity dataset
+used to fit a surrogate inside each split.
+
+```python
+from matgpr import MultiFidelityGPRRegressor, multifidelity_learning_curve
+
+
+model = MultiFidelityGPRRegressor(training_iter=500, random_state=7)
+
+lc_result = multifidelity_learning_curve(
+    {"delta multi-fidelity GPR": model},
+    X_high,
+    y_high,
+    low_fidelity_high=simulation_at_high_points,
+    train_size_start=10,
+    train_size_stop=100,
+    train_size_step=10,
+    train_size_unit="percent",
+    n_splits=20,
+    test_size=0.30,
+    random_state=42,
+    metrics=("RMSE", "R2", "MAE", "r"),
+    metric_splits="test",
+    store_predictions=True,
+)
+
+run_metrics = lc_result.runs
+summary = lc_result.summary(metrics=("RMSE", "R2"), splits="test")
+component_predictions = lc_result.predictions
+```
+
+For an internal low-fidelity surrogate, replace `low_fidelity_high` with
+`X_low=X_simulation` and `y_low=y_simulation`. The returned run table includes
+the fitted `rho` and `intercept` values for each split. When predictions are
+stored, the table includes component columns such as `low_fidelity_pred`,
+`correction_pred`, and their uncertainties when the estimator exposes them.
+
 ## Low-Fidelity Uncertainty
 
 When an internal low-fidelity surrogate is used, total uncertainty can include
@@ -110,6 +152,8 @@ Validate on held-out high-fidelity data. Useful comparisons are:
 Report RMSE, MAE, R2, uncertainty coverage, and whether uncertainty includes
 low-fidelity surrogate uncertainty. Learning curves should vary the number of
 high-fidelity training points while keeping the low-fidelity source fixed.
+Use `multifidelity_learning_curve` for this repeated-split protocol when using
+`matgpr` estimators.
 
 ## Current Scope
 
@@ -121,11 +165,11 @@ Implemented:
 - optional internal low-fidelity GPR surrogate,
 - estimator API and lower-level function,
 - component-wise prediction output.
+- high-fidelity learning-curve validation helper with component predictions.
 
 Planned later:
 
 - full co-kriging with joint covariance across fidelities,
 - more than two fidelity levels,
 - fidelity/source-specific known noise,
-- validation helpers specialized for low-data high-fidelity learning curves,
 - Bayesian optimization acquisition functions targeting high-fidelity outcomes.
