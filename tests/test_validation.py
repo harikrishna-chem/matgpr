@@ -8,12 +8,14 @@ import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 
 from matgpr import (
+    CoKrigingTrainTestValidationResult,
     CrossValidationResult,
     LearningCurveResult,
     MultitaskTrainTestValidationResult,
     SparseMultitaskTrainTestValidationResult,
     TrainTestValidationResult,
     cross_validate_regressor,
+    evaluate_cokriging_train_test_split,
     evaluate_multitask_train_test_split,
     evaluate_sparse_multitask_train_test_split,
     evaluate_train_test_split,
@@ -139,6 +141,122 @@ class SimpleMultiFidelityRegressor(RegressorMixin, BaseEstimator):
     def _predict_low_fidelity(self, X):
         if self.low_coefficients_ is None:
             raise ValueError("low_fidelity is required because no low-fidelity model was fitted")
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        return design @ self.low_coefficients_
+
+
+class SimpleRowWiseCoKrigingRegressor(RegressorMixin, BaseEstimator):
+    def __init__(
+        self,
+        constant_std: float = 0.15,
+        fidelity_order=None,
+        low_fidelity=None,
+        target_fidelity=None,
+        random_state: int | None = None,
+    ):
+        self.constant_std = constant_std
+        self.fidelity_order = fidelity_order
+        self.low_fidelity = low_fidelity
+        self.target_fidelity = target_fidelity
+        self.random_state = random_state
+
+    def fit(self, X, y, *, fidelity, sample_id=None):
+        X = np.asarray(X, dtype=float)
+        y = np.asarray(y, dtype=float).ravel()
+        fidelity = np.asarray(fidelity, dtype=object).reshape(-1)
+        if self.fidelity_order is None:
+            self.fidelity_names_ = tuple(dict.fromkeys(fidelity.tolist()))
+        else:
+            self.fidelity_names_ = tuple(self.fidelity_order)
+        self.target_fidelity_ = self.target_fidelity or self.fidelity_names_[-1]
+        low_candidates = [name for name in self.fidelity_names_ if name != self.target_fidelity_]
+        self.low_fidelity_ = self.low_fidelity or low_candidates[0]
+        self.fit_fidelity_ = fidelity.copy()
+        self.fit_sample_id_ = None if sample_id is None else np.asarray(sample_id, dtype=object)
+
+        low_mask = fidelity == self.low_fidelity_
+        target_mask = fidelity == self.target_fidelity_
+        self.low_coefficients_ = self._fit_linear(X[low_mask], y[low_mask])
+        low_at_target = self._predict_low(X[target_mask])
+        target_design = np.column_stack([low_at_target, np.ones_like(low_at_target), X[target_mask]])
+        coefficients = np.linalg.lstsq(target_design, y[target_mask], rcond=None)[0]
+        self.rho_ = float(coefficients[0])
+        self.intercept_ = float(coefficients[1])
+        self.discrepancy_coefficients_ = coefficients[2:]
+        return self
+
+    def predict(self, X, *, target_fidelity=None, return_std: bool = False):
+        prediction = self.predict_distribution(
+            X,
+            target_fidelity=target_fidelity,
+            return_std=return_std,
+        )
+        if return_std:
+            return prediction.mean, prediction.std
+        return prediction.mean
+
+    def predict_distribution(
+        self,
+        X,
+        *,
+        target_fidelity=None,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool | None = None,
+    ):
+        del include_observation_noise
+        X = np.asarray(X, dtype=float)
+        fidelity = target_fidelity or self.target_fidelity_
+        low_mean = self._predict_low(X)
+        low_std = np.full(low_mean.shape, self.constant_std, dtype=float) if return_std else None
+        if fidelity == self.low_fidelity_:
+            mean = low_mean
+            std = low_std
+            return SimpleNamespace(
+                mean=mean,
+                std=std,
+                low_fidelity_mean=low_mean,
+                low_fidelity_std=low_std,
+                fidelity=fidelity,
+                rho=self.rho_,
+            )
+
+        discrepancy_mean = self.intercept_ + X @ self.discrepancy_coefficients_
+        scaled_low = self.rho_ * low_mean
+        mean = scaled_low + discrepancy_mean
+        discrepancy_std = (
+            np.full(mean.shape, self.constant_std, dtype=float) if return_std else None
+        )
+        scaled_low_std = np.abs(self.rho_) * low_std if low_std is not None else None
+        std = None
+        lower = None
+        upper = None
+        if return_std:
+            std = np.sqrt(scaled_low_std**2 + discrepancy_std**2)
+            if confidence_level is not None:
+                lower = mean - 1.96 * std
+                upper = mean + 1.96 * std
+        return SimpleNamespace(
+            mean=mean,
+            std=std,
+            lower=lower,
+            upper=upper,
+            low_fidelity_mean=low_mean,
+            low_fidelity_std=low_std,
+            scaled_low_fidelity_mean=scaled_low,
+            scaled_low_fidelity_std=scaled_low_std,
+            discrepancy_mean=discrepancy_mean,
+            discrepancy_std=discrepancy_std,
+            fidelity=fidelity,
+            rho=self.rho_,
+        )
+
+    @staticmethod
+    def _fit_linear(X, y):
+        design = np.column_stack([np.ones(X.shape[0]), X])
+        return np.linalg.lstsq(design, y, rcond=None)[0]
+
+    def _predict_low(self, X):
         design = np.column_stack([np.ones(X.shape[0]), X])
         return design @ self.low_coefficients_
 
@@ -371,6 +489,82 @@ class ValidationApiTests(unittest.TestCase):
         self.assertIn("low_fidelity_std", result.predictions.columns)
         self.assertIn("correction_std", result.predictions.columns)
         self.assertTrue(np.all(result.predictions["low_fidelity_std"] > 0.0))
+
+    def test_evaluate_cokriging_train_test_split_uses_target_split_and_lower_rows(self):
+        x_low = np.linspace(-0.1, 1.1, 10)
+        x_target = np.linspace(0.0, 1.0, 8)
+        X = pd.DataFrame({"x": np.concatenate([x_low, x_target])})
+        low_y = 0.5 + 0.8 * x_low - 0.1 * x_low**2
+        target_low = 0.5 + 0.8 * x_target - 0.1 * x_target**2
+        target_y = 1.4 * target_low + 0.25 + 0.05 * x_target
+        y = pd.Series(
+            np.concatenate([low_y, target_y]),
+            index=[f"row_{index}" for index in range(18)],
+        )
+        fidelity = np.asarray(["simulation"] * 10 + ["experiment"] * 8, dtype=object)
+        sample_id = np.asarray([f"mat_{index}" for index in range(18)], dtype=object)
+        train_indices = np.asarray([10, 11, 12, 13, 14])
+        test_indices = np.asarray([15, 16, 17])
+
+        result = evaluate_cokriging_train_test_split(
+            SimpleRowWiseCoKrigingRegressor(constant_std=0.12),
+            X,
+            y,
+            fidelity,
+            fidelity_order=("simulation", "experiment"),
+            target_fidelity="experiment",
+            sample_id=sample_id,
+            train_indices=train_indices,
+            test_indices=test_indices,
+            model_name="co-kriging",
+            confidence_level=0.9,
+        )
+
+        self.assertIsInstance(result, CoKrigingTrainTestValidationResult)
+        np.testing.assert_array_equal(result.train_indices, train_indices)
+        np.testing.assert_array_equal(result.test_indices, test_indices)
+        np.testing.assert_array_equal(result.lower_fidelity_indices, np.arange(10))
+        np.testing.assert_array_equal(result.fit_indices, np.arange(15))
+        self.assertEqual(result.target_fidelity, "experiment")
+        self.assertEqual(result.low_fidelity, "simulation")
+        self.assertEqual(result.fitted_estimator.fit_fidelity_.shape[0], 15)
+        self.assertEqual(result.fitted_estimator.fit_sample_id_.shape[0], 15)
+        self.assertIn("test_RMSE", result.metrics)
+        self.assertIn("test_NLPD", result.metrics)
+        self.assertEqual(result.train_predictions.shape[0], 5)
+        self.assertEqual(result.test_predictions.shape[0], 3)
+        self.assertTrue(np.all(result.predictions["fidelity"] == "experiment"))
+        self.assertIn("scaled_low_fidelity_pred", result.predictions.columns)
+        self.assertIn("discrepancy_pred", result.predictions.columns)
+        self.assertIn("correction_pred", result.predictions.columns)
+        self.assertIn("reconstructed_y_pred", result.predictions.columns)
+        self.assertIn("y_lower", result.predictions.columns)
+        np.testing.assert_allclose(
+            result.predictions["reconstructed_y_pred"],
+            result.predictions["y_pred"],
+            atol=1e-12,
+        )
+        metrics_frame = result.metrics_frame()
+        self.assertEqual(metrics_frame.loc[0, "n_lower_fidelity"], 10)
+        self.assertEqual(metrics_frame.loc[0, "n_target_train"], 5)
+        self.assertTrue(np.isfinite(metrics_frame.loc[0, "rho"]))
+
+    def test_evaluate_cokriging_train_test_split_rejects_non_target_split_indices(self):
+        X = pd.DataFrame({"x": np.linspace(0.0, 1.0, 6)})
+        y = np.linspace(0.0, 1.0, 6)
+        fidelity = ["low", "low", "low", "high", "high", "high"]
+
+        with self.assertRaisesRegex(ValueError, "target_fidelity='high'"):
+            evaluate_cokriging_train_test_split(
+                SimpleRowWiseCoKrigingRegressor(),
+                X,
+                y,
+                fidelity,
+                fidelity_order=("low", "high"),
+                target_fidelity="high",
+                train_indices=[0, 3],
+                test_indices=[4, 5],
+            )
 
     def test_validation_errors_are_explicit(self):
         with self.assertRaises(ValueError):

@@ -99,6 +99,9 @@ semantic-versioning conventions once the first public release is tagged.
 - Co-kriging component summaries for low-fidelity and discrepancy
   contributions, including reporting compatibility with existing
   multi-fidelity component tables.
+- Target-fidelity train/test validation for row-wise two-level co-kriging
+  datasets, including all-lower-fidelity fitting rows and component-rich
+  prediction tables.
 
 ### Changed
 

@@ -275,18 +275,19 @@ co-kriging predictions rather than replaced.
    `rho`.
 4. Implemented: add prediction component summaries for low-fidelity and
    discrepancy contributions.
-5. Next: add validation/reporting compatibility with existing learning-curve
-   helpers.
-6. Add multi-level autoregressive support for \(L > 1\).
-7. Add known-noise and per-fidelity learned-noise modes.
-8. Add BO integration targeting the highest fidelity.
+5. Implemented: add target-fidelity train/test validation for row-wise
+   co-kriging datasets, including component-rich prediction tables.
+6. Next: add target-fidelity learning-curve compatibility for row-wise
+   co-kriging datasets.
+7. Add multi-level autoregressive support for \(L > 1\).
+8. Add known-noise and per-fidelity learned-noise modes.
+9. Add BO integration targeting the highest fidelity.
 
 ## Next Coding Step
 
-The next safest coding step is validation compatibility for the two-level
+The next safest coding step is learning-curve compatibility for the two-level
 co-kriging model:
 
-- extend train/test validation helpers to accept row-wise fidelity labels,
 - design a learning-curve protocol where the x-axis is target-fidelity training
   size while lower-fidelity observations remain available,
 - store co-kriging component predictions in report-ready tables,

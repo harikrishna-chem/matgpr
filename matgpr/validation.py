@@ -10,14 +10,17 @@ from sklearn.base import clone
 from sklearn.model_selection import KFold, ShuffleSplit, train_test_split
 
 from .metrics import regression_metrics, train_test_regression_metrics
+from .reporting import decompose_multifidelity_prediction
 from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
 
 __all__ = [
+    "CoKrigingTrainTestValidationResult",
     "CrossValidationResult",
     "LearningCurveResult",
     "SparseMultitaskTrainTestValidationResult",
     "MultitaskTrainTestValidationResult",
     "TrainTestValidationResult",
+    "evaluate_cokriging_train_test_split",
     "cross_validate_regressor",
     "evaluate_multitask_train_test_split",
     "evaluate_sparse_multitask_train_test_split",
@@ -67,6 +70,55 @@ class TrainTestValidationResult:
     @property
     def test_predictions(self) -> pd.DataFrame:
         """Predictions for held-out test samples."""
+        return self.predictions[self.predictions["split"] == "test"].reset_index(drop=True)
+
+
+@dataclass(frozen=True)
+class CoKrigingTrainTestValidationResult:
+    """Result from target-fidelity validation of a row-wise co-kriging model.
+
+    ``train_indices`` and ``test_indices`` refer only to rows at
+    ``target_fidelity``. ``fit_indices`` contains every row used to fit the
+    estimator: all lower-fidelity rows plus the selected target-fidelity
+    training rows.
+    """
+
+    model_name: str
+    fitted_estimator: object
+    metrics: Mapping[str, float]
+    predictions: pd.DataFrame
+    train_indices: np.ndarray
+    test_indices: np.ndarray
+    fit_indices: np.ndarray
+    lower_fidelity_indices: np.ndarray
+    target_fidelity: str
+    low_fidelity: str
+    rho: float | None = None
+
+    def metrics_frame(self) -> pd.DataFrame:
+        """Return metrics and validation protocol metadata as a one-row dataframe."""
+        row = {
+            "model": self.model_name,
+            "target_fidelity": self.target_fidelity,
+            "low_fidelity": self.low_fidelity,
+            "n_fit": len(self.fit_indices),
+            "n_target_train": len(self.train_indices),
+            "n_target_test": len(self.test_indices),
+            "n_lower_fidelity": len(self.lower_fidelity_indices),
+        }
+        if self.rho is not None:
+            row["rho"] = self.rho
+        row.update(dict(self.metrics))
+        return pd.DataFrame([row])
+
+    @property
+    def train_predictions(self) -> pd.DataFrame:
+        """Target-fidelity predictions for training samples."""
+        return self.predictions[self.predictions["split"] == "train"].reset_index(drop=True)
+
+    @property
+    def test_predictions(self) -> pd.DataFrame:
+        """Target-fidelity predictions for held-out test samples."""
         return self.predictions[self.predictions["split"] == "test"].reset_index(drop=True)
 
 
@@ -278,6 +330,133 @@ def evaluate_train_test_split(
         predictions=result["predictions"],
         train_indices=np.asarray(train_indices, dtype=int),
         test_indices=np.asarray(test_indices, dtype=int),
+    )
+
+
+def evaluate_cokriging_train_test_split(
+    estimator,
+    X,
+    y,
+    fidelity,
+    *,
+    target_fidelity: str | None = None,
+    low_fidelity: str | None = None,
+    fidelity_order: Sequence[str] | None = None,
+    sample_id=None,
+    train_indices: Sequence[int] | None = None,
+    test_indices: Sequence[int] | None = None,
+    test_size: float | int = 0.2,
+    train_size: float | int | None = None,
+    random_state: int | None = None,
+    shuffle: bool = True,
+    model_name: str | None = None,
+    return_std: bool = True,
+    confidence_level: float = 0.95,
+    include_observation_noise: bool | None = None,
+    fit_params: Mapping[str, object] | None = None,
+) -> CoKrigingTrainTestValidationResult:
+    """Validate a two-level co-kriging estimator on target-fidelity rows.
+
+    The split is performed only among rows labeled ``target_fidelity``. All
+    lower-fidelity rows are retained for fitting in every split, which matches
+    the usual low-data protocol for simulation-plus-experiment materials
+    datasets. The returned prediction table is parity-plot-ready and preserves
+    co-kriging component columns such as ``scaled_low_fidelity_pred`` and
+    ``discrepancy_pred`` when the estimator exposes them.
+    """
+    n_samples = _validate_xy_length(X, y)
+    labels = _sample_labels(y, n_samples)
+    fidelity_labels = _to_fidelity_label_array(fidelity, n_samples=n_samples)
+    sample_id_array = _resolve_optional_row_values(sample_id, n_samples=n_samples, name="sample_id")
+    fidelity_names, target_name, low_name = _resolve_cokriging_validation_levels(
+        fidelity_labels,
+        estimator=estimator,
+        target_fidelity=target_fidelity,
+        low_fidelity=low_fidelity,
+        fidelity_order=fidelity_order,
+    )
+
+    target_mask = fidelity_labels == target_name
+    target_positions = np.flatnonzero(target_mask)
+    if target_positions.size < 2:
+        raise ValueError("At least two target-fidelity rows are required for validation")
+
+    if train_indices is None and test_indices is None:
+        train_indices, test_indices = train_test_split(
+            target_positions,
+            train_size=train_size,
+            test_size=test_size,
+            random_state=random_state,
+            shuffle=shuffle,
+        )
+    elif train_indices is None or test_indices is None:
+        raise ValueError("train_indices and test_indices must be supplied together")
+    else:
+        train_indices = _to_index_array(train_indices, "train_indices", n_samples)
+        test_indices = _to_index_array(test_indices, "test_indices", n_samples)
+
+    train_indices = np.asarray(train_indices, dtype=int)
+    test_indices = np.asarray(test_indices, dtype=int)
+    _validate_split_indices(train_indices, test_indices, n_samples)
+    _validate_target_fidelity_indices(
+        train_indices,
+        target_mask=target_mask,
+        name="train_indices",
+        target_fidelity=target_name,
+    )
+    _validate_target_fidelity_indices(
+        test_indices,
+        target_mask=target_mask,
+        name="test_indices",
+        target_fidelity=target_name,
+    )
+
+    lower_mask = fidelity_labels != target_name
+    lower_fidelity_indices = np.flatnonzero(lower_mask)
+    if lower_fidelity_indices.size == 0:
+        raise ValueError("Co-kriging validation requires at least one lower-fidelity row")
+    fit_mask = lower_mask.copy()
+    fit_mask[train_indices] = True
+    fit_indices = np.flatnonzero(fit_mask)
+
+    result = _fit_evaluate_cokriging_indices(
+        estimator,
+        X,
+        y,
+        fidelity_labels=fidelity_labels,
+        sample_id=sample_id_array,
+        fit_indices=fit_indices,
+        train_indices=train_indices,
+        test_indices=test_indices,
+        labels=labels,
+        fidelity_names=fidelity_names,
+        target_fidelity=target_name,
+        low_fidelity=low_name,
+        model_name=model_name or _estimator_name(estimator),
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+        fit_params=fit_params,
+        random_state=random_state,
+        context={
+            "target_fidelity": target_name,
+            "low_fidelity": low_name,
+            "n_lower_fidelity": len(lower_fidelity_indices),
+        },
+    )
+
+    return CoKrigingTrainTestValidationResult(
+        model_name=result["model_name"],
+        fitted_estimator=result["estimator"],
+        metrics=result["metrics"],
+        predictions=result["predictions"],
+        train_indices=train_indices,
+        test_indices=test_indices,
+        fit_indices=fit_indices,
+        lower_fidelity_indices=lower_fidelity_indices,
+        target_fidelity=target_name,
+        low_fidelity=low_name,
+        rho=result["rho"],
     )
 
 
@@ -1180,6 +1359,126 @@ def _fit_evaluate_multifidelity_indices(
     }
 
 
+def _fit_evaluate_cokriging_indices(
+    estimator,
+    X,
+    y,
+    *,
+    fidelity_labels: np.ndarray,
+    sample_id: np.ndarray | None,
+    fit_indices: np.ndarray,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    labels: np.ndarray,
+    fidelity_names: Sequence[str],
+    target_fidelity: str,
+    low_fidelity: str,
+    model_name: str,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+    fit_params: Mapping[str, object] | None,
+    random_state: int | None,
+    context: Mapping[str, object],
+) -> dict[str, object]:
+    _validate_split_indices(train_indices, test_indices, len(labels))
+    fitted_estimator = _clone_estimator(estimator, random_state=random_state)
+    _set_supported_cokriging_params(
+        fitted_estimator,
+        fidelity_order=fidelity_names,
+        target_fidelity=target_fidelity,
+        low_fidelity=low_fidelity,
+    )
+
+    X_fit = _safe_index(X, fit_indices)
+    y_fit = _safe_index_y(y, fit_indices)
+    X_train = _safe_index(X, train_indices)
+    X_test = _safe_index(X, test_indices)
+    y_train = _safe_index_y(y, train_indices)
+    y_test = _safe_index_y(y, test_indices)
+
+    estimator_fit_params = dict(fit_params or {})
+    estimator_fit_params["fidelity"] = fidelity_labels[fit_indices]
+    if sample_id is not None and "sample_id" not in estimator_fit_params:
+        estimator_fit_params["sample_id"] = sample_id[fit_indices]
+
+    fitted_estimator.fit(X_fit, y_fit, **estimator_fit_params)
+    train_prediction, y_train_pred, y_train_std = _predict_cokriging_estimator(
+        fitted_estimator,
+        X_train,
+        target_fidelity=target_fidelity,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+    test_prediction, y_test_pred, y_test_std = _predict_cokriging_estimator(
+        fitted_estimator,
+        X_test,
+        target_fidelity=target_fidelity,
+        return_std=return_std,
+        confidence_level=confidence_level,
+        include_observation_noise=include_observation_noise,
+    )
+
+    metrics = train_test_regression_metrics(y_train, y_train_pred, y_test, y_test_pred)
+    metrics.update(
+        _prefixed_uncertainty_diagnostics(
+            y_train,
+            y_train_pred,
+            y_train_std,
+            prefix="train",
+            confidence_level=confidence_level,
+        )
+    )
+    metrics.update(
+        _prefixed_uncertainty_diagnostics(
+            y_test,
+            y_test_pred,
+            y_test_std,
+            prefix="test",
+            confidence_level=confidence_level,
+        )
+    )
+
+    rho = _prediction_or_attribute(train_prediction, fitted_estimator, "rho", "rho_")
+    predictions = pd.concat(
+        [
+            _cokriging_prediction_frame(
+                train_prediction,
+                model_name,
+                "train",
+                train_indices,
+                labels,
+                y_train,
+                y_train_pred,
+                y_train_std,
+                target_fidelity=target_fidelity,
+                context=context,
+            ),
+            _cokriging_prediction_frame(
+                test_prediction,
+                model_name,
+                "test",
+                test_indices,
+                labels,
+                y_test,
+                y_test_pred,
+                y_test_std,
+                target_fidelity=target_fidelity,
+                context=context,
+            ),
+        ],
+        ignore_index=True,
+    )
+    return {
+        "model_name": model_name,
+        "estimator": fitted_estimator,
+        "metrics": metrics,
+        "predictions": predictions,
+        "rho": rho,
+    }
+
+
 def _fit_evaluate_indices(
     estimator,
     X,
@@ -1566,6 +1865,179 @@ def _component_or_attribute(
         value = getattr(estimator, attribute_name)
     if value is None:
         return np.nan
+    return float(value)
+
+
+def _predict_cokriging_estimator(
+    estimator,
+    X,
+    *,
+    target_fidelity: str,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+) -> tuple[object | None, np.ndarray, np.ndarray | None]:
+    if hasattr(estimator, "predict_distribution"):
+        prediction = _call_cokriging_predict_distribution(
+            estimator,
+            X,
+            target_fidelity=target_fidelity,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+        y_pred, y_std = _coerce_cokriging_prediction_output(prediction)
+        return prediction, y_pred, y_std
+
+    if return_std:
+        try:
+            prediction = _predict_cokriging_with_std(
+                estimator,
+                X,
+                target_fidelity=target_fidelity,
+                include_observation_noise=include_observation_noise,
+            )
+            y_pred, y_std = _coerce_prediction_output(prediction)
+            return None, y_pred, y_std
+        except TypeError:
+            pass
+
+    try:
+        prediction = estimator.predict(X, target_fidelity=target_fidelity)
+    except TypeError:
+        prediction = estimator.predict(X)
+    return None, _to_1d_float(prediction, "y_pred"), None
+
+
+def _call_cokriging_predict_distribution(
+    estimator,
+    X,
+    *,
+    target_fidelity: str,
+    return_std: bool,
+    confidence_level: float,
+    include_observation_noise: bool | None,
+):
+    keyword_options = [
+        {
+            "target_fidelity": target_fidelity,
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+            "include_observation_noise": include_observation_noise,
+        },
+        {
+            "target_fidelity": target_fidelity,
+            "return_std": return_std,
+            "confidence_level": confidence_level,
+        },
+        {"target_fidelity": target_fidelity, "return_std": return_std},
+        {"target_fidelity": target_fidelity},
+        {"return_std": return_std, "confidence_level": confidence_level},
+        {"return_std": return_std},
+        {},
+    ]
+    for keywords in keyword_options:
+        if keywords.get("include_observation_noise") is None:
+            keywords = {
+                key: value
+                for key, value in keywords.items()
+                if key != "include_observation_noise"
+            }
+        try:
+            return estimator.predict_distribution(X, **keywords)
+        except TypeError:
+            continue
+    return estimator.predict_distribution(X)
+
+
+def _predict_cokriging_with_std(
+    estimator,
+    X,
+    *,
+    target_fidelity: str,
+    include_observation_noise: bool | None,
+):
+    keyword_options = [
+        {
+            "target_fidelity": target_fidelity,
+            "return_std": True,
+            "include_observation_noise": include_observation_noise,
+        },
+        {"target_fidelity": target_fidelity, "return_std": True},
+        {"return_std": True},
+    ]
+    for keywords in keyword_options:
+        if keywords.get("include_observation_noise") is None:
+            keywords = {
+                key: value
+                for key, value in keywords.items()
+                if key != "include_observation_noise"
+            }
+        try:
+            return estimator.predict(X, **keywords)
+        except TypeError:
+            continue
+    return estimator.predict(X, return_std=True)
+
+
+def _coerce_cokriging_prediction_output(prediction) -> tuple[np.ndarray, np.ndarray | None]:
+    if isinstance(prediction, tuple) and len(prediction) >= 2:
+        return _to_1d_float(prediction[0], "y_pred"), _to_optional_std(prediction[1])
+    if _is_prediction_container(prediction):
+        y_std = getattr(prediction, "std", None)
+        return (
+            _to_1d_float(getattr(prediction, "mean"), "y_pred"),
+            _to_optional_std(y_std) if y_std is not None else None,
+        )
+    return _to_1d_float(prediction, "y_pred"), None
+
+
+def _cokriging_prediction_frame(
+    prediction,
+    model_name: str,
+    split: str,
+    positions: np.ndarray,
+    labels: np.ndarray,
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    target_fidelity: str,
+    context: Mapping[str, object],
+) -> pd.DataFrame:
+    if _is_prediction_container(prediction):
+        frame = decompose_multifidelity_prediction(
+            prediction,
+            y_true=y_true,
+            sample_labels=labels[positions],
+            model_name=model_name,
+            split=split,
+        )
+        frame["sample_position"] = positions
+    else:
+        frame = _prediction_frame(
+            model_name,
+            split,
+            positions,
+            labels,
+            y_true,
+            y_pred,
+            y_std,
+            context={},
+        )
+    frame["fidelity"] = target_fidelity
+    for key, value in context.items():
+        frame[key] = value
+    return frame
+
+
+def _prediction_or_attribute(prediction, estimator, prediction_attribute: str, fitted_attribute: str):
+    if prediction is not None and hasattr(prediction, prediction_attribute):
+        value = getattr(prediction, prediction_attribute)
+    else:
+        value = getattr(estimator, fitted_attribute, None)
+    if value is None:
+        return None
     return float(value)
 
 
@@ -2093,6 +2565,27 @@ def _clone_estimator(estimator, *, random_state: int | None):
     return cloned
 
 
+def _set_supported_cokriging_params(
+    estimator,
+    *,
+    fidelity_order: Sequence[str],
+    target_fidelity: str,
+    low_fidelity: str,
+) -> None:
+    if not hasattr(estimator, "get_params") or not hasattr(estimator, "set_params"):
+        return
+    params = estimator.get_params(deep=False)
+    updates = {}
+    if "fidelity_order" in params:
+        updates["fidelity_order"] = tuple(fidelity_order)
+    if "target_fidelity" in params:
+        updates["target_fidelity"] = target_fidelity
+    if "low_fidelity" in params:
+        updates["low_fidelity"] = low_fidelity
+    if updates:
+        estimator.set_params(**updates)
+
+
 def _validate_multitask_xy_length(X, y) -> tuple[int, int]:
     n_x = len(X)
     y_values = _to_2d_float(y, "y")
@@ -2156,6 +2649,116 @@ def _validate_multifidelity_low_inputs(
         raise ValueError(
             f"X_high has {high_width} features, but X_low has {low_width} features"
         )
+
+
+def _to_fidelity_label_array(values, *, n_samples: int) -> np.ndarray:
+    array = np.asarray(values, dtype=object).reshape(-1)
+    if array.shape[0] != n_samples:
+        raise ValueError(
+            f"fidelity must contain {n_samples} value(s); got {array.shape[0]}"
+        )
+    labels = [_normalize_fidelity_label(value, "fidelity") for value in array]
+    return np.asarray(labels, dtype=object)
+
+
+def _resolve_optional_row_values(values, *, n_samples: int, name: str) -> np.ndarray | None:
+    if values is None:
+        return None
+    array = np.asarray(values, dtype=object).reshape(-1)
+    if array.shape[0] != n_samples:
+        raise ValueError(f"{name} must contain {n_samples} value(s); got {array.shape[0]}")
+    return array
+
+
+def _resolve_cokriging_validation_levels(
+    fidelity_labels: np.ndarray,
+    *,
+    estimator,
+    target_fidelity: str | None,
+    low_fidelity: str | None,
+    fidelity_order: Sequence[str] | None,
+) -> tuple[tuple[str, ...], str, str]:
+    estimator_order = getattr(estimator, "fidelity_order", None)
+    resolved_order = fidelity_order if fidelity_order is not None else estimator_order
+    fidelity_names = _resolve_validation_fidelity_names(fidelity_labels, resolved_order)
+    if len(fidelity_names) != 2:
+        raise ValueError(
+            "Co-kriging train/test validation currently supports exactly two "
+            f"fidelity levels; got {len(fidelity_names)}"
+        )
+
+    estimator_target = getattr(estimator, "target_fidelity", None)
+    target_value = target_fidelity if target_fidelity is not None else estimator_target
+    target_name = (
+        fidelity_names[-1]
+        if target_value is None
+        else _normalize_fidelity_label(target_value, "target_fidelity")
+    )
+    if target_name not in fidelity_names:
+        raise ValueError(f"target_fidelity must be one of {fidelity_names}; got {target_name!r}")
+
+    estimator_low = getattr(estimator, "low_fidelity", None)
+    low_value = low_fidelity if low_fidelity is not None else estimator_low
+    low_candidates = [name for name in fidelity_names if name != target_name]
+    low_name = (
+        low_candidates[0]
+        if low_value is None
+        else _normalize_fidelity_label(low_value, "low_fidelity")
+    )
+    if low_name not in fidelity_names:
+        raise ValueError(f"low_fidelity must be one of {fidelity_names}; got {low_name!r}")
+    if low_name == target_name:
+        raise ValueError("low_fidelity and target_fidelity must be different")
+    return fidelity_names, target_name, low_name
+
+
+def _resolve_validation_fidelity_names(
+    fidelity_labels: np.ndarray,
+    fidelity_order: Sequence[str] | None,
+) -> tuple[str, ...]:
+    if fidelity_order is None:
+        fidelity_names = tuple(dict.fromkeys(fidelity_labels.tolist()))
+    else:
+        fidelity_names = tuple(
+            _normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
+        )
+    if not fidelity_names:
+        raise ValueError("fidelity_order must contain at least one fidelity level")
+    if len(set(fidelity_names)) != len(fidelity_names):
+        raise ValueError("fidelity_order must contain unique fidelity labels")
+
+    observed = set(fidelity_labels.tolist())
+    expected = set(fidelity_names)
+    unknown = sorted(observed - expected)
+    if unknown:
+        raise ValueError(
+            "fidelity contains labels not present in fidelity_order: "
+            f"{unknown}; expected one of {fidelity_names}"
+        )
+    missing = [name for name in fidelity_names if name not in observed]
+    if missing:
+        raise ValueError(f"fidelity_order contains unobserved fidelity level(s): {missing}")
+    return fidelity_names
+
+
+def _normalize_fidelity_label(value, name: str) -> str:
+    if value is None:
+        raise ValueError(f"{name} must not contain missing labels")
+    label = str(value).strip()
+    if label == "" or label.lower() == "nan":
+        raise ValueError(f"{name} must not contain missing labels")
+    return label
+
+
+def _validate_target_fidelity_indices(
+    indices: np.ndarray,
+    *,
+    target_mask: np.ndarray,
+    name: str,
+    target_fidelity: str,
+) -> None:
+    if not np.all(target_mask[indices]):
+        raise ValueError(f"{name} must contain only target_fidelity={target_fidelity!r} rows")
 
 
 def _feature_count(values, name: str) -> int:

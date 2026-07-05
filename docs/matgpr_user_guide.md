@@ -850,6 +850,32 @@ constant autoregressive coefficient `rho`, and uses one shared learned
 observation-noise term. Known-noise and per-fidelity noise modes are planned
 extensions.
 
+For train/test validation with one row-wise fidelity table, split only the
+target fidelity while keeping all lower-fidelity rows available for fitting:
+
+```python
+from matgpr import evaluate_cokriging_train_test_split
+
+
+cokriging_validation = evaluate_cokriging_train_test_split(
+    cokriging_model,
+    X_all,
+    y_all,
+    fidelity=fidelity_labels,
+    target_fidelity="experiment",
+    test_size=0.2,
+    random_state=42,
+    model_name="two-level co-kriging GPR",
+)
+
+cokriging_validation.metrics_frame()
+cokriging_validation.predictions
+```
+
+The prediction table is ready for target-fidelity parity plots and component
+summaries. It includes `scaled_low_fidelity_pred`, `discrepancy_pred`, and
+`reconstructed_y_pred` when the estimator exposes co-kriging components.
+
 For low-data studies, use `multifidelity_learning_curve` so the number of
 high-fidelity training points is varied while the low-fidelity source is kept
 fixed:

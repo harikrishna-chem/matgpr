@@ -162,6 +162,51 @@ Current limits:
 - prediction reports one fidelity at a time; target-fidelity predictions expose
   low-fidelity and discrepancy components for reporting.
 
+## Target-Fidelity Co-Kriging Validation
+
+Use `evaluate_cokriging_train_test_split` when the data are stored as one
+row-wise table with a fidelity label per row. The helper splits only the target
+fidelity, keeps every lower-fidelity row in the training set, and evaluates
+metrics only on target-fidelity predictions:
+
+```python
+from matgpr import CoKrigingGPRRegressor, evaluate_cokriging_train_test_split
+
+
+model = CoKrigingGPRRegressor(
+    fidelity_order=("simulation", "experiment"),
+    target_fidelity="experiment",
+    training_iter=500,
+    random_state=7,
+)
+
+validation = evaluate_cokriging_train_test_split(
+    model,
+    X_all,
+    y_all,
+    fidelity=fidelity_labels,
+    target_fidelity="experiment",
+    test_size=0.2,
+    random_state=42,
+    model_name="two-level co-kriging GPR",
+)
+
+validation.metrics_frame()
+validation.predictions.head()
+```
+
+Important protocol details:
+
+- `train_indices` and `test_indices` refer to target-fidelity rows only.
+- `fit_indices` contains all lower-fidelity rows plus target-fidelity training
+  rows.
+- `predictions` includes target-fidelity parity columns and, when available,
+  co-kriging components such as `scaled_low_fidelity_pred`,
+  `discrepancy_pred`, `correction_pred`, and `reconstructed_y_pred`.
+- `metrics_frame()` records the target fidelity, low fidelity, number of
+  lower-fidelity rows used for fitting, target train/test sizes, and learned
+  `rho`.
+
 ## High-Fidelity Learning Curves
 
 Use `multifidelity_learning_curve` to test whether low-fidelity information
@@ -286,7 +331,7 @@ Validate on held-out high-fidelity data. Useful comparisons are:
 - high-fidelity-only standard GPR,
 - low-fidelity-only baseline,
 - delta multi-fidelity GPR with supplied low-fidelity values,
-- delta multi-fidelity GPR with an internal low-fidelity surrogate.
+- delta multi-fidelity GPR with an internal low-fidelity surrogate,
 - two-level co-kriging GPR when low- and high-fidelity rows should be fit
   jointly.
 
@@ -309,12 +354,12 @@ Implemented:
   shared learned noise, target-fidelity prediction, and component summaries,
 - estimator API and lower-level function,
 - component-wise prediction output,
+- target-fidelity train/test validation for row-wise co-kriging datasets,
 - high-fidelity learning-curve validation helper with component predictions,
 - reporting helpers for low-fidelity and correction contributions.
 
 Planned later:
 
-- full co-kriging with joint covariance across fidelities,
 - more than two fidelity levels,
 - fidelity/source-specific known noise,
 - Bayesian optimization acquisition functions targeting high-fidelity outcomes.
