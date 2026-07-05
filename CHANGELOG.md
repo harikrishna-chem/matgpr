@@ -7,6 +7,10 @@ semantic-versioning conventions once the first public release is tagged.
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 0.1.0 - 2026-07-05
+
 ### Added
 
 - Physics-informed GPR mean-function API through `PhysicsInformedMean`.

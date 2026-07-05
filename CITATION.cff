@@ -8,9 +8,10 @@ repository-code: "https://github.com/harikrishna-chem/matgpr"
 url: "https://github.com/harikrishna-chem/matgpr"
 version: "0.1.0"
 abstract: >
-  matgpr is a materials-informatics toolkit for Gaussian Process Regression,
-  uncertainty-aware prediction, materials fingerprinting, and physics-informed
-  mean functions.
+  matgpr is a materials-informatics toolkit for Gaussian Process Regression
+  workflows, including standard and physics-informed GPR, uncertainty-aware
+  prediction, materials featurization, multitask and multi-fidelity modeling,
+  and finite-pool Bayesian optimization for next-experiment selection.
 keywords:
   - materials informatics
   - Gaussian Process Regression
