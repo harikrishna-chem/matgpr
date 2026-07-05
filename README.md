@@ -38,9 +38,9 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Exact multitask GPR for complete or sparse multi-property materials datasets
   with learned inter-task covariance, shared/task-specific/known sparse noise,
   and scikit-learn-style wrappers.
-- Delta multi-fidelity GPR for simulation-plus-experiment workflows with a
-  learned low- to high-fidelity correction and ordered fidelity observation
-  preparation for future co-kriging models.
+- Multi-fidelity GPR for simulation-plus-experiment workflows, including a
+  delta correction model and an initial two-level co-kriging model with a
+  learned autoregressive coefficient.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP

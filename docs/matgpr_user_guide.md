@@ -822,9 +822,33 @@ observations.fidelity_observation_counts
 
 This container preserves explicit fidelity order, target fidelity, optional
 sample identifiers, feature names, and known per-observation noise variances.
-The current delta model still accepts direct high-fidelity and low-fidelity
-arrays; the observation container is the input contract for planned joint
-co-kriging models.
+The delta model still accepts direct high-fidelity and low-fidelity arrays; the
+observation container is the input contract for joint co-kriging models.
+
+For the first two-level co-kriging API, use:
+
+```python
+from matgpr import CoKrigingGPRRegressor
+
+
+cokriging_model = CoKrigingGPRRegressor(
+    fidelity_order=("simulation", "experiment"),
+    target_fidelity="experiment",
+    training_iter=1000,
+    random_state=7,
+)
+
+cokriging_model.fit(X_all, y_all, fidelity=fidelity_labels)
+cokriging_prediction = cokriging_model.predict_distribution(
+    X_test,
+    confidence_level=0.95,
+)
+```
+
+This initial co-kriging model supports exactly two fidelity levels, learns one
+constant autoregressive coefficient `rho`, and uses one shared learned
+observation-noise term. Known-noise and per-fidelity noise modes are planned
+extensions.
 
 For low-data studies, use `multifidelity_learning_curve` so the number of
 high-fidelity training points is varied while the low-fidelity source is kept

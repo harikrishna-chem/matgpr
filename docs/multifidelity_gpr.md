@@ -84,9 +84,10 @@ The prediction object exposes:
 
 ## Observation Data Preparation
 
-For future joint co-kriging and multi-level fidelity models, use
+For joint co-kriging and multi-level fidelity workflows, use
 `prepare_multifidelity_observations` to validate row-wise fidelity data before
-modeling:
+modeling. The first co-kriging implementation supports exactly two ordered
+fidelity levels:
 
 ```python
 from matgpr import prepare_multifidelity_observations
@@ -112,10 +113,54 @@ The returned `MultiFidelityObservationData` stores:
 - helper row selections such as `rows_for_fidelity("experiment")`.
 
 This preparation layer supports non-nested datasets where high-fidelity
-materials are not necessarily a subset of low-fidelity materials. The current
-delta model still uses `X_high`, `y_high`, and low-fidelity arrays directly;
-the observation container is the stable input contract for the planned joint
-co-kriging implementation.
+materials are not necessarily a subset of low-fidelity materials. The delta
+model still uses `X_high`, `y_high`, and low-fidelity arrays directly; the
+observation container is the input contract for joint co-kriging models.
+
+## Two-Level Co-Kriging
+
+Use `CoKrigingGPRRegressor` when low- and high-fidelity observations should be
+fit jointly instead of using a two-stage correction:
+
+```python
+from matgpr import CoKrigingGPRRegressor
+
+
+model = CoKrigingGPRRegressor(
+    fidelity_order=("simulation", "experiment"),
+    target_fidelity="experiment",
+    low_fidelity_kernel="matern",
+    discrepancy_kernel="matern",
+    training_iter=1000,
+    random_state=7,
+)
+
+model.fit(X_all, y_all, fidelity=fidelity_labels)
+
+prediction = model.predict_distribution(
+    X_test,
+    confidence_level=0.95,
+)
+```
+
+The current co-kriging model learns:
+
+$$
+f_H(\mathbf{x}) = \rho f_L(\mathbf{x}) + \delta(\mathbf{x})
+$$
+
+where \(f_L\) is the low-fidelity latent GP, \(\delta\) is an independent
+discrepancy GP, and \(\rho\) is a learned scalar autoregressive coefficient.
+The covariance blocks are fit jointly across all low- and high-fidelity
+observations.
+
+Current limits:
+
+- exactly two fidelity levels,
+- one shared learned Gaussian observation-noise term,
+- no known-noise or per-fidelity noise mode yet,
+- prediction reports one fidelity at a time; component summaries are planned
+  next.
 
 ## High-Fidelity Learning Curves
 
@@ -227,6 +272,8 @@ Validate on held-out high-fidelity data. Useful comparisons are:
 - low-fidelity-only baseline,
 - delta multi-fidelity GPR with supplied low-fidelity values,
 - delta multi-fidelity GPR with an internal low-fidelity surrogate.
+- two-level co-kriging GPR when low- and high-fidelity rows should be fit
+  jointly.
 
 Report RMSE, MAE, R2, uncertainty coverage, and whether uncertainty includes
 low-fidelity surrogate uncertainty. Learning curves should vary the number of
@@ -243,6 +290,8 @@ Implemented:
 - GPR correction model for \(\delta(\mathbf{x})\),
 - optional internal low-fidelity GPR surrogate,
 - multi-fidelity observation data preparation for ordered fidelity datasets,
+- two-level autoregressive co-kriging GPR with learned constant \(\rho\),
+  shared learned noise, and target-fidelity prediction,
 - estimator API and lower-level function,
 - component-wise prediction output,
 - high-fidelity learning-curve validation helper with component predictions,

@@ -271,9 +271,10 @@ co-kriging predictions rather than replaced.
 1. Implemented: add `MultiFidelityObservationData` and
    `prepare_multifidelity_observations`.
 2. Implemented: add data-validation tests for ordered fidelity datasets.
-3. Next: add a two-level `CoKrigingGPRRegressor` with learned constant `rho`.
-4. Add prediction output with target-fidelity mean, uncertainty, and component
-   summaries.
+3. Implemented: add a two-level `CoKrigingGPRRegressor` with learned constant
+   `rho`.
+4. Next: add prediction component summaries for low-fidelity and discrepancy
+   contributions.
 5. Add validation/reporting compatibility with existing learning-curve helpers.
 6. Add multi-level autoregressive support for \(L > 1\).
 7. Add known-noise and per-fidelity learned-noise modes.
@@ -281,14 +282,16 @@ co-kriging predictions rather than replaced.
 
 ## Next Coding Step
 
-The next safest coding step is a minimal two-level co-kriging model skeleton:
+The next safest coding step is component reporting for the two-level
+co-kriging model:
 
-- accept `MultiFidelityObservationData` as the fitting input,
-- support exactly two ordered fidelities first,
-- learn one constant \(\rho\) between lower and target fidelity,
-- learn one low-fidelity latent kernel and one discrepancy kernel,
-- report per-fidelity noise assumptions clearly,
-- keep validation tests small before expanding to multi-level support.
+- return low-fidelity posterior means at target prediction points,
+- report target minus scaled-low-fidelity discrepancy means,
+- clarify which component uncertainties are exact posterior marginals versus
+  derived summaries,
+- extend `decompose_multifidelity_prediction` without breaking delta-model
+  reports,
+- add validation tests before extending to multi-level support.
 
-The current data layer gives this model a stable input contract and keeps the
-public API clean before heavier GPyTorch model code is added.
+The current data layer and two-level model give this reporting work a stable
+input contract before multi-level or per-fidelity-noise support is added.

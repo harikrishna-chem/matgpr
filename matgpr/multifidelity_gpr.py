@@ -4,19 +4,32 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import NormalDist
 
+import gpytorch
 import numpy as np
 import torch
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.metrics import r2_score
 from sklearn.utils.validation import check_array, check_consistent_length, check_is_fitted, column_or_1d
 
-from .gpytorch_gpr import GPyTorchGPRResult, fit_gpytorch_gpr
+from .gpytorch_gpr import (
+    GPyTorchGPRResult,
+    _make_gpytorch_base_kernel,
+    _should_log_iteration,
+    _to_tensor,
+    _validate_training_options,
+    fit_gpytorch_gpr,
+)
 
 __all__ = [
+    "CoKrigingGPRPrediction",
+    "CoKrigingGPRRegressor",
+    "CoKrigingGPRResult",
     "DeltaMultiFidelityGPRResult",
+    "ExactTwoLevelCoKrigingGPRModel",
     "MultiFidelityObservationData",
     "MultiFidelityGPRPrediction",
     "MultiFidelityGPRRegressor",
+    "fit_cokriging_gpr",
     "fit_delta_multifidelity_gpr",
     "prepare_multifidelity_observations",
 ]
@@ -148,6 +161,169 @@ class MultiFidelityGPRPrediction:
 
 
 @dataclass(frozen=True)
+class CoKrigingGPRPrediction:
+    """Prediction from a two-level autoregressive co-kriging model."""
+
+    mean: np.ndarray
+    std: np.ndarray | None = None
+    lower: np.ndarray | None = None
+    upper: np.ndarray | None = None
+    fidelity: str = ""
+    rho: float = 1.0
+
+
+@dataclass(frozen=True)
+class CoKrigingGPRResult:
+    """Fitted two-level autoregressive co-kriging GPR result."""
+
+    model: "ExactTwoLevelCoKrigingGPRModel"
+    likelihood: gpytorch.likelihoods.GaussianLikelihood
+    observation_data: MultiFidelityObservationData
+    loss_history: list[float]
+    target_mean: float
+    target_std: float
+    standardize_y: bool
+    low_fidelity: str
+    target_fidelity: str
+    low_fidelity_index: int
+    target_fidelity_index: int
+    fidelity_observation_counts: dict[str, int]
+    low_fidelity_kernel: str
+    discrepancy_kernel: str
+    ard: bool
+    noise_mode: str
+    noise_variance: float
+    rho: float
+    device: str
+    dtype: torch.dtype
+
+    def predict(
+        self,
+        X,
+        *,
+        target_fidelity: str | int | None = None,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool = True,
+    ) -> CoKrigingGPRPrediction:
+        """Predict one modeled fidelity for new samples."""
+        return _predict_cokriging_gpr(
+            self,
+            X,
+            target_fidelity=target_fidelity,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+
+
+class ExactTwoLevelCoKrigingGPRModel(gpytorch.models.ExactGP):
+    """Exact two-level autoregressive co-kriging model.
+
+    The covariance follows
+
+    ``f_high(x) = rho * f_low(x) + delta(x)``,
+
+    with independent low-fidelity and discrepancy kernels. The first
+    implementation supports exactly two fidelity labels and a shared learned
+    Gaussian likelihood noise term.
+    """
+
+    def __init__(
+        self,
+        train_x: torch.Tensor,
+        train_fidelity_indices: torch.Tensor,
+        train_y: torch.Tensor,
+        likelihood: gpytorch.likelihoods.GaussianLikelihood,
+        *,
+        low_fidelity_index: int,
+        target_fidelity_index: int,
+        low_fidelity_kernel: str = "matern",
+        discrepancy_kernel: str = "matern",
+        ard_num_dims: int | None = None,
+        initial_rho: float = 1.0,
+    ):
+        super().__init__((train_x, train_fidelity_indices), train_y, likelihood)
+        self.low_fidelity_index = int(low_fidelity_index)
+        self.target_fidelity_index = int(target_fidelity_index)
+        self.register_parameter(
+            name="rho",
+            parameter=torch.nn.Parameter(
+                torch.as_tensor(float(initial_rho), dtype=train_x.dtype, device=train_x.device)
+            ),
+        )
+        self.register_parameter(
+            name="low_mean",
+            parameter=torch.nn.Parameter(
+                torch.zeros((), dtype=train_x.dtype, device=train_x.device)
+            ),
+        )
+        self.register_parameter(
+            name="discrepancy_mean",
+            parameter=torch.nn.Parameter(
+                torch.zeros((), dtype=train_x.dtype, device=train_x.device)
+            ),
+        )
+        self.low_covar_module = gpytorch.kernels.ScaleKernel(
+            _make_gpytorch_base_kernel(low_fidelity_kernel, ard_num_dims=ard_num_dims)
+        )
+        self.discrepancy_covar_module = gpytorch.kernels.ScaleKernel(
+            _make_gpytorch_base_kernel(discrepancy_kernel, ard_num_dims=ard_num_dims)
+        )
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        fidelity_indices: torch.Tensor,
+    ) -> gpytorch.distributions.MultivariateNormal:
+        fidelity_indices = fidelity_indices.long().reshape(-1)
+        if x.shape[0] != fidelity_indices.shape[0]:
+            raise ValueError("x and fidelity_indices must contain the same number of rows")
+
+        mean_x = self._mean_for_fidelity(fidelity_indices, reference=x)
+        covar_x = self._covariance_for_fidelity(x, fidelity_indices)
+        return gpytorch.distributions.MultivariateNormal(mean_x, covar_x)
+
+    def _mean_for_fidelity(
+        self,
+        fidelity_indices: torch.Tensor,
+        *,
+        reference: torch.Tensor,
+    ) -> torch.Tensor:
+        rho = self.rho.to(dtype=reference.dtype, device=reference.device)
+        low_mean = self.low_mean.to(dtype=reference.dtype, device=reference.device)
+        discrepancy_mean = self.discrepancy_mean.to(dtype=reference.dtype, device=reference.device)
+        target_mean = rho * low_mean + discrepancy_mean
+        return torch.where(
+            fidelity_indices == self.target_fidelity_index,
+            target_mean.expand(fidelity_indices.shape[0]),
+            low_mean.expand(fidelity_indices.shape[0]),
+        )
+
+    def _covariance_for_fidelity(
+        self,
+        x: torch.Tensor,
+        fidelity_indices: torch.Tensor,
+    ):
+        rho = self.rho.to(dtype=x.dtype, device=x.device)
+        is_target = fidelity_indices == self.target_fidelity_index
+        low_weights = torch.where(is_target, rho.expand_as(x[:, 0]), torch.ones_like(x[:, 0]))
+        discrepancy_weights = torch.where(
+            is_target,
+            torch.ones_like(x[:, 0]),
+            torch.zeros_like(x[:, 0]),
+        )
+        low_weight_matrix = low_weights.unsqueeze(-1) * low_weights.unsqueeze(-2)
+        discrepancy_weight_matrix = (
+            discrepancy_weights.unsqueeze(-1) * discrepancy_weights.unsqueeze(-2)
+        )
+
+        low_covar = self.low_covar_module(x).mul(low_weight_matrix)
+        discrepancy_covar = self.discrepancy_covar_module(x).mul(discrepancy_weight_matrix)
+        return low_covar + discrepancy_covar
+
+
+@dataclass(frozen=True)
 class DeltaMultiFidelityGPRResult:
     """Fitted two-stage delta multi-fidelity GPR result."""
 
@@ -236,6 +412,143 @@ def prepare_multifidelity_observations(
         sample_id=sample_id_array,
         noise_variance=noise_variance_array,
         feature_names=feature_names_resolved,
+    )
+
+
+def fit_cokriging_gpr(
+    observation_data: MultiFidelityObservationData,
+    *,
+    low_fidelity: str | None = None,
+    target_fidelity: str | None = None,
+    low_fidelity_kernel: str = "matern",
+    discrepancy_kernel: str = "matern",
+    ard: bool = True,
+    initial_rho: float | None = None,
+    lr: float = 0.01,
+    training_iter: int = 1000,
+    initial_noise: float | None = 0.1,
+    standardize_y: bool = True,
+    noise_mode: str = "shared",
+    min_observations_per_fidelity: int = 2,
+    device: str = "cpu",
+    dtype: torch.dtype | str = torch.float64,
+    verbose: bool = True,
+    log_every: int = 100,
+) -> CoKrigingGPRResult:
+    """Fit a two-level autoregressive co-kriging GPR model.
+
+    This first implementation supports exactly two fidelity levels with one
+    shared learned Gaussian noise term. Use
+    :func:`prepare_multifidelity_observations` to create ``observation_data``.
+    """
+    if not isinstance(observation_data, MultiFidelityObservationData):
+        raise ValueError("observation_data must be a MultiFidelityObservationData instance")
+    dtype = _resolve_torch_dtype(dtype)
+    _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
+    noise_mode = _validate_cokriging_noise_mode(noise_mode)
+    _validate_cokriging_known_noise(observation_data, noise_mode=noise_mode)
+
+    low_name, target_name, low_index, target_index = _resolve_two_level_fidelities(
+        observation_data,
+        low_fidelity=low_fidelity,
+        target_fidelity=target_fidelity,
+        min_observations_per_fidelity=min_observations_per_fidelity,
+    )
+    initial_rho_value = _resolve_initial_cokriging_rho(
+        observation_data,
+        low_fidelity_index=low_index,
+        target_fidelity_index=target_index,
+        initial_rho=initial_rho,
+    )
+
+    train_x = _to_tensor(observation_data.X, device=device, dtype=dtype)
+    train_fidelity_indices = torch.as_tensor(
+        observation_data.fidelity_index,
+        dtype=torch.long,
+        device=device,
+    )
+    train_y = _to_tensor(observation_data.y, device=device, dtype=dtype).reshape(-1)
+
+    if standardize_y:
+        target_mean = train_y.mean()
+        target_std = train_y.std(unbiased=False)
+        if target_std.item() <= 0:
+            raise ValueError("y has zero standard deviation")
+        train_y_model = (train_y - target_mean) / target_std
+    else:
+        target_mean = torch.tensor(0.0, dtype=dtype, device=device)
+        target_std = torch.tensor(1.0, dtype=dtype, device=device)
+        train_y_model = train_y
+
+    likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device=device, dtype=dtype)
+    if initial_noise is not None:
+        if initial_noise <= 0:
+            raise ValueError("initial_noise must be positive")
+        likelihood.initialize(noise=float(initial_noise))
+
+    model = ExactTwoLevelCoKrigingGPRModel(
+        train_x,
+        train_fidelity_indices,
+        train_y_model,
+        likelihood,
+        low_fidelity_index=low_index,
+        target_fidelity_index=target_index,
+        low_fidelity_kernel=low_fidelity_kernel,
+        discrepancy_kernel=discrepancy_kernel,
+        ard_num_dims=train_x.shape[1] if ard else None,
+        initial_rho=initial_rho_value,
+    ).to(device=device, dtype=dtype)
+    model.target_mean = target_mean.detach()
+    model.target_std = target_std.detach()
+    model.standardize_y = standardize_y
+    model.fidelity_names = observation_data.fidelity_names
+    model.low_fidelity = low_name
+    model.target_fidelity = target_name
+
+    model.train()
+    likelihood.train()
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    marginal_log_likelihood = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
+    loss_history: list[float] = []
+
+    for iteration in range(training_iter):
+        optimizer.zero_grad()
+        output = model(train_x, train_fidelity_indices)
+        loss = -marginal_log_likelihood(output, train_y_model)
+        loss.backward()
+        optimizer.step()
+        loss_history.append(float(loss.detach().cpu().item()))
+
+        if verbose and _should_log_iteration(iteration, training_iter, log_every):
+            _print_cokriging_training_status(iteration, training_iter, loss, likelihood, model)
+
+    model.training_loss_history = loss_history
+    rho = float(model.rho.detach().cpu().item())
+    standardized_noise = float(likelihood.noise.detach().cpu().reshape(-1)[0])
+    noise_variance = standardized_noise * float(target_std.detach().cpu().item()) ** 2
+
+    return CoKrigingGPRResult(
+        model=model,
+        likelihood=likelihood,
+        observation_data=observation_data,
+        loss_history=loss_history,
+        target_mean=float(target_mean.detach().cpu().item()),
+        target_std=float(target_std.detach().cpu().item()),
+        standardize_y=standardize_y,
+        low_fidelity=low_name,
+        target_fidelity=target_name,
+        low_fidelity_index=low_index,
+        target_fidelity_index=target_index,
+        fidelity_observation_counts=observation_data.fidelity_observation_counts,
+        low_fidelity_kernel=low_fidelity_kernel,
+        discrepancy_kernel=discrepancy_kernel,
+        ard=ard,
+        noise_mode=noise_mode,
+        noise_variance=noise_variance,
+        rho=rho,
+        device=device,
+        dtype=dtype,
     )
 
 
@@ -508,6 +821,164 @@ class MultiFidelityGPRRegressor(RegressorMixin, BaseEstimator):
         )
 
 
+class CoKrigingGPRRegressor(RegressorMixin, BaseEstimator):
+    """Scikit-learn-style two-level autoregressive co-kriging estimator."""
+
+    def __init__(
+        self,
+        *,
+        fidelity_order: Sequence[str] | None = None,
+        low_fidelity: str | None = None,
+        target_fidelity: str | None = None,
+        low_fidelity_kernel: str = "matern",
+        discrepancy_kernel: str = "matern",
+        ard: bool = True,
+        initial_rho: float | None = None,
+        lr: float = 0.01,
+        training_iter: int = 1000,
+        initial_noise: float | None = 0.1,
+        standardize_y: bool = True,
+        noise_mode: str = "shared",
+        min_observations_per_fidelity: int = 2,
+        device: str = "cpu",
+        dtype: str | torch.dtype = "float64",
+        verbose: bool = False,
+        log_every: int = 100,
+        include_observation_noise: bool = True,
+        random_state: int | None = None,
+    ):
+        self.fidelity_order = fidelity_order
+        self.low_fidelity = low_fidelity
+        self.target_fidelity = target_fidelity
+        self.low_fidelity_kernel = low_fidelity_kernel
+        self.discrepancy_kernel = discrepancy_kernel
+        self.ard = ard
+        self.initial_rho = initial_rho
+        self.lr = lr
+        self.training_iter = training_iter
+        self.initial_noise = initial_noise
+        self.standardize_y = standardize_y
+        self.noise_mode = noise_mode
+        self.min_observations_per_fidelity = min_observations_per_fidelity
+        self.device = device
+        self.dtype = dtype
+        self.verbose = verbose
+        self.log_every = log_every
+        self.include_observation_noise = include_observation_noise
+        self.random_state = random_state
+
+    def fit(self, X, y, *, fidelity, sample_id=None):
+        """Fit a two-level co-kriging GPR model."""
+        _seed_torch(self.random_state)
+        X_checked = check_array(X, ensure_2d=True, dtype="numeric", ensure_all_finite=True)
+        y_checked = column_or_1d(
+            check_array(
+                y,
+                ensure_2d=False,
+                dtype="numeric",
+                ensure_all_finite=True,
+                input_name="y",
+            ),
+            warn=True,
+        )
+        check_consistent_length(X_checked, y_checked)
+        self.n_features_in_ = X_checked.shape[1]
+
+        observation_data = prepare_multifidelity_observations(
+            X_checked,
+            y_checked,
+            fidelity,
+            fidelity_order=self.fidelity_order,
+            target_fidelity=self.target_fidelity,
+            sample_id=sample_id,
+            min_observations_per_fidelity=self.min_observations_per_fidelity,
+        )
+        self.result_ = fit_cokriging_gpr(
+            observation_data,
+            low_fidelity=self.low_fidelity,
+            target_fidelity=self.target_fidelity,
+            low_fidelity_kernel=self.low_fidelity_kernel,
+            discrepancy_kernel=self.discrepancy_kernel,
+            ard=self.ard,
+            initial_rho=self.initial_rho,
+            lr=self.lr,
+            training_iter=self.training_iter,
+            initial_noise=self.initial_noise,
+            standardize_y=self.standardize_y,
+            noise_mode=self.noise_mode,
+            min_observations_per_fidelity=self.min_observations_per_fidelity,
+            device=self.device,
+            dtype=_resolve_torch_dtype(self.dtype),
+            verbose=self.verbose,
+            log_every=self.log_every,
+        )
+        self.model_ = self.result_.model
+        self.likelihood_ = self.result_.likelihood
+        self.observation_data_ = self.result_.observation_data
+        self.fidelity_names_ = self.result_.observation_data.fidelity_names
+        self.low_fidelity_ = self.result_.low_fidelity
+        self.target_fidelity_ = self.result_.target_fidelity
+        self.fidelity_observation_counts_ = self.result_.fidelity_observation_counts
+        self.loss_history_ = list(self.result_.loss_history)
+        self.rho_ = self.result_.rho
+        self.noise_variance_ = self.result_.noise_variance
+        return self
+
+    def predict(
+        self,
+        X,
+        *,
+        target_fidelity: str | int | None = None,
+        return_std: bool = False,
+        include_observation_noise: bool | None = None,
+    ):
+        """Predict one modeled fidelity."""
+        prediction = self.predict_distribution(
+            X,
+            target_fidelity=target_fidelity,
+            return_std=return_std,
+            include_observation_noise=include_observation_noise,
+        )
+        if return_std:
+            return prediction.mean, prediction.std
+        return prediction.mean
+
+    def predict_distribution(
+        self,
+        X,
+        *,
+        target_fidelity: str | int | None = None,
+        return_std: bool = True,
+        confidence_level: float | None = None,
+        include_observation_noise: bool | None = None,
+    ) -> CoKrigingGPRPrediction:
+        """Return predictive mean, uncertainty, and interval for one fidelity."""
+        check_is_fitted(self, "result_")
+        X_checked = check_array(X, ensure_2d=True, dtype="numeric", ensure_all_finite=True)
+        if X_checked.shape[1] != self.n_features_in_:
+            raise ValueError(
+                f"X has {X_checked.shape[1]} features, but this estimator was fitted with "
+                f"{self.n_features_in_} features"
+            )
+        if include_observation_noise is None:
+            include_observation_noise = self.include_observation_noise
+        return self.result_.predict(
+            X_checked,
+            target_fidelity=target_fidelity,
+            return_std=return_std,
+            confidence_level=confidence_level,
+            include_observation_noise=include_observation_noise,
+        )
+
+    def score(self, X, y, sample_weight=None, *, target_fidelity: str | int | None = None) -> float:
+        """Return R2 for predictions at one fidelity."""
+        return r2_score(
+            y,
+            self.predict(X, target_fidelity=target_fidelity),
+            sample_weight=sample_weight,
+        )
+
+
 def _predict_delta_multifidelity_gpr(
     result: DeltaMultiFidelityGPRResult,
     X,
@@ -571,6 +1042,66 @@ def _predict_delta_multifidelity_gpr(
     )
 
 
+def _predict_cokriging_gpr(
+    result: CoKrigingGPRResult,
+    X,
+    *,
+    target_fidelity: str | int | None,
+    return_std: bool,
+    confidence_level: float | None,
+    include_observation_noise: bool,
+) -> CoKrigingGPRPrediction:
+    _validate_confidence_level(confidence_level)
+    result.model.eval()
+    result.likelihood.eval()
+    test_x = _to_tensor(X, device=result.device, dtype=result.dtype)
+    _validate_cokriging_prediction_features(test_x, result.model)
+    fidelity_label, fidelity_index = _resolve_cokriging_prediction_fidelity(
+        result,
+        target_fidelity=target_fidelity,
+    )
+    pred_fidelity_indices = torch.full(
+        (test_x.shape[0],),
+        int(fidelity_index),
+        dtype=torch.long,
+        device=result.device,
+    )
+
+    with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        latent_distribution = result.model(test_x, pred_fidelity_indices)
+        prediction_distribution = (
+            result.likelihood(latent_distribution) if include_observation_noise else latent_distribution
+        )
+        mean = prediction_distribution.mean
+        std = prediction_distribution.stddev if return_std or confidence_level is not None else None
+
+    target_mean = result.model.target_mean.to(dtype=mean.dtype, device=mean.device)
+    target_std = result.model.target_std.to(dtype=mean.dtype, device=mean.device)
+    mean = mean * target_std + target_mean
+    if std is not None:
+        std = std * target_std
+
+    mean_array = mean.detach().cpu().numpy()
+    std_array = None if std is None else std.detach().cpu().numpy()
+    lower = None
+    upper = None
+    if confidence_level is not None:
+        if std_array is None:
+            raise ValueError("confidence_level requires return_std=True")
+        z_value = NormalDist().inv_cdf(0.5 + confidence_level / 2.0)
+        lower = mean_array - z_value * std_array
+        upper = mean_array + z_value * std_array
+
+    return CoKrigingGPRPrediction(
+        mean=mean_array,
+        std=std_array,
+        lower=lower,
+        upper=upper,
+        fidelity=fidelity_label,
+        rho=float(result.model.rho.detach().cpu().item()),
+    )
+
+
 def _resolve_prediction_low_fidelity(
     result: DeltaMultiFidelityGPRResult,
     X: np.ndarray,
@@ -610,6 +1141,179 @@ def _fit_linear_fidelity_map(
         rho = float(np.dot(low_fidelity, high_fidelity) / np.dot(low_fidelity, low_fidelity))
         intercept = 0.0
     return float(rho), float(intercept)
+
+
+def _resolve_two_level_fidelities(
+    observation_data: MultiFidelityObservationData,
+    *,
+    low_fidelity: str | None,
+    target_fidelity: str | None,
+    min_observations_per_fidelity: int,
+) -> tuple[str, str, int, int]:
+    if observation_data.n_fidelities != 2:
+        raise ValueError(
+            "Two-level co-kriging currently requires exactly two fidelity levels; "
+            f"got {observation_data.n_fidelities}"
+        )
+    min_count = _validate_min_observations_per_fidelity(min_observations_per_fidelity)
+    low_count_levels = [
+        name
+        for name, count in observation_data.fidelity_observation_counts.items()
+        if count < min_count
+    ]
+    if low_count_levels:
+        raise ValueError(
+            "Each fidelity must have at least "
+            f"{min_count} observed value(s); low-count fidelity level(s): {low_count_levels}"
+        )
+
+    target_name = (
+        observation_data.target_fidelity
+        if target_fidelity is None
+        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+    )
+    if target_name not in observation_data.fidelity_names:
+        raise ValueError(
+            f"target_fidelity must be one of {observation_data.fidelity_names}; got {target_name!r}"
+        )
+    low_candidates = [name for name in observation_data.fidelity_names if name != target_name]
+    if low_fidelity is None:
+        low_name = low_candidates[0]
+    else:
+        low_name = _normalize_fidelity_label(low_fidelity, "low_fidelity")
+        if low_name not in observation_data.fidelity_names:
+            raise ValueError(
+                f"low_fidelity must be one of {observation_data.fidelity_names}; got {low_name!r}"
+            )
+        if low_name == target_name:
+            raise ValueError("low_fidelity and target_fidelity must be different")
+
+    low_index = observation_data.fidelity_names.index(low_name)
+    target_index = observation_data.fidelity_names.index(target_name)
+    return low_name, target_name, low_index, target_index
+
+
+def _resolve_initial_cokriging_rho(
+    observation_data: MultiFidelityObservationData,
+    *,
+    low_fidelity_index: int,
+    target_fidelity_index: int,
+    initial_rho: float | None,
+) -> float:
+    if initial_rho is not None:
+        value = float(initial_rho)
+        if not np.isfinite(value):
+            raise ValueError("initial_rho must be finite")
+        return value
+
+    paired_rho = _paired_sample_initial_rho(
+        observation_data,
+        low_fidelity_index=low_fidelity_index,
+        target_fidelity_index=target_fidelity_index,
+    )
+    return 1.0 if paired_rho is None else paired_rho
+
+
+def _paired_sample_initial_rho(
+    observation_data: MultiFidelityObservationData,
+    *,
+    low_fidelity_index: int,
+    target_fidelity_index: int,
+) -> float | None:
+    if observation_data.sample_id is None:
+        return None
+
+    low_by_id: dict[object, float] = {}
+    target_by_id: dict[object, float] = {}
+    for row_index, sample_id in enumerate(observation_data.sample_id):
+        fidelity_index = int(observation_data.fidelity_index[row_index])
+        if fidelity_index == low_fidelity_index:
+            low_by_id.setdefault(sample_id, float(observation_data.y[row_index]))
+        elif fidelity_index == target_fidelity_index:
+            target_by_id.setdefault(sample_id, float(observation_data.y[row_index]))
+
+    paired_ids = [sample_id for sample_id in low_by_id if sample_id in target_by_id]
+    if len(paired_ids) < 2:
+        return None
+    low_values = np.asarray([low_by_id[sample_id] for sample_id in paired_ids], dtype=float)
+    target_values = np.asarray([target_by_id[sample_id] for sample_id in paired_ids], dtype=float)
+    if np.std(low_values) <= 0:
+        return None
+    rho, _ = _fit_linear_fidelity_map(low_values, target_values, fit_intercept=True)
+    return rho
+
+
+def _validate_cokriging_noise_mode(noise_mode: str) -> str:
+    normalized = str(noise_mode).strip().lower()
+    aliases = {
+        "shared": "shared",
+        "learned": "shared",
+        "global": "shared",
+    }
+    if normalized not in aliases:
+        raise ValueError("noise_mode must be 'shared' for the first co-kriging implementation")
+    return aliases[normalized]
+
+
+def _validate_cokriging_known_noise(
+    observation_data: MultiFidelityObservationData,
+    *,
+    noise_mode: str,
+) -> None:
+    if observation_data.noise_variance is None:
+        return
+    if noise_mode == "shared":
+        raise ValueError(
+            "Known per-observation noise is stored by MultiFidelityObservationData "
+            "but is not supported by the first co-kriging implementation"
+        )
+
+
+def _resolve_cokriging_prediction_fidelity(
+    result: CoKrigingGPRResult,
+    *,
+    target_fidelity: str | int | None,
+) -> tuple[str, int]:
+    if target_fidelity is None:
+        label = result.target_fidelity
+        index = result.target_fidelity_index
+        return label, index
+    index = result.observation_data._resolve_fidelity_index(target_fidelity)
+    return result.observation_data.fidelity_names[index], index
+
+
+def _validate_cokriging_prediction_features(
+    test_x: torch.Tensor,
+    model: ExactTwoLevelCoKrigingGPRModel,
+) -> None:
+    if test_x.ndim != 2:
+        raise ValueError("X must be a 2D feature matrix")
+    expected_features = model.train_inputs[0].shape[1]
+    if test_x.shape[1] != expected_features:
+        raise ValueError(
+            f"X has {test_x.shape[1]} features, but the model was fitted with "
+            f"{expected_features} features"
+        )
+
+
+def _print_cokriging_training_status(
+    iteration: int,
+    training_iter: int,
+    loss: torch.Tensor,
+    likelihood: gpytorch.likelihoods.GaussianLikelihood,
+    model: ExactTwoLevelCoKrigingGPRModel,
+) -> None:
+    noise = likelihood.noise.item()
+    low_outputscale = model.low_covar_module.outputscale.item()
+    discrepancy_outputscale = model.discrepancy_covar_module.outputscale.item()
+    print(
+        f"Iter {iteration + 1:4d}/{training_iter} | "
+        f"Loss: {loss.item():.4f} | "
+        f"Noise: {noise:.4e} | "
+        f"Rho: {model.rho.item():.4f} | "
+        f"Low outputscale: {low_outputscale:.4e} | "
+        f"Discrepancy outputscale: {discrepancy_outputscale:.4e}"
+    )
 
 
 def _infer_feature_names(X) -> tuple[str, ...] | None:

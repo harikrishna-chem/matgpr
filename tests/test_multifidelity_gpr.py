@@ -11,12 +11,20 @@ import numpy as np
 import pandas as pd
 
 from matgpr import (
+    CoKrigingGPRPrediction,
+    CoKrigingGPRRegressor,
+    CoKrigingGPRResult,
     MultiFidelityGPRRegressor,
     MultiFidelityObservationData,
+    fit_cokriging_gpr,
     fit_delta_multifidelity_gpr,
     prepare_multifidelity_observations,
 )
-from matgpr.multifidelity_gpr import DeltaMultiFidelityGPRResult, MultiFidelityGPRPrediction
+from matgpr.multifidelity_gpr import (
+    DeltaMultiFidelityGPRResult,
+    ExactTwoLevelCoKrigingGPRModel,
+    MultiFidelityGPRPrediction,
+)
 
 
 def low_fidelity_function(x: np.ndarray) -> np.ndarray:
@@ -30,7 +38,116 @@ def high_fidelity_function(x: np.ndarray) -> np.ndarray:
     return 1.25 * low + 0.2 + 0.15 * values**2
 
 
-class DeltaMultiFidelityGPRTests(unittest.TestCase):
+class MultiFidelityGPRTests(unittest.TestCase):
+    def test_fit_predict_two_level_cokriging_model(self):
+        x_low = np.linspace(0.0, 1.0, 12).reshape(-1, 1)
+        y_low = low_fidelity_function(x_low)
+        x_high = np.linspace(0.05, 0.95, 7).reshape(-1, 1)
+        y_high = high_fidelity_function(x_high)
+        observations = prepare_multifidelity_observations(
+            np.vstack([x_low, x_high]),
+            np.concatenate([y_low, y_high]),
+            fidelity=["simulation"] * len(y_low) + ["experiment"] * len(y_high),
+            fidelity_order=("simulation", "experiment"),
+            target_fidelity="experiment",
+        )
+
+        result = fit_cokriging_gpr(
+            observations,
+            low_fidelity_kernel="rbf",
+            discrepancy_kernel="rbf",
+            training_iter=3,
+            verbose=False,
+        )
+        prediction = result.predict(x_high[:3], confidence_level=0.80)
+        low_prediction = result.predict(x_high[:3], target_fidelity="simulation")
+
+        self.assertIsInstance(result, CoKrigingGPRResult)
+        self.assertIsInstance(result.model, ExactTwoLevelCoKrigingGPRModel)
+        self.assertEqual(result.low_fidelity, "simulation")
+        self.assertEqual(result.target_fidelity, "experiment")
+        self.assertEqual(result.fidelity_observation_counts, {"simulation": 12, "experiment": 7})
+        self.assertEqual(len(result.loss_history), 3)
+        self.assertTrue(np.isfinite(result.rho))
+        self.assertGreater(result.noise_variance, 0.0)
+        self.assertIsInstance(prediction, CoKrigingGPRPrediction)
+        self.assertEqual(prediction.fidelity, "experiment")
+        self.assertEqual(prediction.mean.shape, (3,))
+        self.assertEqual(prediction.std.shape, (3,))
+        self.assertEqual(prediction.lower.shape, (3,))
+        self.assertEqual(low_prediction.fidelity, "simulation")
+        self.assertEqual(low_prediction.mean.shape, (3,))
+
+    def test_cokriging_estimator_fit_predict_and_score(self):
+        x_low = np.linspace(0.0, 1.0, 10).reshape(-1, 1)
+        y_low = low_fidelity_function(x_low)
+        x_high = np.linspace(0.1, 0.9, 6).reshape(-1, 1)
+        y_high = high_fidelity_function(x_high)
+        x_all = np.vstack([x_low, x_high])
+        y_all = np.concatenate([y_low, y_high])
+        fidelity = ["simulation"] * len(y_low) + ["experiment"] * len(y_high)
+
+        estimator = CoKrigingGPRRegressor(
+            fidelity_order=("simulation", "experiment"),
+            target_fidelity="experiment",
+            low_fidelity_kernel="rbf",
+            discrepancy_kernel="rbf",
+            training_iter=3,
+            random_state=5,
+        )
+        estimator.fit(x_all, y_all, fidelity=fidelity)
+        prediction = estimator.predict_distribution(x_high[:2], confidence_level=0.90)
+        mean, std = estimator.predict(x_high[:2], return_std=True)
+        score = estimator.score(x_high, y_high)
+
+        self.assertEqual(estimator.n_features_in_, 1)
+        self.assertEqual(estimator.fidelity_names_, ("simulation", "experiment"))
+        self.assertEqual(estimator.low_fidelity_, "simulation")
+        self.assertEqual(estimator.target_fidelity_, "experiment")
+        self.assertTrue(np.isfinite(estimator.rho_))
+        self.assertEqual(prediction.mean.shape, (2,))
+        self.assertEqual(prediction.upper.shape, (2,))
+        self.assertEqual(mean.shape, (2,))
+        self.assertEqual(std.shape, (2,))
+        self.assertTrue(np.isfinite(score))
+
+    def test_cokriging_validation_errors_are_explicit(self):
+        x = np.linspace(0.0, 1.0, 6).reshape(-1, 1)
+        observations = prepare_multifidelity_observations(
+            x,
+            np.linspace(0.0, 1.0, 6),
+            fidelity=["low", "mid", "high", "low", "mid", "high"],
+            fidelity_order=("low", "mid", "high"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "exactly two fidelity"):
+            fit_cokriging_gpr(observations, training_iter=1, verbose=False)
+
+        noisy_observations = prepare_multifidelity_observations(
+            x[:4],
+            np.linspace(0.0, 1.0, 4),
+            fidelity=["low", "low", "high", "high"],
+            fidelity_order=("low", "high"),
+            noise_variance=[0.01, 0.01, 0.02, 0.02],
+        )
+        with self.assertRaisesRegex(ValueError, "Known per-observation noise"):
+            fit_cokriging_gpr(noisy_observations, training_iter=1, verbose=False)
+
+        two_level = prepare_multifidelity_observations(
+            x[:4],
+            np.linspace(0.0, 1.0, 4),
+            fidelity=["low", "low", "high", "high"],
+            fidelity_order=("low", "high"),
+        )
+        with self.assertRaisesRegex(ValueError, "different"):
+            fit_cokriging_gpr(
+                two_level,
+                low_fidelity="high",
+                target_fidelity="high",
+                training_iter=1,
+                verbose=False,
+            )
+
     def test_prepare_multifidelity_observations_preserves_metadata(self):
         x = pd.DataFrame(
             {
