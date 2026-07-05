@@ -209,7 +209,12 @@ from .physics_equations import (
     summarize_physics_equation_templates,
 )
 from .preprocessing import build_preprocessor, build_scaler, identify_feature_types
-from .reporting import summarize_missingness, summarize_numeric_columns
+from .reporting import (
+    decompose_multifidelity_prediction,
+    summarize_missingness,
+    summarize_multifidelity_components,
+    summarize_numeric_columns,
+)
 from .sklearn_gpr import (
     build_sklearn_gpr_grid_search,
     build_sklearn_gpr_kernel,
@@ -412,6 +417,7 @@ __all__ = [
     "default_element_symbols",
     "describe_physics_equation_template",
     "describe_target_transform_spec",
+    "decompose_multifidelity_prediction",
     "drop_columns_by_missing_fraction",
     "drop_duplicate_rows",
     "element_fraction_fingerprint",
@@ -507,6 +513,7 @@ __all__ = [
     "summarize_bo_benchmark",
     "summarize_closed_loop_log",
     "summarize_missingness",
+    "summarize_multifidelity_components",
     "summarize_multitask_predictions",
     "summarize_numeric_columns",
     "summarize_physics_equation_templates",

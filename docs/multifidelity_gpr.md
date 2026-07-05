@@ -124,6 +124,50 @@ the fitted `rho` and `intercept` values for each split. When predictions are
 stored, the table includes component columns such as `low_fidelity_pred`,
 `correction_pred`, and their uncertainties when the estimator exposes them.
 
+## Component Reporting
+
+Use component reports to explain whether the multi-fidelity model is mostly
+using the scaled low-fidelity source or making a large high-fidelity correction:
+
+```python
+from matgpr import decompose_multifidelity_prediction, summarize_multifidelity_components
+
+
+prediction = model.predict_distribution(
+    X_test,
+    low_fidelity=simulation_at_test_points,
+    confidence_level=0.95,
+)
+
+component_rows = decompose_multifidelity_prediction(
+    prediction,
+    y_true=y_test,
+    sample_labels=test_sample_ids,
+    model_name="delta multi-fidelity GPR",
+    split="test",
+)
+component_summary = summarize_multifidelity_components(component_rows)
+```
+
+The per-sample report includes:
+
+- `scaled_low_fidelity_pred`: \(\rho y_L(\mathbf{x})\),
+- `intercept`: fitted fidelity-map offset,
+- `correction_pred`: \(\delta(\mathbf{x})\),
+- `reconstructed_y_pred`: sum of the reported components,
+- `component_residual`: difference between `y_pred` and the reconstructed sum,
+- variance fractions from the scaled low-fidelity and correction uncertainties
+  when standard deviations are available.
+
+For learning-curve outputs, pass `lc_result.predictions` directly:
+
+```python
+component_summary = summarize_multifidelity_components(
+    lc_result.predictions,
+    group_by=("model", "split", "train_size_percent"),
+)
+```
+
 ## Low-Fidelity Uncertainty
 
 When an internal low-fidelity surrogate is used, total uncertainty can include
@@ -164,8 +208,9 @@ Implemented:
 - GPR correction model for \(\delta(\mathbf{x})\),
 - optional internal low-fidelity GPR surrogate,
 - estimator API and lower-level function,
-- component-wise prediction output.
-- high-fidelity learning-curve validation helper with component predictions.
+- component-wise prediction output,
+- high-fidelity learning-curve validation helper with component predictions,
+- reporting helpers for low-fidelity and correction contributions.
 
 Planned later:
 

@@ -40,6 +40,8 @@ from matgpr import (
     impute_missing_values,
     summarize_missingness,
     summarize_numeric_columns,
+    decompose_multifidelity_prediction,
+    summarize_multifidelity_components,
     CompositionFeaturizer,
     MagpieCompositionFeaturizer,
     StructureFeaturizer,
@@ -1951,6 +1953,29 @@ For multi-fidelity GPR, use `multifidelity_learning_curve(...)` with
 `LearningCurveResult` shape as `learning_curve(...)`, plus fitted fidelity-map
 columns such as `rho` and `intercept` and component prediction columns when
 `store_predictions=True`.
+
+Use the reporting helpers to explain how much of each prediction comes from the
+scaled low-fidelity source versus the learned high-fidelity correction:
+
+```python
+from matgpr import decompose_multifidelity_prediction, summarize_multifidelity_components
+
+
+component_rows = decompose_multifidelity_prediction(
+    prediction,
+    y_true=y_test,
+    sample_labels=test_sample_ids,
+    model_name="delta multi-fidelity GPR",
+    split="test",
+)
+component_summary = summarize_multifidelity_components(component_rows)
+
+# For learning-curve predictions:
+learning_curve_component_summary = summarize_multifidelity_components(
+    lc_result.predictions,
+    group_by=("model", "split", "train_size_percent"),
+)
+```
 
 ### 10.2 Regression Metrics
 

@@ -213,7 +213,7 @@ file alongside any published benchmark results.
 | `matgpr.uncertainty` | `interval_coverage`, `calibration_curve`, `gaussian_nlpd`, `standardized_residuals`, `uncertainty_diagnostics` | Predictive uncertainty diagnostics |
 | `matgpr.pca` | `fit_pca`, `summarize_pca`, `transform_pca` | PCA fitting and transformation |
 | `matgpr.visualization` | `plot_parity`, `plot_learning_curve`, `plot_bo_benchmark_trace`, `plot_bo_regret_trace`, `plot_bo_campaign_progress`, `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`, `plot_distribution`, `plot_correlation_matrix`, `plot_pca_scree`, `plot_pca_scores` | Common model, BO, and data plots |
-| `matgpr.reporting` | `summarize_missingness`, `summarize_numeric_columns` | Quick dataframe reports |
+| `matgpr.reporting` | `summarize_missingness`, `summarize_numeric_columns`, `decompose_multifidelity_prediction`, `summarize_multifidelity_components` | Quick dataframe and model-component reports |
 | `matgpr.io_utils` | `save_artifact`, `load_artifact`, `log_experiment_result` | Model/artifact persistence and result logging |
 
 ## Physics-Informed GPR
