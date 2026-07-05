@@ -751,6 +751,58 @@ prediction table keeps an `observed` column so users can separate parity-plot
 rows from predictions made for unmeasured tasks. For a complete sparse
 workflow, see the [Sparse Multitask Walkthrough](sparse_multitask_walkthrough.md).
 
+### 5.5 Multi-Fidelity GPR
+
+Use `MultiFidelityGPRRegressor` when low-fidelity data, such as simulations or
+screening measurements, are available alongside scarce high-fidelity
+measurements. The first `matgpr` multi-fidelity model learns:
+
+```text
+y_high(x) = rho * y_low(x) + intercept + delta(x)
+```
+
+where `delta(x)` is a GPR correction trained on high-fidelity residuals.
+
+```python
+from matgpr import MultiFidelityGPRRegressor
+
+model = MultiFidelityGPRRegressor(
+    correction_kernel="matern",
+    training_iter=1000,
+    random_state=7,
+)
+
+model.fit(
+    X_high,
+    y_high,
+    low_fidelity=simulation_at_high_points,
+)
+
+prediction = model.predict_distribution(
+    X_test,
+    low_fidelity=simulation_at_test_points,
+    confidence_level=0.95,
+)
+```
+
+If low-fidelity values are not available at prediction points, fit an internal
+low-fidelity surrogate:
+
+```python
+model.fit(
+    X_high,
+    y_high,
+    X_low=X_simulation,
+    y_low=y_simulation,
+)
+
+prediction = model.predict_distribution(X_test, confidence_level=0.95)
+```
+
+Report validation metrics on held-out high-fidelity data and compare against a
+high-fidelity-only GPR baseline. See [Multi-Fidelity GPR](multifidelity_gpr.md)
+for assumptions and reporting guidance.
+
 ## 6. Physics-Aware Kernels
 
 Physics can also enter through the covariance function. The kernel controls

@@ -23,6 +23,8 @@ types, and class methods.
   observation noise with a residual-noise GP.
 - [Multitask GPR](multitask_gpr.md): correlated multi-output GPR for complete
   materials-property target matrices.
+- [Multi-Fidelity GPR](multifidelity_gpr.md): delta correction models for
+  low-/high-fidelity materials-property data.
 - [Sparse Multitask GPR](sparse_multitask_gpr.md): correlated multi-output GPR
   for incomplete target matrices with missing task observations.
 - [Physics Equation Templates](physics_equations.md): reusable Arrhenius,

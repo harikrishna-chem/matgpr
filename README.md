@@ -38,6 +38,8 @@ physics-informed mean functions and uncertainty-aware prediction.
 - Exact multitask GPR for complete or sparse multi-property materials datasets
   with learned inter-task covariance, shared/task-specific/known sparse noise,
   and scikit-learn-style wrappers.
+- Delta multi-fidelity GPR for simulation-plus-experiment workflows with a
+  learned low- to high-fidelity correction.
 - Scikit-learn-compatible estimators and featurizers for pipelines, grid
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
@@ -149,6 +151,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   guarantee.
 - `docs/multitask_gpr.md` explains correlated multitask GPR APIs for complete
   and sparse multi-property materials datasets.
+- `docs/multifidelity_gpr.md` explains delta multi-fidelity GPR for
+  simulation-plus-experiment workflows.
 - `docs/sparse_multitask_walkthrough.md` provides a compact sparse multitask
   workflow for incomplete multi-property target matrices.
 - `docs/sparse_multitask_noise_design.md` explains shared, task-specific, and

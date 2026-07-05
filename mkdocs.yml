@@ -60,6 +60,7 @@ nav:
   - Physics-Informed GPR: physics_informed_gpr.md
   - PI-GPR Guarantees: pi_gpr_guarantees.md
   - Multitask GPR: multitask_gpr.md
+  - Multi-Fidelity GPR: multifidelity_gpr.md
   - Sparse Multitask Walkthrough: sparse_multitask_walkthrough.md
   - Sparse Multitask Noise: sparse_multitask_noise_design.md
   - Fingerprinting Options: fingerprinting_options.md
@@ -77,6 +78,7 @@ nav:
       - Noise Models: api/noise_models.md
       - Heteroscedastic GPR: api/heteroscedastic_gpr.md
       - Multitask GPR: api/multitask_gpr.md
+      - Multi-Fidelity GPR: api/multifidelity_gpr.md
       - Sparse Multitask GPR: api/sparse_multitask_gpr.md
       - Physics Equation Templates: api/physics_equations.md
       - Physics-Informed GPR: api/gpytorch_gpr.md

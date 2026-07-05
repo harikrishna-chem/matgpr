@@ -124,6 +124,12 @@ from .multi_objective import (
     scalarize_objectives,
     select_pareto_front,
 )
+from .multifidelity_gpr import (
+    DeltaMultiFidelityGPRResult,
+    MultiFidelityGPRPrediction,
+    MultiFidelityGPRRegressor,
+    fit_delta_multifidelity_gpr,
+)
 from .multitask_gpr import (
     ExactMultitaskGPRModel,
     MultitaskGPyTorchPrediction,
@@ -315,6 +321,8 @@ __all__ = [
     "MissingValueReport",
     "MonotonicDerivativeConstraint",
     "MonotonicTrendConstraint",
+    "MultiFidelityGPRPrediction",
+    "MultiFidelityGPRRegressor",
     "MultiObjectiveBayesianOptimizationResult",
     "MultiObjectiveBoTorchSurrogate",
     "MultitaskGPRRegressor",
@@ -334,6 +342,7 @@ __all__ = [
     "DEFAULT_MAGPIE_PROPERTIES",
     "DEFAULT_MAGPIE_STATISTICS",
     "DEFAULT_STRUCTURE_FEATURES",
+    "DeltaMultiFidelityGPRResult",
     "ElementFractionKernel",
     "FINGERPRINT_CACHE_SCHEMA_VERSION",
     "FeatureNoiseModel",
@@ -420,6 +429,7 @@ __all__ = [
     "fingerprint_smiles",
     "fingerprint_cache_key",
     "fit_derivative_constrained_gpr",
+    "fit_delta_multifidelity_gpr",
     "fit_gpytorch_gpr",
     "fit_heteroscedastic_gpr",
     "fit_multitask_gpytorch_gpr",
