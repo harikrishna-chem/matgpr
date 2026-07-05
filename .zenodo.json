@@ -1,0 +1,35 @@
+{
+  "title": "matgpr: Physics-informed Gaussian Process Regression for materials informatics",
+  "upload_type": "software",
+  "description": "matgpr is a materials-informatics toolkit for Gaussian Process Regression workflows, including standard and physics-informed GPR, uncertainty-aware prediction, materials featurization, multitask and multi-fidelity modeling, and finite-pool Bayesian optimization for next-experiment selection.",
+  "creators": [
+    {
+      "name": "Sahu, Harikrishna"
+    }
+  ],
+  "license": "apache-2.0",
+  "access_right": "open",
+  "keywords": [
+    "materials informatics",
+    "Gaussian Process Regression",
+    "physics-informed machine learning",
+    "Bayesian optimization",
+    "uncertainty quantification",
+    "materials discovery"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/harikrishna-chem/matgpr",
+      "relation": "isSupplementTo",
+      "scheme": "url",
+      "resource_type": "software"
+    },
+    {
+      "identifier": "https://harikrishnasahu.com/matgpr/",
+      "relation": "isDocumentedBy",
+      "scheme": "url",
+      "resource_type": "publication-technicalnote"
+    }
+  ],
+  "notes": "For example notebooks and datasets, also cite the original literature sources listed in the example reports, dataset cards, and model cards."
+}

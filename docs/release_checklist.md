@@ -177,6 +177,7 @@ python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-
 Before the first DOI-backed release:
 
 - enable or confirm GitHub-Zenodo archiving for the repository,
+- keep `.zenodo.json` metadata current before tagging future releases,
 - confirm `CITATION.cff` is correct,
 - create the GitHub release from the final tag,
 - let Zenodo archive the release,
@@ -186,6 +187,20 @@ Before the first DOI-backed release:
 
 Once a DOI exists, tell users to cite the DOI for the exact release they used
 and the original papers for the example datasets.
+
+For GitHub-connected Zenodo releases:
+
+1. Log in to Zenodo with the GitHub account that can access
+   `harikrishna-chem/matgpr`.
+2. Open the Zenodo GitHub settings page, sync repositories if needed, and enable
+   archiving for `harikrishna-chem/matgpr`.
+3. Confirm that GitHub Release `v0.1.0` is archived or trigger the available
+   Zenodo sync/archive action for the release.
+4. If Zenodo cannot archive an already-published GitHub release, keep the
+   GitHub Release as the software release of record and create the DOI on the
+   next patch release after Zenodo is enabled.
+5. Record both the version DOI and concept DOI. Use the version DOI for exact
+   reproducibility and the concept DOI for the latest package line.
 
 ## PyPI Readiness
 
