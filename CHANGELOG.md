@@ -91,6 +91,8 @@ semantic-versioning conventions once the first public release is tagged.
   annotating candidate recommendations by synthesis, processing, safety, or
   other metadata limits.
 - Diversity-aware finite-pool batch selection for next-experiment campaigns.
+- Multi-fidelity observation data preparation with explicit fidelity order,
+  target fidelity, sample IDs, feature names, and known noise variances.
 
 ### Changed
 

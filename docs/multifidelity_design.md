@@ -102,7 +102,7 @@ as interchangeable targets.
 
 ## Data Representation
 
-The core data container should make fidelity explicit:
+The implemented data container makes fidelity explicit:
 
 ```python
 from matgpr import prepare_multifidelity_observations
@@ -118,7 +118,7 @@ observations = prepare_multifidelity_observations(
 )
 ```
 
-Proposed container:
+Implemented container:
 
 ```python
 @dataclass(frozen=True)
@@ -141,6 +141,11 @@ Design requirements:
 - support known per-observation noise later,
 - validate that every fidelity level has enough observations,
 - keep fidelity order explicit instead of relying on alphabetical labels.
+
+If `fidelity_order` is omitted, `matgpr` infers the order from first
+appearance in `fidelity`; explicit order is still recommended for publication
+workflows because labels such as `"low"`, `"high"`, `"DFT"`, and
+`"experiment"` do not encode a universal ordering.
 
 ## Proposed Public API
 
@@ -263,10 +268,10 @@ co-kriging predictions rather than replaced.
 
 ## Implementation Milestones
 
-1. Add `MultiFidelityObservationData` and
+1. Implemented: add `MultiFidelityObservationData` and
    `prepare_multifidelity_observations`.
-2. Add data-validation tests for nested and non-nested fidelity datasets.
-3. Add a two-level `CoKrigingGPRRegressor` with learned constant `rho`.
+2. Implemented: add data-validation tests for ordered fidelity datasets.
+3. Next: add a two-level `CoKrigingGPRRegressor` with learned constant `rho`.
 4. Add prediction output with target-fidelity mean, uncertainty, and component
    summaries.
 5. Add validation/reporting compatibility with existing learning-curve helpers.
@@ -274,16 +279,16 @@ co-kriging predictions rather than replaced.
 7. Add known-noise and per-fidelity learned-noise modes.
 8. Add BO integration targeting the highest fidelity.
 
-## First Coding Step
+## Next Coding Step
 
-The safest first coding step is the data layer:
+The next safest coding step is a minimal two-level co-kriging model skeleton:
 
-- create `MultiFidelityObservationData`,
-- implement `prepare_multifidelity_observations`,
-- validate `X`, `y`, `fidelity`, `fidelity_order`, `target_fidelity`, and
-  optional `noise_variance`,
-- expose per-fidelity observation counts,
-- add focused unit tests before touching GPyTorch model code.
+- accept `MultiFidelityObservationData` as the fitting input,
+- support exactly two ordered fidelities first,
+- learn one constant \(\rho\) between lower and target fidelity,
+- learn one low-fidelity latent kernel and one discrepancy kernel,
+- report per-fidelity noise assumptions clearly,
+- keep validation tests small before expanding to multi-level support.
 
-This gives the later co-kriging model a stable input contract and keeps the
-public API clean before the heavier modeling work begins.
+The current data layer gives this model a stable input contract and keeps the
+public API clean before heavier GPyTorch model code is added.

@@ -8,8 +8,14 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
+import pandas as pd
 
-from matgpr import MultiFidelityGPRRegressor, fit_delta_multifidelity_gpr
+from matgpr import (
+    MultiFidelityGPRRegressor,
+    MultiFidelityObservationData,
+    fit_delta_multifidelity_gpr,
+    prepare_multifidelity_observations,
+)
 from matgpr.multifidelity_gpr import DeltaMultiFidelityGPRResult, MultiFidelityGPRPrediction
 
 
@@ -25,6 +31,115 @@ def high_fidelity_function(x: np.ndarray) -> np.ndarray:
 
 
 class DeltaMultiFidelityGPRTests(unittest.TestCase):
+    def test_prepare_multifidelity_observations_preserves_metadata(self):
+        x = pd.DataFrame(
+            {
+                "density": [7.2, 7.4, 7.6, 7.8, 8.0],
+                "melting_point": [1200.0, 1250.0, 1300.0, 1350.0, 1400.0],
+            }
+        )
+        y = [0.8, 0.9, 1.3, 1.0, 1.5]
+        fidelity = ["simulation", "simulation", "experiment", "simulation", "experiment"]
+
+        observations = prepare_multifidelity_observations(
+            x,
+            y,
+            fidelity,
+            fidelity_order=("simulation", "experiment"),
+            target_fidelity="experiment",
+            sample_id=("mat-1", "mat-2", "mat-3", "mat-4", "mat-5"),
+            noise_variance=(0.02, 0.02, 0.05, 0.02, 0.05),
+        )
+
+        self.assertIsInstance(observations, MultiFidelityObservationData)
+        self.assertEqual(observations.X.shape, (5, 2))
+        self.assertEqual(observations.y.tolist(), y)
+        self.assertEqual(observations.feature_names, ("density", "melting_point"))
+        self.assertEqual(observations.fidelity_names, ("simulation", "experiment"))
+        self.assertEqual(observations.target_fidelity, "experiment")
+        self.assertEqual(observations.target_fidelity_index, 1)
+        self.assertEqual(observations.fidelity_index.tolist(), [0, 0, 1, 0, 1])
+        self.assertEqual(observations.fidelity_labels.tolist(), fidelity)
+        self.assertEqual(
+            observations.fidelity_observation_counts,
+            {"simulation": 3, "experiment": 2},
+        )
+        self.assertEqual(observations.rows_for_fidelity("experiment").tolist(), [2, 4])
+        self.assertEqual(observations.rows_for_fidelity(0).tolist(), [0, 1, 3])
+        self.assertEqual(observations.target_rows.tolist(), [2, 4])
+        self.assertEqual(
+            observations.sample_id.tolist(),
+            ["mat-1", "mat-2", "mat-3", "mat-4", "mat-5"],
+        )
+        self.assertTrue(
+            np.allclose(observations.noise_variance, [0.02, 0.02, 0.05, 0.02, 0.05])
+        )
+
+    def test_prepare_multifidelity_observations_can_infer_order(self):
+        observations = prepare_multifidelity_observations(
+            np.array([[0.0], [1.0], [2.0]]),
+            np.array([0.1, 0.4, 0.8]),
+            fidelity=["simulation", "experiment", "simulation"],
+        )
+
+        self.assertEqual(observations.fidelity_names, ("simulation", "experiment"))
+        self.assertEqual(observations.target_fidelity, "experiment")
+        self.assertEqual(observations.fidelity_index.tolist(), [0, 1, 0])
+
+    def test_prepare_multifidelity_observations_validation_errors_are_explicit(self):
+        x = np.array([[0.0], [1.0], [2.0]])
+        y = np.array([0.1, 0.2, 0.3])
+        fidelity = ["low", "high", "high"]
+
+        with self.assertRaisesRegex(ValueError, "same number"):
+            prepare_multifidelity_observations(x[:2], y, fidelity)
+
+        with self.assertRaisesRegex(ValueError, "not present in fidelity_order"):
+            prepare_multifidelity_observations(
+                x,
+                y,
+                fidelity,
+                fidelity_order=("low",),
+            )
+
+        with self.assertRaisesRegex(ValueError, "target_fidelity"):
+            prepare_multifidelity_observations(
+                x,
+                y,
+                fidelity,
+                fidelity_order=("low", "high"),
+                target_fidelity="experiment",
+            )
+
+        with self.assertRaisesRegex(ValueError, "low-count"):
+            prepare_multifidelity_observations(
+                x,
+                y,
+                fidelity,
+                fidelity_order=("low", "high"),
+                min_observations_per_fidelity=2,
+            )
+
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            prepare_multifidelity_observations(
+                x,
+                y,
+                fidelity,
+                noise_variance=[0.1, -0.1, 0.1],
+            )
+
+        with self.assertRaisesRegex(ValueError, "feature_names"):
+            prepare_multifidelity_observations(
+                x,
+                y,
+                fidelity,
+                feature_names=("only_one", "too_many"),
+            )
+
+        observations = prepare_multifidelity_observations(x, y, fidelity)
+        with self.assertRaisesRegex(ValueError, "Unknown fidelity"):
+            observations.rows_for_fidelity("missing")
+
     def test_fit_predict_with_supplied_low_fidelity_values(self):
         x_high = np.linspace(0.0, 1.0, 10).reshape(-1, 1)
         y_high = high_fidelity_function(x_high)

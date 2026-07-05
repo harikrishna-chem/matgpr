@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import NormalDist
 
@@ -13,10 +14,107 @@ from .gpytorch_gpr import GPyTorchGPRResult, fit_gpytorch_gpr
 
 __all__ = [
     "DeltaMultiFidelityGPRResult",
+    "MultiFidelityObservationData",
     "MultiFidelityGPRPrediction",
     "MultiFidelityGPRRegressor",
     "fit_delta_multifidelity_gpr",
+    "prepare_multifidelity_observations",
 ]
+
+
+@dataclass(frozen=True)
+class MultiFidelityObservationData:
+    """Validated observation table for ordered multi-fidelity datasets.
+
+    Attributes
+    ----------
+    X, y
+        Feature matrix and scalar target values for every observed row.
+    fidelity_index
+        Integer fidelity level for each row. The order is defined by
+        ``fidelity_names``.
+    fidelity_names
+        Ordered fidelity labels, usually from cheapest/lowest to target/highest
+        fidelity.
+    target_fidelity
+        Fidelity label used as the default decision target.
+    sample_id
+        Optional material/sample identifiers aligned with rows of ``X``.
+    noise_variance
+        Optional known per-observation noise variances aligned with rows of
+        ``X``.
+    feature_names
+        Optional descriptor names aligned with columns of ``X``.
+    """
+
+    X: np.ndarray
+    y: np.ndarray
+    fidelity_index: np.ndarray
+    fidelity_names: tuple[str, ...]
+    target_fidelity: str
+    sample_id: np.ndarray | None = None
+    noise_variance: np.ndarray | None = None
+    feature_names: tuple[str, ...] | None = None
+
+    @property
+    def n_samples(self) -> int:
+        """Number of observed fidelity rows."""
+        return int(self.X.shape[0])
+
+    @property
+    def n_features(self) -> int:
+        """Number of feature columns."""
+        return int(self.X.shape[1])
+
+    @property
+    def n_fidelities(self) -> int:
+        """Number of ordered fidelity levels."""
+        return len(self.fidelity_names)
+
+    @property
+    def target_fidelity_index(self) -> int:
+        """Integer index of the target fidelity."""
+        return self.fidelity_names.index(self.target_fidelity)
+
+    @property
+    def fidelity_labels(self) -> np.ndarray:
+        """Row-aligned string fidelity labels."""
+        return np.asarray(
+            [self.fidelity_names[index] for index in self.fidelity_index],
+            dtype=object,
+        )
+
+    @property
+    def fidelity_observation_counts(self) -> dict[str, int]:
+        """Observation counts keyed by fidelity label."""
+        return {
+            name: int(np.sum(self.fidelity_index == index))
+            for index, name in enumerate(self.fidelity_names)
+        }
+
+    @property
+    def target_rows(self) -> np.ndarray:
+        """Row indices belonging to the target fidelity."""
+        return self.rows_for_fidelity(self.target_fidelity)
+
+    def rows_for_fidelity(self, fidelity: str | int) -> np.ndarray:
+        """Return row indices for a fidelity label or integer index."""
+        fidelity_index = self._resolve_fidelity_index(fidelity)
+        return np.flatnonzero(self.fidelity_index == fidelity_index)
+
+    def _resolve_fidelity_index(self, fidelity: str | int) -> int:
+        if isinstance(fidelity, (int, np.integer)):
+            index = int(fidelity)
+            if 0 <= index < self.n_fidelities:
+                return index
+            raise ValueError(
+                f"fidelity index must be between 0 and {self.n_fidelities - 1}; got {index}"
+            )
+
+        label = str(fidelity)
+        if label not in self.fidelity_names:
+            raise ValueError(f"Unknown fidelity {label!r}; expected one of {self.fidelity_names}")
+        return self.fidelity_names.index(label)
 
 
 @dataclass(frozen=True)
@@ -86,6 +184,59 @@ class DeltaMultiFidelityGPRResult:
             include_observation_noise=include_observation_noise,
             include_low_fidelity_uncertainty=include_low_fidelity_uncertainty,
         )
+
+
+def prepare_multifidelity_observations(
+    X,
+    y,
+    fidelity,
+    *,
+    fidelity_order: Sequence[str] | None = None,
+    target_fidelity: str | None = None,
+    sample_id=None,
+    noise_variance=None,
+    feature_names: Sequence[str] | None = None,
+    min_observations_per_fidelity: int = 1,
+) -> MultiFidelityObservationData:
+    """Validate and encode row-wise observations from ordered fidelities.
+
+    ``fidelity_order`` should normally be supplied from low/cheap to
+    high/target fidelity. If omitted, the order is inferred from first
+    appearance in ``fidelity`` and the last level becomes the default target.
+    """
+    inferred_feature_names = _infer_feature_names(X)
+    X_array = _to_2d_numpy(X, "X")
+    y_array = _to_1d_numpy(y, "y")
+    if X_array.shape[0] != y_array.shape[0]:
+        raise ValueError("X and y must contain the same number of samples")
+
+    labels = _to_1d_fidelity_labels(fidelity, "fidelity")
+    if X_array.shape[0] != labels.shape[0]:
+        raise ValueError("X and fidelity must contain the same number of samples")
+
+    min_count = _validate_min_observations_per_fidelity(min_observations_per_fidelity)
+    fidelity_names = _resolve_fidelity_names(labels, fidelity_order, min_count)
+    target_fidelity_resolved = _resolve_target_fidelity(target_fidelity, fidelity_names)
+    index_by_name = {name: index for index, name in enumerate(fidelity_names)}
+    fidelity_index = np.asarray([index_by_name[label] for label in labels], dtype=int)
+
+    sample_id_array = _resolve_sample_id(sample_id, X_array.shape[0])
+    noise_variance_array = _resolve_noise_variance(noise_variance, X_array.shape[0])
+    feature_names_resolved = _resolve_feature_names(
+        feature_names if feature_names is not None else inferred_feature_names,
+        X_array.shape[1],
+    )
+
+    return MultiFidelityObservationData(
+        X=X_array.copy(),
+        y=y_array.astype(float, copy=True),
+        fidelity_index=fidelity_index,
+        fidelity_names=fidelity_names,
+        target_fidelity=target_fidelity_resolved,
+        sample_id=sample_id_array,
+        noise_variance=noise_variance_array,
+        feature_names=feature_names_resolved,
+    )
 
 
 def fit_delta_multifidelity_gpr(
@@ -459,6 +610,134 @@ def _fit_linear_fidelity_map(
         rho = float(np.dot(low_fidelity, high_fidelity) / np.dot(low_fidelity, low_fidelity))
         intercept = 0.0
     return float(rho), float(intercept)
+
+
+def _infer_feature_names(X) -> tuple[str, ...] | None:
+    columns = getattr(X, "columns", None)
+    if columns is None:
+        return None
+    return tuple(str(column) for column in columns)
+
+
+def _to_1d_fidelity_labels(values, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=object).reshape(-1)
+    if array.size == 0:
+        raise ValueError(f"{name} must contain at least one value")
+
+    labels: list[str] = []
+    for raw_value in array:
+        labels.append(_normalize_fidelity_label(raw_value, name))
+    return np.asarray(labels, dtype=object)
+
+
+def _resolve_fidelity_names(
+    labels: np.ndarray,
+    fidelity_order: Sequence[str] | None,
+    min_observations_per_fidelity: int,
+) -> tuple[str, ...]:
+    if fidelity_order is None:
+        fidelity_names = tuple(dict.fromkeys(labels.tolist()))
+    else:
+        fidelity_names = tuple(
+            _normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
+        )
+
+    if not fidelity_names:
+        raise ValueError("fidelity_order must contain at least one fidelity level")
+    if len(set(fidelity_names)) != len(fidelity_names):
+        raise ValueError("fidelity_order must contain unique fidelity labels")
+
+    observed = set(labels.tolist())
+    expected = set(fidelity_names)
+    unknown = sorted(observed - expected)
+    if unknown:
+        raise ValueError(
+            "fidelity contains labels not present in fidelity_order: "
+            f"{unknown}; expected one of {fidelity_names}"
+        )
+
+    low_count_levels = [
+        name
+        for name in fidelity_names
+        if int(np.sum(labels == name)) < min_observations_per_fidelity
+    ]
+    if low_count_levels:
+        raise ValueError(
+            "Each fidelity must have at least "
+            f"{min_observations_per_fidelity} observed value(s); low-count "
+            f"fidelity level(s): {low_count_levels}"
+        )
+    return fidelity_names
+
+
+def _resolve_target_fidelity(
+    target_fidelity: str | None,
+    fidelity_names: tuple[str, ...],
+) -> str:
+    target = (
+        fidelity_names[-1]
+        if target_fidelity is None
+        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+    )
+    if target not in fidelity_names:
+        raise ValueError(f"target_fidelity must be one of {fidelity_names}; got {target!r}")
+    return target
+
+
+def _normalize_fidelity_label(value, name: str) -> str:
+    if value is None:
+        raise ValueError(f"{name} must not contain missing labels")
+    label = str(value).strip()
+    if label == "" or label.lower() == "nan":
+        raise ValueError(f"{name} must not contain missing labels")
+    return label
+
+
+def _resolve_sample_id(sample_id, n_samples: int) -> np.ndarray | None:
+    if sample_id is None:
+        return None
+    sample_id_array = np.asarray(sample_id, dtype=object).reshape(-1)
+    if sample_id_array.shape[0] != n_samples:
+        raise ValueError(
+            f"sample_id must contain {n_samples} value(s); got {sample_id_array.shape[0]}"
+        )
+    return sample_id_array.copy()
+
+
+def _resolve_noise_variance(noise_variance, n_samples: int) -> np.ndarray | None:
+    if noise_variance is None:
+        return None
+    noise_array = _to_1d_numpy(noise_variance, "noise_variance")
+    if noise_array.shape[0] != n_samples:
+        raise ValueError(
+            f"noise_variance must contain {n_samples} value(s); got {noise_array.shape[0]}"
+        )
+    if np.any(noise_array < 0.0):
+        raise ValueError("noise_variance must contain non-negative values")
+    return noise_array.astype(float, copy=True)
+
+
+def _resolve_feature_names(
+    feature_names: Sequence[str] | None,
+    n_features: int,
+) -> tuple[str, ...] | None:
+    if feature_names is None:
+        return None
+    resolved = tuple(str(name) for name in feature_names)
+    if len(resolved) != n_features:
+        raise ValueError(f"feature_names must contain {n_features} value(s); got {len(resolved)}")
+    if len(set(resolved)) != len(resolved):
+        raise ValueError("feature_names must be unique")
+    return resolved
+
+
+def _validate_min_observations_per_fidelity(value: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise ValueError("min_observations_per_fidelity must be a positive integer")
+    min_count = int(value)
+    if min_count < 1:
+        raise ValueError("min_observations_per_fidelity must be at least 1")
+    return min_count
 
 
 def _to_2d_numpy(values, name: str) -> np.ndarray:

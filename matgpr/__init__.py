@@ -126,9 +126,11 @@ from .multi_objective import (
 )
 from .multifidelity_gpr import (
     DeltaMultiFidelityGPRResult,
+    MultiFidelityObservationData,
     MultiFidelityGPRPrediction,
     MultiFidelityGPRRegressor,
     fit_delta_multifidelity_gpr,
+    prepare_multifidelity_observations,
 )
 from .multitask_gpr import (
     ExactMultitaskGPRModel,
@@ -329,6 +331,7 @@ __all__ = [
     "MonotonicTrendConstraint",
     "MultiFidelityGPRPrediction",
     "MultiFidelityGPRRegressor",
+    "MultiFidelityObservationData",
     "MultiObjectiveBayesianOptimizationResult",
     "MultiObjectiveBoTorchSurrogate",
     "MultitaskGPRRegressor",
@@ -487,6 +490,7 @@ __all__ = [
     "predict_multitask_gpytorch_gpr",
     "predict_sparse_multitask_gpytorch_gpr",
     "prepare_sparse_multitask_observations",
+    "prepare_multifidelity_observations",
     "power_law_equation",
     "rank_discrete_candidates",
     "rank_multi_objective_discrete_candidates",

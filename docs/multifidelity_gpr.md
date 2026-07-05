@@ -82,6 +82,41 @@ The prediction object exposes:
 - `correction_mean`, `correction_std`: learned high-fidelity correction,
 - `rho`, `intercept`: fitted linear fidelity mapping.
 
+## Observation Data Preparation
+
+For future joint co-kriging and multi-level fidelity models, use
+`prepare_multifidelity_observations` to validate row-wise fidelity data before
+modeling:
+
+```python
+from matgpr import prepare_multifidelity_observations
+
+
+observations = prepare_multifidelity_observations(
+    X=X_all,
+    y=y_all,
+    fidelity=fidelity_labels,
+    fidelity_order=("simulation", "experiment"),
+    target_fidelity="experiment",
+    sample_id=material_ids,
+    noise_variance=known_noise_variance,
+)
+```
+
+The returned `MultiFidelityObservationData` stores:
+
+- numeric `X` and `y` rows,
+- integer `fidelity_index` values aligned with `fidelity_names`,
+- the target fidelity and per-fidelity observation counts,
+- optional sample identifiers, known noise variances, and feature names,
+- helper row selections such as `rows_for_fidelity("experiment")`.
+
+This preparation layer supports non-nested datasets where high-fidelity
+materials are not necessarily a subset of low-fidelity materials. The current
+delta model still uses `X_high`, `y_high`, and low-fidelity arrays directly;
+the observation container is the stable input contract for the planned joint
+co-kriging implementation.
+
 ## High-Fidelity Learning Curves
 
 Use `multifidelity_learning_curve` to test whether low-fidelity information
@@ -207,6 +242,7 @@ Implemented:
 - learned \(\rho\) and intercept from high-fidelity training pairs,
 - GPR correction model for \(\delta(\mathbf{x})\),
 - optional internal low-fidelity GPR surrogate,
+- multi-fidelity observation data preparation for ordered fidelity datasets,
 - estimator API and lower-level function,
 - component-wise prediction output,
 - high-fidelity learning-curve validation helper with component predictions,
