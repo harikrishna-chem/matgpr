@@ -96,6 +96,9 @@ semantic-versioning conventions once the first public release is tagged.
 - Initial two-level autoregressive co-kriging GPR with a learned constant
   `rho`, shared learned noise, lower-level function, estimator wrapper, tests,
   and documentation.
+- Co-kriging component summaries for low-fidelity and discrepancy
+  contributions, including reporting compatibility with existing
+  multi-fidelity component tables.
 
 ### Changed
 

@@ -2004,7 +2004,8 @@ columns such as `rho` and `intercept` and component prediction columns when
 `store_predictions=True`.
 
 Use the reporting helpers to explain how much of each prediction comes from the
-scaled low-fidelity source versus the learned high-fidelity correction:
+scaled low-fidelity source versus the learned high-fidelity correction or
+co-kriging discrepancy:
 
 ```python
 from matgpr import decompose_multifidelity_prediction, summarize_multifidelity_components
@@ -2025,6 +2026,11 @@ learning_curve_component_summary = summarize_multifidelity_components(
     group_by=("model", "split", "train_size_percent"),
 )
 ```
+
+For two-level co-kriging predictions, the same helpers preserve
+`scaled_low_fidelity_pred` and `discrepancy_pred`. The `correction_pred` column
+is also populated from `discrepancy_pred` so existing summary tables work for
+both delta and co-kriging workflows.
 
 ### 10.2 Regression Metrics
 

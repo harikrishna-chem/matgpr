@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from matgpr import (
+    CoKrigingGPRPrediction,
     MultiFidelityGPRPrediction,
     decompose_multifidelity_prediction,
     summarize_multifidelity_components,
@@ -95,6 +96,35 @@ class MultiFidelityReportingTests(unittest.TestCase):
         self.assertEqual(summary.loc[0, "n_samples"], 2)
         self.assertAlmostEqual(summary.loc[0, "low_fidelity_pred_mean"], 1.25)
         self.assertAlmostEqual(summary.loc[0, "correction_pred_mean"], 0.85)
+
+    def test_decompose_cokriging_prediction_preserves_component_contributions(self):
+        scaled_low = np.array([1.2, 1.4])
+        discrepancy = np.array([0.3, 0.5])
+        prediction = CoKrigingGPRPrediction(
+            mean=scaled_low + discrepancy,
+            std=np.array([0.4, 0.5]),
+            low_fidelity_mean=np.array([2.0, 2.4]),
+            low_fidelity_std=np.array([0.2, 0.3]),
+            scaled_low_fidelity_mean=scaled_low,
+            scaled_low_fidelity_std=np.array([0.12, 0.18]),
+            discrepancy_mean=discrepancy,
+            discrepancy_std=np.array([0.25, 0.30]),
+            fidelity="experiment",
+            rho=0.6,
+        )
+
+        frame = decompose_multifidelity_prediction(prediction, model_name="cokriging")
+        summary = summarize_multifidelity_components(frame)
+
+        self.assertEqual(set(frame["model"]), {"cokriging"})
+        np.testing.assert_allclose(frame["scaled_low_fidelity_pred"], scaled_low)
+        np.testing.assert_allclose(frame["discrepancy_pred"], discrepancy)
+        np.testing.assert_allclose(frame["correction_pred"], discrepancy)
+        np.testing.assert_allclose(frame["reconstructed_y_pred"], prediction.mean)
+        np.testing.assert_allclose(frame["component_residual"], np.zeros(2), atol=1e-12)
+        self.assertIn("discrepancy_variance_fraction", frame.columns)
+        self.assertIn("mean_abs_discrepancy_pred", summary.columns)
+        self.assertAlmostEqual(summary.loc[0, "discrepancy_pred_mean"], 0.4)
 
     def test_reporting_errors_are_explicit(self):
         prediction = MultiFidelityGPRPrediction(mean=np.array([1.0, 2.0]))

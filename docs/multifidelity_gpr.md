@@ -159,8 +159,8 @@ Current limits:
 - exactly two fidelity levels,
 - one shared learned Gaussian observation-noise term,
 - no known-noise or per-fidelity noise mode yet,
-- prediction reports one fidelity at a time; component summaries are planned
-  next.
+- prediction reports one fidelity at a time; target-fidelity predictions expose
+  low-fidelity and discrepancy components for reporting.
 
 ## High-Fidelity Learning Curves
 
@@ -229,7 +229,7 @@ component_rows = decompose_multifidelity_prediction(
 component_summary = summarize_multifidelity_components(component_rows)
 ```
 
-The per-sample report includes:
+For delta multi-fidelity GPR, the per-sample report includes:
 
 - `scaled_low_fidelity_pred`: \(\rho y_L(\mathbf{x})\),
 - `intercept`: fitted fidelity-map offset,
@@ -238,6 +238,21 @@ The per-sample report includes:
 - `component_residual`: difference between `y_pred` and the reconstructed sum,
 - variance fractions from the scaled low-fidelity and correction uncertainties
   when standard deviations are available.
+
+For two-level co-kriging target-fidelity predictions, the report includes:
+
+- `low_fidelity_pred`: posterior mean of \(f_L(\mathbf{x})\) in original
+  target units,
+- `scaled_low_fidelity_pred`: scaled low-fidelity latent contribution expressed
+  in target-prediction units,
+- `discrepancy_pred`: posterior mean of the residual target contribution,
+- `correction_pred`: an alias of `discrepancy_pred` so existing summaries work,
+- `reconstructed_y_pred`: `scaled_low_fidelity_pred + discrepancy_pred`.
+
+Co-kriging component standard deviations are latent posterior marginals from
+the joint low/target posterior. If `y_std` includes observation noise, variance
+fractions compare latent component uncertainty against the reported predictive
+uncertainty and do not need to sum to one.
 
 For learning-curve outputs, pass `lc_result.predictions` directly:
 
@@ -291,7 +306,7 @@ Implemented:
 - optional internal low-fidelity GPR surrogate,
 - multi-fidelity observation data preparation for ordered fidelity datasets,
 - two-level autoregressive co-kriging GPR with learned constant \(\rho\),
-  shared learned noise, and target-fidelity prediction,
+  shared learned noise, target-fidelity prediction, and component summaries,
 - estimator API and lower-level function,
 - component-wise prediction output,
 - high-fidelity learning-curve validation helper with component predictions,

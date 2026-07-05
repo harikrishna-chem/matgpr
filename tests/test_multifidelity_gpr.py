@@ -75,8 +75,23 @@ class MultiFidelityGPRTests(unittest.TestCase):
         self.assertEqual(prediction.mean.shape, (3,))
         self.assertEqual(prediction.std.shape, (3,))
         self.assertEqual(prediction.lower.shape, (3,))
+        self.assertEqual(prediction.low_fidelity_mean.shape, (3,))
+        self.assertEqual(prediction.scaled_low_fidelity_mean.shape, (3,))
+        self.assertEqual(prediction.discrepancy_mean.shape, (3,))
+        np.testing.assert_allclose(
+            prediction.scaled_low_fidelity_mean + prediction.discrepancy_mean,
+            prediction.mean,
+            atol=1e-8,
+        )
+        self.assertEqual(prediction.low_fidelity_std.shape, (3,))
+        self.assertEqual(prediction.scaled_low_fidelity_std.shape, (3,))
+        self.assertEqual(prediction.discrepancy_std.shape, (3,))
+        self.assertTrue(np.all(prediction.discrepancy_std >= 0.0))
         self.assertEqual(low_prediction.fidelity, "simulation")
         self.assertEqual(low_prediction.mean.shape, (3,))
+        self.assertEqual(low_prediction.low_fidelity_mean.shape, (3,))
+        self.assertIsNone(low_prediction.scaled_low_fidelity_mean)
+        self.assertIsNone(low_prediction.discrepancy_mean)
 
     def test_cokriging_estimator_fit_predict_and_score(self):
         x_low = np.linspace(0.0, 1.0, 10).reshape(-1, 1)
@@ -107,6 +122,11 @@ class MultiFidelityGPRTests(unittest.TestCase):
         self.assertTrue(np.isfinite(estimator.rho_))
         self.assertEqual(prediction.mean.shape, (2,))
         self.assertEqual(prediction.upper.shape, (2,))
+        np.testing.assert_allclose(
+            prediction.scaled_low_fidelity_mean + prediction.discrepancy_mean,
+            prediction.mean,
+            atol=1e-8,
+        )
         self.assertEqual(mean.shape, (2,))
         self.assertEqual(std.shape, (2,))
         self.assertTrue(np.isfinite(score))

@@ -168,6 +168,12 @@ class CoKrigingGPRPrediction:
     std: np.ndarray | None = None
     lower: np.ndarray | None = None
     upper: np.ndarray | None = None
+    low_fidelity_mean: np.ndarray | None = None
+    low_fidelity_std: np.ndarray | None = None
+    scaled_low_fidelity_mean: np.ndarray | None = None
+    scaled_low_fidelity_std: np.ndarray | None = None
+    discrepancy_mean: np.ndarray | None = None
+    discrepancy_std: np.ndarray | None = None
     fidelity: str = ""
     rho: float = 1.0
 
@@ -1092,14 +1098,156 @@ def _predict_cokriging_gpr(
         lower = mean_array - z_value * std_array
         upper = mean_array + z_value * std_array
 
+    components = _predict_cokriging_components(
+        result,
+        test_x,
+        fidelity_index=fidelity_index,
+        return_std=return_std or confidence_level is not None,
+    )
+
     return CoKrigingGPRPrediction(
         mean=mean_array,
         std=std_array,
         lower=lower,
         upper=upper,
+        low_fidelity_mean=components["low_fidelity_mean"],
+        low_fidelity_std=components["low_fidelity_std"],
+        scaled_low_fidelity_mean=components["scaled_low_fidelity_mean"],
+        scaled_low_fidelity_std=components["scaled_low_fidelity_std"],
+        discrepancy_mean=components["discrepancy_mean"],
+        discrepancy_std=components["discrepancy_std"],
         fidelity=fidelity_label,
         rho=float(result.model.rho.detach().cpu().item()),
     )
+
+
+def _predict_cokriging_components(
+    result: CoKrigingGPRResult,
+    test_x: torch.Tensor,
+    *,
+    fidelity_index: int,
+    return_std: bool,
+) -> dict[str, np.ndarray | None]:
+    if fidelity_index == result.target_fidelity_index:
+        return _predict_cokriging_target_components(result, test_x, return_std=return_std)
+    if fidelity_index == result.low_fidelity_index:
+        return _predict_cokriging_low_components(result, test_x, return_std=return_std)
+    return _empty_cokriging_components()
+
+
+def _predict_cokriging_target_components(
+    result: CoKrigingGPRResult,
+    test_x: torch.Tensor,
+    *,
+    return_std: bool,
+) -> dict[str, np.ndarray | None]:
+    n_samples = int(test_x.shape[0])
+    low_indices = torch.full(
+        (n_samples,),
+        result.low_fidelity_index,
+        dtype=torch.long,
+        device=result.device,
+    )
+    target_indices = torch.full(
+        (n_samples,),
+        result.target_fidelity_index,
+        dtype=torch.long,
+        device=result.device,
+    )
+    component_x = torch.cat([test_x, test_x], dim=0)
+    component_indices = torch.cat([low_indices, target_indices], dim=0)
+    target_mean, target_std = _cokriging_target_transform(result)
+    rho = result.model.rho.detach().to(dtype=test_x.dtype, device=test_x.device)
+
+    with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        latent_distribution = result.model(component_x, component_indices)
+        latent_mean = latent_distribution.mean
+        low_mean = latent_mean[:n_samples]
+        high_mean = latent_mean[n_samples:]
+        discrepancy_mean = high_mean - rho * low_mean
+
+        low_std = None
+        scaled_low_std = None
+        discrepancy_std = None
+        if return_std:
+            covariance = latent_distribution.covariance_matrix
+            low_variance = covariance.diag()[:n_samples].clamp_min(0.0)
+            high_variance = covariance.diag()[n_samples:].clamp_min(0.0)
+            paired_covariance = covariance[
+                torch.arange(n_samples, device=test_x.device) + n_samples,
+                torch.arange(n_samples, device=test_x.device),
+            ]
+            discrepancy_variance = (
+                high_variance + rho.pow(2) * low_variance - 2.0 * rho * paired_covariance
+            ).clamp_min(0.0)
+            low_std = torch.sqrt(low_variance) * target_std
+            scaled_low_std = torch.abs(rho) * torch.sqrt(low_variance) * target_std
+            discrepancy_std = torch.sqrt(discrepancy_variance) * target_std
+
+    low_mean_original = low_mean * target_std + target_mean
+    scaled_low_mean = rho * low_mean * target_std
+    discrepancy_mean_original = discrepancy_mean * target_std + target_mean
+
+    return {
+        "low_fidelity_mean": _tensor_to_numpy(low_mean_original),
+        "low_fidelity_std": _optional_tensor_to_numpy(low_std),
+        "scaled_low_fidelity_mean": _tensor_to_numpy(scaled_low_mean),
+        "scaled_low_fidelity_std": _optional_tensor_to_numpy(scaled_low_std),
+        "discrepancy_mean": _tensor_to_numpy(discrepancy_mean_original),
+        "discrepancy_std": _optional_tensor_to_numpy(discrepancy_std),
+    }
+
+
+def _predict_cokriging_low_components(
+    result: CoKrigingGPRResult,
+    test_x: torch.Tensor,
+    *,
+    return_std: bool,
+) -> dict[str, np.ndarray | None]:
+    low_indices = torch.full(
+        (test_x.shape[0],),
+        result.low_fidelity_index,
+        dtype=torch.long,
+        device=result.device,
+    )
+    target_mean, target_std = _cokriging_target_transform(result)
+
+    with torch.no_grad(), gpytorch.settings.fast_pred_var():
+        latent_distribution = result.model(test_x, low_indices)
+        low_mean = latent_distribution.mean
+        low_std = latent_distribution.stddev * target_std if return_std else None
+
+    components = _empty_cokriging_components()
+    components["low_fidelity_mean"] = _tensor_to_numpy(low_mean * target_std + target_mean)
+    components["low_fidelity_std"] = _optional_tensor_to_numpy(low_std)
+    return components
+
+
+def _empty_cokriging_components() -> dict[str, np.ndarray | None]:
+    return {
+        "low_fidelity_mean": None,
+        "low_fidelity_std": None,
+        "scaled_low_fidelity_mean": None,
+        "scaled_low_fidelity_std": None,
+        "discrepancy_mean": None,
+        "discrepancy_std": None,
+    }
+
+
+def _cokriging_target_transform(result: CoKrigingGPRResult) -> tuple[torch.Tensor, torch.Tensor]:
+    target_mean = result.model.target_mean.to(dtype=result.dtype, device=result.device)
+    target_std = result.model.target_std.to(dtype=result.dtype, device=result.device)
+    return target_mean, target_std
+
+
+def _tensor_to_numpy(value: torch.Tensor) -> np.ndarray:
+    return value.detach().cpu().numpy()
+
+
+def _optional_tensor_to_numpy(value: torch.Tensor | None) -> np.ndarray | None:
+    if value is None:
+        return None
+    return _tensor_to_numpy(value)
 
 
 def _resolve_prediction_low_fidelity(

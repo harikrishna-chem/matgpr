@@ -87,8 +87,12 @@ def decompose_multifidelity_prediction(
         ("upper", "y_upper"),
         ("low_fidelity_mean", "low_fidelity_pred"),
         ("low_fidelity_std", "low_fidelity_std"),
+        ("scaled_low_fidelity_mean", "scaled_low_fidelity_pred"),
+        ("scaled_low_fidelity_std", "scaled_low_fidelity_std"),
         ("correction_mean", "correction_pred"),
         ("correction_std", "correction_std"),
+        ("discrepancy_mean", "discrepancy_pred"),
+        ("discrepancy_std", "discrepancy_std"),
     ):
         values = _optional_prediction_attribute(prediction, attribute)
         if values is not None:
@@ -137,18 +141,23 @@ def summarize_multifidelity_components(
             "low_fidelity_pred",
             "scaled_low_fidelity_pred",
             "correction_pred",
+            "discrepancy_pred",
             "reconstructed_y_pred",
             "y_std",
             "low_fidelity_std",
             "scaled_low_fidelity_std",
             "correction_std",
+            "discrepancy_std",
             "low_fidelity_variance_fraction",
             "correction_variance_fraction",
+            "discrepancy_variance_fraction",
         ):
             _add_numeric_column_summary(row, group, column)
 
         if "correction_pred" in group:
             row["mean_abs_correction_pred"] = _finite_abs_mean(group["correction_pred"])
+        if "discrepancy_pred" in group:
+            row["mean_abs_discrepancy_pred"] = _finite_abs_mean(group["discrepancy_pred"])
         if "scaled_low_fidelity_pred" in group:
             row["mean_abs_scaled_low_fidelity_pred"] = _finite_abs_mean(
                 group["scaled_low_fidelity_pred"]
@@ -180,24 +189,35 @@ def _with_multifidelity_derived_columns(frame: pd.DataFrame) -> pd.DataFrame:
     _copy_alias(frame, "upper", "y_upper")
     _copy_alias(frame, "low_fidelity_mean", "low_fidelity_pred")
     _copy_alias(frame, "correction_mean", "correction_pred")
+    _copy_alias(frame, "scaled_low_fidelity_mean", "scaled_low_fidelity_pred")
+    _copy_alias(frame, "discrepancy_mean", "discrepancy_pred")
+    if "correction_pred" not in frame and "discrepancy_pred" in frame:
+        frame["correction_pred"] = frame["discrepancy_pred"]
+    if "correction_std" not in frame and "discrepancy_std" in frame:
+        frame["correction_std"] = frame["discrepancy_std"]
 
     if {"y_pred", "y_true"}.issubset(frame.columns):
         frame["signed_error"] = _numeric_series(frame["y_pred"]) - _numeric_series(frame["y_true"])
         frame["absolute_error"] = frame["signed_error"].abs()
 
-    if {"low_fidelity_pred", "rho"}.issubset(frame.columns):
+    if "scaled_low_fidelity_pred" not in frame and {"low_fidelity_pred", "rho"}.issubset(
+        frame.columns
+    ):
         frame["scaled_low_fidelity_pred"] = _numeric_series(frame["rho"]) * _numeric_series(
             frame["low_fidelity_pred"]
         )
-    if {"low_fidelity_std", "rho"}.issubset(frame.columns):
+    if "scaled_low_fidelity_std" not in frame and {"low_fidelity_std", "rho"}.issubset(
+        frame.columns
+    ):
         frame["scaled_low_fidelity_std"] = _numeric_series(frame["rho"]).abs() * _numeric_series(
             frame["low_fidelity_std"]
         )
 
-    if {"scaled_low_fidelity_pred", "intercept", "correction_pred"}.issubset(frame.columns):
+    if {"scaled_low_fidelity_pred", "correction_pred"}.issubset(frame.columns):
+        intercept = _numeric_series(frame["intercept"]) if "intercept" in frame else 0.0
         frame["reconstructed_y_pred"] = (
             _numeric_series(frame["scaled_low_fidelity_pred"])
-            + _numeric_series(frame["intercept"])
+            + intercept
             + _numeric_series(frame["correction_pred"])
         )
     if {"y_pred", "reconstructed_y_pred"}.issubset(frame.columns):
@@ -211,6 +231,8 @@ def _with_multifidelity_derived_columns(frame: pd.DataFrame) -> pd.DataFrame:
         ) ** 2
     if "correction_std" in frame:
         frame["correction_variance_contribution"] = _numeric_series(frame["correction_std"]) ** 2
+    if "discrepancy_std" in frame:
+        frame["discrepancy_variance_contribution"] = _numeric_series(frame["discrepancy_std"]) ** 2
     if "y_std" in frame:
         total_variance = _numeric_series(frame["y_std"]) ** 2
         frame["total_variance"] = total_variance
@@ -224,6 +246,12 @@ def _with_multifidelity_derived_columns(frame: pd.DataFrame) -> pd.DataFrame:
             frame,
             "correction_variance_contribution",
             "correction_variance_fraction",
+            total_variance,
+        )
+        _add_variance_fraction(
+            frame,
+            "discrepancy_variance_contribution",
+            "discrepancy_variance_fraction",
             total_variance,
         )
     return frame

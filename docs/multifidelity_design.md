@@ -273,25 +273,26 @@ co-kriging predictions rather than replaced.
 2. Implemented: add data-validation tests for ordered fidelity datasets.
 3. Implemented: add a two-level `CoKrigingGPRRegressor` with learned constant
    `rho`.
-4. Next: add prediction component summaries for low-fidelity and discrepancy
-   contributions.
-5. Add validation/reporting compatibility with existing learning-curve helpers.
+4. Implemented: add prediction component summaries for low-fidelity and
+   discrepancy contributions.
+5. Next: add validation/reporting compatibility with existing learning-curve
+   helpers.
 6. Add multi-level autoregressive support for \(L > 1\).
 7. Add known-noise and per-fidelity learned-noise modes.
 8. Add BO integration targeting the highest fidelity.
 
 ## Next Coding Step
 
-The next safest coding step is component reporting for the two-level
+The next safest coding step is validation compatibility for the two-level
 co-kriging model:
 
-- return low-fidelity posterior means at target prediction points,
-- report target minus scaled-low-fidelity discrepancy means,
-- clarify which component uncertainties are exact posterior marginals versus
-  derived summaries,
-- extend `decompose_multifidelity_prediction` without breaking delta-model
-  reports,
-- add validation tests before extending to multi-level support.
+- extend train/test validation helpers to accept row-wise fidelity labels,
+- design a learning-curve protocol where the x-axis is target-fidelity training
+  size while lower-fidelity observations remain available,
+- store co-kriging component predictions in report-ready tables,
+- compare against high-fidelity-only GPR and the delta multi-fidelity model,
+- keep multi-level and per-fidelity-noise support as separate later steps.
 
-The current data layer and two-level model give this reporting work a stable
-input contract before multi-level or per-fidelity-noise support is added.
+The current data layer, two-level model, and component summaries give this
+validation work a stable reporting contract before multi-level or
+per-fidelity-noise support is added.
