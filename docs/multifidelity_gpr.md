@@ -218,3 +218,6 @@ Planned later:
 - more than two fidelity levels,
 - fidelity/source-specific known noise,
 - Bayesian optimization acquisition functions targeting high-fidelity outcomes.
+
+See [Co-Kriging And Multi-Level Fidelity Design](multifidelity_design.md) for
+the planned joint co-kriging and multi-level fidelity API.

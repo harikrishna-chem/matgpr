@@ -153,6 +153,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   and sparse multi-property materials datasets.
 - `docs/multifidelity_gpr.md` explains delta multi-fidelity GPR for
   simulation-plus-experiment workflows.
+- `docs/multifidelity_design.md` records the planned co-kriging and
+  multi-level fidelity model design.
 - `docs/sparse_multitask_walkthrough.md` provides a compact sparse multitask
   workflow for incomplete multi-property target matrices.
 - `docs/sparse_multitask_noise_design.md` explains shared, task-specific, and

@@ -61,6 +61,7 @@ nav:
   - PI-GPR Guarantees: pi_gpr_guarantees.md
   - Multitask GPR: multitask_gpr.md
   - Multi-Fidelity GPR: multifidelity_gpr.md
+  - Multi-Fidelity Design: multifidelity_design.md
   - Sparse Multitask Walkthrough: sparse_multitask_walkthrough.md
   - Sparse Multitask Noise: sparse_multitask_noise_design.md
   - Fingerprinting Options: fingerprinting_options.md
