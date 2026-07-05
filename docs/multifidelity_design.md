@@ -277,7 +277,7 @@ co-kriging predictions rather than replaced.
    discrepancy contributions.
 5. Implemented: add target-fidelity train/test validation for row-wise
    co-kriging datasets, including component-rich prediction tables.
-6. Next: add target-fidelity learning-curve compatibility for row-wise
+6. Implemented: add target-fidelity learning-curve compatibility for row-wise
    co-kriging datasets.
 7. Add multi-level autoregressive support for \(L > 1\).
 8. Add known-noise and per-fidelity learned-noise modes.
@@ -285,15 +285,14 @@ co-kriging predictions rather than replaced.
 
 ## Next Coding Step
 
-The next safest coding step is learning-curve compatibility for the two-level
-co-kriging model:
+The next safest coding step is release-facing polish for multi-fidelity and
+co-kriging workflows:
 
-- design a learning-curve protocol where the x-axis is target-fidelity training
-  size while lower-fidelity observations remain available,
-- store co-kriging component predictions in report-ready tables,
 - compare against high-fidelity-only GPR and the delta multi-fidelity model,
+- add benchmark-ready narrative guidance for when co-kriging is appropriate,
+- keep examples clear about target-fidelity train/test protocol,
 - keep multi-level and per-fidelity-noise support as separate later steps.
 
-The current data layer, two-level model, and component summaries give this
-validation work a stable reporting contract before multi-level or
-per-fidelity-noise support is added.
+The current data layer, two-level model, component summaries, and
+target-fidelity validation helpers give this workflow a stable reporting
+contract before multi-level or per-fidelity-noise support is added.

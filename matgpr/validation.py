@@ -20,6 +20,7 @@ __all__ = [
     "SparseMultitaskTrainTestValidationResult",
     "MultitaskTrainTestValidationResult",
     "TrainTestValidationResult",
+    "cokriging_learning_curve",
     "evaluate_cokriging_train_test_split",
     "cross_validate_regressor",
     "evaluate_multitask_train_test_split",
@@ -411,13 +412,11 @@ def evaluate_cokriging_train_test_split(
         target_fidelity=target_name,
     )
 
-    lower_mask = fidelity_labels != target_name
-    lower_fidelity_indices = np.flatnonzero(lower_mask)
-    if lower_fidelity_indices.size == 0:
-        raise ValueError("Co-kriging validation requires at least one lower-fidelity row")
-    fit_mask = lower_mask.copy()
-    fit_mask[train_indices] = True
-    fit_indices = np.flatnonzero(fit_mask)
+    fit_indices, lower_fidelity_indices = _cokriging_fit_indices(
+        fidelity_labels,
+        target_fidelity=target_name,
+        train_indices=train_indices,
+    )
 
     result = _fit_evaluate_cokriging_indices(
         estimator,
@@ -1226,6 +1225,165 @@ def multifidelity_learning_curve(
                         "n_test": len(test_indices),
                         "rho": result["rho"],
                         "intercept": result["intercept"],
+                        **result["metrics"],
+                    }
+                )
+                if store_predictions:
+                    prediction_tables.append(result["predictions"])
+
+    predictions = _concat_prediction_tables(prediction_tables) if store_predictions else None
+    return LearningCurveResult(
+        model_name=", ".join(name for name, _ in model_specs),
+        runs=pd.DataFrame(metric_rows),
+        predictions=predictions,
+        metric_names=metric_names,
+        metric_splits=split_names,
+    )
+
+
+def cokriging_learning_curve(
+    estimators,
+    X,
+    y,
+    fidelity,
+    *,
+    target_fidelity: str | None = None,
+    low_fidelity: str | None = None,
+    fidelity_order: Sequence[str] | None = None,
+    sample_id=None,
+    train_sizes: Sequence[float | int] | None = None,
+    train_size_start: float | int = 10,
+    train_size_stop: float | int = 100,
+    train_size_step: float | int = 10,
+    train_size_unit: str = "percent",
+    n_splits: int = 20,
+    test_size: float | int = 0.2,
+    random_state: int | None = None,
+    model_names: str | Sequence[str] | None = None,
+    metrics: Sequence[str] | str = ("RMSE", "R2", "MAE", "r"),
+    metric_splits: Sequence[str] | str = ("test",),
+    return_std: bool = True,
+    confidence_level: float = 0.95,
+    include_observation_noise: bool | None = None,
+    fit_params: Mapping[str, object] | None = None,
+    store_predictions: bool = False,
+    min_train_samples: int = 2,
+) -> LearningCurveResult:
+    """Evaluate target-fidelity learning curves for row-wise co-kriging data.
+
+    ``X``, ``y``, and ``fidelity`` describe one observation table containing
+    both lower- and target-fidelity rows. Each split is drawn only from the
+    target-fidelity rows. All lower-fidelity observations remain available for
+    fitting, so ``n_train`` in the returned run table is the number of
+    target-fidelity training rows, while ``n_fit`` also includes the fixed
+    lower-fidelity rows.
+    """
+    n_samples = _validate_xy_length(X, y)
+    if n_splits <= 0:
+        raise ValueError("n_splits must be positive")
+    if min_train_samples <= 0:
+        raise ValueError("min_train_samples must be positive")
+
+    model_specs = _normalize_estimators(estimators, model_names=model_names)
+    normalized_train_sizes = _resolve_learning_curve_train_sizes(
+        train_sizes,
+        start=train_size_start,
+        stop=train_size_stop,
+        step=train_size_step,
+        unit=train_size_unit,
+    )
+    metric_names = _normalize_metric_names(metrics)
+    split_names = _normalize_metric_splits(metric_splits)
+    labels = _sample_labels(y, n_samples)
+    fidelity_labels = _to_fidelity_label_array(fidelity, n_samples=n_samples)
+    sample_id_array = _resolve_optional_row_values(sample_id, n_samples=n_samples, name="sample_id")
+    fidelity_names, target_name, low_name = _resolve_cokriging_validation_levels(
+        fidelity_labels,
+        estimator=model_specs[0][1],
+        target_fidelity=target_fidelity,
+        low_fidelity=low_fidelity,
+        fidelity_order=fidelity_order,
+    )
+    target_positions = np.flatnonzero(fidelity_labels == target_name)
+    if target_positions.size < 2:
+        raise ValueError("At least two target-fidelity rows are required for validation")
+
+    splitter = ShuffleSplit(
+        n_splits=int(n_splits),
+        test_size=test_size,
+        random_state=random_state,
+    )
+    metric_rows = []
+    prediction_tables = []
+
+    for repeat, (train_pool_relative, test_relative) in enumerate(
+        splitter.split(target_positions),
+        start=1,
+    ):
+        train_pool_indices = target_positions[np.asarray(train_pool_relative, dtype=int)]
+        test_indices = target_positions[np.asarray(test_relative, dtype=int)]
+        rng = np.random.default_rng(_derive_seed(random_state, repeat))
+
+        for size_position, train_size_spec in enumerate(normalized_train_sizes, start=1):
+            train_indices = _subsample_train_indices(
+                train_pool_indices,
+                train_size_spec["model_train_size"],
+                rng=rng,
+                min_train_samples=min_train_samples,
+            )
+            train_fraction = len(train_indices) / len(train_pool_indices)
+            fit_indices, lower_fidelity_indices = _cokriging_fit_indices(
+                fidelity_labels,
+                target_fidelity=target_name,
+                train_indices=train_indices,
+            )
+            for model_position, (model_name, estimator) in enumerate(model_specs, start=1):
+                seed = _derive_seed(random_state, repeat, size_position, model_position)
+                result = _fit_evaluate_cokriging_indices(
+                    estimator,
+                    X,
+                    y,
+                    fidelity_labels=fidelity_labels,
+                    sample_id=sample_id_array,
+                    fit_indices=fit_indices,
+                    train_indices=train_indices,
+                    test_indices=test_indices,
+                    labels=labels,
+                    fidelity_names=fidelity_names,
+                    target_fidelity=target_name,
+                    low_fidelity=low_name,
+                    model_name=model_name,
+                    return_std=return_std,
+                    confidence_level=confidence_level,
+                    include_observation_noise=include_observation_noise,
+                    fit_params=fit_params,
+                    random_state=seed,
+                    context={
+                        "repeat": repeat,
+                        "train_size": train_fraction,
+                        "train_size_percent": 100.0 * train_fraction,
+                        "requested_train_size": train_size_spec["requested_train_size"],
+                        "requested_train_size_unit": train_size_spec["requested_train_size_unit"],
+                        "target_fidelity": target_name,
+                        "low_fidelity": low_name,
+                        "n_lower_fidelity": len(lower_fidelity_indices),
+                    },
+                )
+                metric_rows.append(
+                    {
+                        "model": model_name,
+                        "repeat": repeat,
+                        "train_size": train_fraction,
+                        "train_size_percent": 100.0 * train_fraction,
+                        "requested_train_size": train_size_spec["requested_train_size"],
+                        "requested_train_size_unit": train_size_spec["requested_train_size_unit"],
+                        "n_train": len(train_indices),
+                        "n_test": len(test_indices),
+                        "n_fit": len(fit_indices),
+                        "n_lower_fidelity": len(lower_fidelity_indices),
+                        "target_fidelity": target_name,
+                        "low_fidelity": low_name,
+                        "rho": result["rho"],
                         **result["metrics"],
                     }
                 )
@@ -2759,6 +2917,21 @@ def _validate_target_fidelity_indices(
 ) -> None:
     if not np.all(target_mask[indices]):
         raise ValueError(f"{name} must contain only target_fidelity={target_fidelity!r} rows")
+
+
+def _cokriging_fit_indices(
+    fidelity_labels: np.ndarray,
+    *,
+    target_fidelity: str,
+    train_indices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    lower_mask = fidelity_labels != target_fidelity
+    lower_fidelity_indices = np.flatnonzero(lower_mask)
+    if lower_fidelity_indices.size == 0:
+        raise ValueError("Co-kriging validation requires at least one lower-fidelity row")
+    fit_mask = lower_mask.copy()
+    fit_mask[np.asarray(train_indices, dtype=int)] = True
+    return np.flatnonzero(fit_mask), lower_fidelity_indices
 
 
 def _feature_count(values, name: str) -> int:

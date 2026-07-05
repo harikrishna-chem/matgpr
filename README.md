@@ -124,8 +124,8 @@ physics-informed mean functions and uncertainty-aware prediction.
    `evaluate_multitask_train_test_split`,
    `evaluate_sparse_multitask_train_test_split`,
    `evaluate_cokriging_train_test_split`, `cross_validate_regressor`,
-   `learning_curve`, `regression_metrics`, `train_test_regression_metrics`,
-   `summarize_multitask_predictions`, or
+   `learning_curve`, `cokriging_learning_curve`, `regression_metrics`,
+   `train_test_regression_metrics`, `summarize_multitask_predictions`, or
    `summarize_sparse_multitask_predictions`.
 14. Visualize results with `plot_parity`, `plot_learning_curve`,
    `plot_uncertainty_calibration`, `plot_uncertainty_vs_error`,
@@ -206,7 +206,7 @@ file alongside any published benchmark results.
 | `matgpr.estimators` | `MatGPRRegressor`, `PhysicsInformedGPRRegressor`, `MultitaskGPRRegressor`, `MissingValueReport` | Scikit-learn-style GPyTorch GPR estimators with missing-value reports |
 | `matgpr.sklearn_gpr` | `build_sklearn_gpr_kernel`, `build_sklearn_gpr_model`, `build_sklearn_gpr_grid_search` | Scikit-learn GPR models |
 | `matgpr.gpytorch_gpr` | `PhysicsInformedMean`, `fit_gpytorch_gpr`, `train_gpytorch_gpr`, `predict_gpytorch_gpr` | GPyTorch GPR and physics-informed mean functions |
-| `matgpr.validation` | `evaluate_train_test_split`, `evaluate_multitask_train_test_split`, `evaluate_sparse_multitask_train_test_split`, `evaluate_cokriging_train_test_split`, `cross_validate_regressor`, `learning_curve`, `summarize_multitask_predictions`, `summarize_sparse_multitask_predictions` | Reusable train/test, co-kriging target-fidelity validation, complete/sparse multitask task-summary, cross-validation, and learning-curve workflows |
+| `matgpr.validation` | `evaluate_train_test_split`, `evaluate_multitask_train_test_split`, `evaluate_sparse_multitask_train_test_split`, `evaluate_cokriging_train_test_split`, `cross_validate_regressor`, `learning_curve`, `cokriging_learning_curve`, `summarize_multitask_predictions`, `summarize_sparse_multitask_predictions` | Reusable train/test, co-kriging target-fidelity validation and learning curves, complete/sparse multitask task-summary, cross-validation, and learning-curve workflows |
 | `matgpr.sparse_multitask_gpr` | `fit_sparse_multitask_gpytorch_gpr`, `prepare_sparse_multitask_observations`, `predict_sparse_multitask_gpytorch_gpr` | Exact sparse multitask GPR for incomplete multi-property target matrices |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `summarize_candidate_pool`, `summarize_candidate_feature_coverage`, `summarize_candidate_category_coverage`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders and diagnostics for BO |
 | `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `summarize_bo_recommendation_audit`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |

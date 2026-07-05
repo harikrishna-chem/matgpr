@@ -102,6 +102,9 @@ semantic-versioning conventions once the first public release is tagged.
 - Target-fidelity train/test validation for row-wise two-level co-kriging
   datasets, including all-lower-fidelity fitting rows and component-rich
   prediction tables.
+- Target-fidelity learning curves for row-wise two-level co-kriging datasets,
+  where the target-fidelity training count varies and all lower-fidelity rows
+  remain available for fitting.
 
 ### Changed
 

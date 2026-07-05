@@ -876,9 +876,37 @@ The prediction table is ready for target-fidelity parity plots and component
 summaries. It includes `scaled_low_fidelity_pred`, `discrepancy_pred`, and
 `reconstructed_y_pred` when the estimator exposes co-kriging components.
 
-For low-data studies, use `multifidelity_learning_curve` so the number of
-high-fidelity training points is varied while the low-fidelity source is kept
-fixed:
+For repeated low-data learning curves on the same row-wise table, use:
+
+```python
+from matgpr import cokriging_learning_curve
+
+
+cokriging_lc = cokriging_learning_curve(
+    {"two-level co-kriging GPR": cokriging_model},
+    X_all,
+    y_all,
+    fidelity=fidelity_labels,
+    target_fidelity="experiment",
+    train_size_start=10,
+    train_size_stop=100,
+    train_size_step=10,
+    n_splits=20,
+    test_size=0.3,
+    random_state=42,
+    store_predictions=True,
+)
+
+cokriging_lc.runs
+cokriging_lc.summary(metrics=("RMSE", "R2"), splits="test")
+```
+
+Here `n_train` is the number of target-fidelity training rows and `n_fit`
+includes all lower-fidelity rows retained during fitting.
+
+For delta multi-fidelity low-data studies, use `multifidelity_learning_curve`
+so the number of high-fidelity training points is varied while the
+low-fidelity source is kept fixed:
 
 ```python
 from matgpr import multifidelity_learning_curve

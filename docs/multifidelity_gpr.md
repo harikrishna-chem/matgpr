@@ -249,6 +249,44 @@ the fitted `rho` and `intercept` values for each split. When predictions are
 stored, the table includes component columns such as `low_fidelity_pred`,
 `correction_pred`, and their uncertainties when the estimator exposes them.
 
+For row-wise two-level co-kriging datasets, use `cokriging_learning_curve`.
+The train-size axis varies only the number of target-fidelity rows; every
+lower-fidelity row remains available for fitting in every split:
+
+```python
+from matgpr import CoKrigingGPRRegressor, cokriging_learning_curve
+
+
+cokriging_model = CoKrigingGPRRegressor(
+    fidelity_order=("simulation", "experiment"),
+    target_fidelity="experiment",
+    training_iter=500,
+    random_state=7,
+)
+
+cokriging_lc = cokriging_learning_curve(
+    {"two-level co-kriging GPR": cokriging_model},
+    X_all,
+    y_all,
+    fidelity=fidelity_labels,
+    target_fidelity="experiment",
+    train_size_start=10,
+    train_size_stop=100,
+    train_size_step=10,
+    train_size_unit="percent",
+    n_splits=20,
+    test_size=0.30,
+    random_state=42,
+    store_predictions=True,
+)
+
+cokriging_lc.runs[["n_train", "n_fit", "n_lower_fidelity", "test_RMSE"]]
+```
+
+The returned `runs` table includes `n_train` for target-fidelity training rows,
+`n_fit` for total fitted rows, `n_lower_fidelity` for the fixed lower-fidelity
+pool, and the learned `rho` per split.
+
 ## Component Reporting
 
 Use component reports to explain whether the multi-fidelity model is mostly
@@ -338,8 +376,8 @@ Validate on held-out high-fidelity data. Useful comparisons are:
 Report RMSE, MAE, R2, uncertainty coverage, and whether uncertainty includes
 low-fidelity surrogate uncertainty. Learning curves should vary the number of
 high-fidelity training points while keeping the low-fidelity source fixed.
-Use `multifidelity_learning_curve` for this repeated-split protocol when using
-`matgpr` estimators.
+Use `multifidelity_learning_curve` for delta multi-fidelity estimators and
+`cokriging_learning_curve` for row-wise co-kriging estimators.
 
 ## Current Scope
 
@@ -356,6 +394,7 @@ Implemented:
 - component-wise prediction output,
 - target-fidelity train/test validation for row-wise co-kriging datasets,
 - high-fidelity learning-curve validation helper with component predictions,
+- target-fidelity co-kriging learning curves for row-wise fidelity datasets,
 - reporting helpers for low-fidelity and correction contributions.
 
 Planned later:

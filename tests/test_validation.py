@@ -14,6 +14,7 @@ from matgpr import (
     MultitaskTrainTestValidationResult,
     SparseMultitaskTrainTestValidationResult,
     TrainTestValidationResult,
+    cokriging_learning_curve,
     cross_validate_regressor,
     evaluate_cokriging_train_test_split,
     evaluate_multitask_train_test_split,
@@ -565,6 +566,54 @@ class ValidationApiTests(unittest.TestCase):
                 train_indices=[0, 3],
                 test_indices=[4, 5],
             )
+
+    def test_cokriging_learning_curve_varies_target_rows_and_keeps_lower_rows(self):
+        x_low = np.linspace(-0.1, 1.1, 12)
+        x_target = np.linspace(0.0, 1.0, 10)
+        X = pd.DataFrame({"x": np.concatenate([x_low, x_target])})
+        low_y = 0.5 + 0.8 * x_low - 0.1 * x_low**2
+        target_low = 0.5 + 0.8 * x_target - 0.1 * x_target**2
+        target_y = 1.4 * target_low + 0.25 + 0.05 * x_target
+        y = pd.Series(
+            np.concatenate([low_y, target_y]),
+            index=[f"row_{index}" for index in range(22)],
+        )
+        fidelity = np.asarray(["simulation"] * 12 + ["experiment"] * 10, dtype=object)
+
+        result = cokriging_learning_curve(
+            SimpleRowWiseCoKrigingRegressor(constant_std=0.12),
+            X,
+            y,
+            fidelity,
+            fidelity_order=("simulation", "experiment"),
+            target_fidelity="experiment",
+            train_sizes=(50, 100),
+            train_size_unit="percent",
+            n_splits=2,
+            test_size=4,
+            random_state=31,
+            model_names="co-kriging",
+            metric_splits=("train", "test"),
+            store_predictions=True,
+        )
+        summary = result.summary(metric_columns=["test_RMSE"])
+
+        self.assertIsInstance(result, LearningCurveResult)
+        self.assertEqual(result.runs.shape[0], 4)
+        self.assertEqual(set(result.runs["requested_train_size"]), {50.0, 100.0})
+        self.assertTrue(np.all(result.runs["n_lower_fidelity"] == 12))
+        self.assertTrue(np.all(result.runs["n_fit"] == result.runs["n_train"] + 12))
+        self.assertEqual(set(result.runs["target_fidelity"]), {"experiment"})
+        self.assertEqual(set(result.runs["low_fidelity"]), {"simulation"})
+        self.assertTrue(np.all(np.isfinite(result.runs["rho"])))
+        self.assertIsNotNone(result.predictions)
+        self.assertTrue(np.all(result.predictions["fidelity"] == "experiment"))
+        self.assertIn("scaled_low_fidelity_pred", result.predictions.columns)
+        self.assertIn("discrepancy_pred", result.predictions.columns)
+        self.assertIn("reconstructed_y_pred", result.predictions.columns)
+        self.assertIn("repeat", result.predictions.columns)
+        self.assertIn("train_size_percent", result.predictions.columns)
+        self.assertIn("test_RMSE_mean", summary.columns)
 
     def test_validation_errors_are_explicit(self):
         with self.assertRaises(ValueError):
