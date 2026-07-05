@@ -143,6 +143,8 @@ physics-informed mean functions and uncertainty-aware prediction.
   physics-informed GPR.
 - `docs/example_cards.md` links to dataset cards and model cards for the
   public examples.
+- `docs/benchmark_summary.md` summarizes public example benchmark gates,
+  citation expectations, and standards for contributing new PI-GPR examples.
 - `docs/matgpr_user_guide.md` provides a practical user guide for cleaning
   data, generating materials fingerprints, training standard and
   physics-informed GPR models, introducing custom physics equations, analyzing
@@ -326,7 +328,8 @@ python3 -m pip install -e ".[materials-extra]"
 
 If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
 Individual examples should also cite the original papers and datasets listed in
-their reports.
+their reports. See `docs/benchmark_summary.md` for public-example citation and
+benchmark reporting guidance.
 
 ## License
 
@@ -335,7 +338,8 @@ their reports.
 ## Contributing
 
 See `CONTRIBUTING.md` for development setup, contribution expectations, and
-licensing details.
+licensing details. New physics-informed examples should also follow the
+benchmark and card standards in `docs/benchmark_summary.md`.
 
 ## Examples
 

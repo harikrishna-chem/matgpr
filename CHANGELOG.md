@@ -105,6 +105,8 @@ semantic-versioning conventions once the first public release is tagged.
 - Target-fidelity learning curves for row-wise two-level co-kriging datasets,
   where the target-fidelity training count varies and all lower-fidelity rows
   remain available for fitting.
+- Public example benchmark-summary documentation with low-data gate metrics,
+  citation guidance, and contribution standards for new PI-GPR examples.
 
 ### Changed
 

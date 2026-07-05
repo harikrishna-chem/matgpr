@@ -64,6 +64,13 @@ Each example should include:
 - a short report explaining physics, equations, learned parameters, and
   performance.
 
+Physics-informed examples should only be proposed for public inclusion when
+the validation protocol shows a clear, reproducible reason to prefer the
+physics-informed model over the standard baseline in the stated low-data
+regime. Include the low-data gate metric in the model card and link the source
+paper or dataset citation in the dataset card. See
+`docs/benchmark_summary.md` for the current public-example standard.
+
 Do not commit paper PDFs unless redistribution rights are clear.
 
 ## Pull Request Expectations
