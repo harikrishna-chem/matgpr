@@ -15,6 +15,7 @@ __all__ = [
     "PhysicsFeatureSpec",
     "PhysicsEquationTemplate",
     "PhysicsParameterSpec",
+    "arrhenius_linear_growth_equation",
     "arrhenius_rate_equation",
     "arrhenius_sqrt_time_equation",
     "available_physics_equation_templates",
@@ -22,6 +23,8 @@ __all__ = [
     "free_volume_exponential_equation",
     "get_physics_equation_template",
     "hall_petch_equation",
+    "linear_parabolic_growth_equation",
+    "linear_growth_equation",
     "list_physics_equation_templates",
     "power_law_equation",
     "rule_of_mixtures_equation",
@@ -384,6 +387,58 @@ def arrhenius_sqrt_time_equation(
     return offset + torch.sqrt(torch.clamp(rate * time, min=0.0))
 
 
+def arrhenius_linear_growth_equation(
+    features: Mapping[str, torch.Tensor],
+    parameters: Mapping[str, torch.Tensor],
+) -> torch.Tensor:
+    """Linear-growth mean controlled by an Arrhenius rate.
+
+    The equation is ``offset + A exp(-E_a / (R T)) time``. It is useful for
+    reaction-controlled oxidation, aging, or damage accumulation when the
+    response is approximately linear in time at fixed temperature.
+    """
+    time = _positive_feature(features, "time")
+    offset = _parameter(parameters, "offset", reference=time, default=0.0)
+    rate = arrhenius_rate_equation(features, parameters)
+    return offset + rate * time
+
+
+def linear_growth_equation(
+    features: Mapping[str, torch.Tensor],
+    parameters: Mapping[str, torch.Tensor],
+) -> torch.Tensor:
+    """Linear growth with exposure time or another nonnegative driving variable.
+
+    The equation is ``offset + rate * time``. It is useful for oxidation,
+    aging, damage accumulation, or thickness/mass growth when a first-order
+    time trend is an appropriate physics prior.
+    """
+    time = _positive_feature(features, "time")
+    rate = _parameter(parameters, "rate", reference=time)
+    offset = _parameter(parameters, "offset", reference=time, default=0.0)
+    return offset + rate * time
+
+
+def linear_parabolic_growth_equation(
+    features: Mapping[str, torch.Tensor],
+    parameters: Mapping[str, torch.Tensor],
+) -> torch.Tensor:
+    """Linear-parabolic growth from mixed interface and diffusion control.
+
+    The equation solves ``m(t)^2 + linear_rate * m(t) = parabolic_rate * time``
+    for the nonnegative root and adds an optional ``offset``. It is useful for
+    oxidation or other growth processes that transition smoothly between
+    interface-controlled and diffusion-controlled kinetics.
+    """
+    time = _positive_feature(features, "time")
+    linear_rate = _parameter(parameters, "linear_rate", reference=time)
+    parabolic_rate = _parameter(parameters, "parabolic_rate", reference=time)
+    offset = _parameter(parameters, "offset", reference=time, default=0.0)
+    discriminant = linear_rate**2 + 4.0 * parabolic_rate * time
+    growth = 0.5 * (torch.sqrt(torch.clamp(discriminant, min=0.0)) - linear_rate)
+    return offset + growth
+
+
 def power_law_equation(
     features: Mapping[str, torch.Tensor],
     parameters: Mapping[str, torch.Tensor],
@@ -632,6 +687,146 @@ _PHYSICS_EQUATION_TEMPLATES = (
         notes=("Keep time units consistent between training and prediction.",),
         references=("Arrhenius rate law with parabolic growth kinetics.",),
         tags=("temperature", "time", "activation_energy", "parabolic_growth"),
+    ),
+    PhysicsEquationTemplate(
+        name="arrhenius_linear_growth",
+        aliases=(
+            "temperature_linear_growth",
+            "arrhenius_linear_oxidation",
+            "temperature_linear_oxidation",
+        ),
+        equation=arrhenius_linear_growth_equation,
+        feature_names=("temperature_k", "time"),
+        default_learnable_parameters={
+            "prefactor": 1.0,
+            "activation_energy": 10_000.0,
+            "offset": 0.0,
+        },
+        positive_parameters=("prefactor", "activation_energy"),
+        default_fixed_parameters={"gas_constant": R_GAS_CONSTANT_J_MOL_K},
+        category="temperature_time_growth",
+        description="Linear time-growth response controlled by an Arrhenius rate.",
+        equation_latex=r"m(T,t)=b+A\exp\left(-E_a/(RT)\right)t",
+        target_description="Growth, mass gain, damage, or aging response with linear time scaling.",
+        target_units="target property units",
+        feature_descriptions={
+            "temperature_k": "Absolute temperature in Kelvin.",
+            "time": "Exposure, aging, diffusion, reaction, or process time.",
+        },
+        feature_units={
+            "temperature_k": "K",
+            "time": "consistent time unit",
+        },
+        parameter_descriptions={
+            "prefactor": "Linear-rate prefactor.",
+            "activation_energy": "Activation energy in J/mol.",
+            "offset": "Baseline response in target units.",
+            "gas_constant": "Gas constant in J/(mol K).",
+        },
+        parameter_units={
+            "prefactor": "target property units per time",
+            "activation_energy": "J/mol",
+            "offset": "target property units",
+            "gas_constant": "J/(mol K)",
+        },
+        applications=("linear oxidation", "reaction-controlled growth", "thermal aging"),
+        assumptions=(
+            "Growth is approximately linear with time at fixed temperature.",
+            "The linear rate follows a single dominant Arrhenius process.",
+            "Temperature is absolute temperature in Kelvin.",
+        ),
+        notes=(
+            "Use this when temperature changes the growth rate but the observed "
+            "response does not follow square-root-time kinetics.",
+        ),
+        references=("Arrhenius rate law with linear growth kinetics.",),
+        tags=("temperature", "time", "activation_energy", "linear_growth", "oxidation"),
+    ),
+    PhysicsEquationTemplate(
+        name="linear_growth",
+        aliases=("linear_time_growth", "linear_oxidation"),
+        equation=linear_growth_equation,
+        feature_names=("time",),
+        default_learnable_parameters={
+            "rate": 1.0,
+            "offset": 0.0,
+        },
+        positive_parameters=("rate",),
+        category="time_growth",
+        description="Linear response with a nonnegative time or exposure variable.",
+        equation_latex=r"m(t)=b+k t",
+        target_description="Thickness, mass gain, damage, or other linearly growing response.",
+        target_units="target property units",
+        feature_descriptions={
+            "time": "Exposure, aging, diffusion, reaction, or process time.",
+        },
+        feature_units={
+            "time": "consistent time unit",
+        },
+        parameter_descriptions={
+            "rate": "Linear growth rate in target units per time.",
+            "offset": "Baseline response in target units.",
+        },
+        parameter_units={
+            "rate": "target property units per time",
+            "offset": "target property units",
+        },
+        applications=("linear oxidation", "aging", "damage accumulation", "growth"),
+        assumptions=(
+            "The response is approximately linear over the modeled time range.",
+            "Time is nonnegative and reported in a consistent unit.",
+        ),
+        notes=(
+            "Use this as a low-order mean function when the residual GP should "
+            "capture deviations from simple linear kinetics.",
+        ),
+        references=("Linear time-growth model.",),
+        tags=("time", "linear", "growth", "oxidation"),
+    ),
+    PhysicsEquationTemplate(
+        name="linear_parabolic_growth",
+        aliases=("linear_parabolic", "mixed_control_growth", "linear_parabolic_oxidation"),
+        equation=linear_parabolic_growth_equation,
+        feature_names=("time",),
+        default_learnable_parameters={
+            "linear_rate": 1.0,
+            "parabolic_rate": 1.0,
+            "offset": 0.0,
+        },
+        positive_parameters=("linear_rate", "parabolic_rate"),
+        category="time_growth",
+        description="Mixed-control growth with linear and parabolic kinetic terms.",
+        equation_latex=r"m(t)=b+\frac{\sqrt{k_l^2+4k_p t}-k_l}{2}",
+        target_description="Thickness, mass gain, damage, or growth response with mixed time scaling.",
+        target_units="target property units",
+        feature_descriptions={
+            "time": "Exposure, aging, diffusion, reaction, or process time.",
+        },
+        feature_units={
+            "time": "consistent time unit",
+        },
+        parameter_descriptions={
+            "linear_rate": "Linear or interface-control term in target units.",
+            "parabolic_rate": "Parabolic growth-rate contribution.",
+            "offset": "Baseline response in target units.",
+        },
+        parameter_units={
+            "linear_rate": "target property units",
+            "parabolic_rate": "target property units squared per time",
+            "offset": "target property units",
+        },
+        applications=("linear-parabolic oxidation", "mixed-control growth", "thermal aging"),
+        assumptions=(
+            "Both interface and diffusion control can contribute over the modeled range.",
+            "The transition between regimes is smooth and can be represented by one effective pair of rates.",
+            "Time is nonnegative and reported in a consistent unit.",
+        ),
+        notes=(
+            "Use this when a dataset spans early-time linear behavior and "
+            "later-time parabolic behavior.",
+        ),
+        references=("Linear-parabolic mixed-control growth model.",),
+        tags=("time", "linear_parabolic", "mixed_control", "oxidation"),
     ),
     PhysicsEquationTemplate(
         name="power_law",

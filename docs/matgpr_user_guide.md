@@ -1836,6 +1836,9 @@ Available templates include:
 | --- | --- | --- |
 | `arrhenius_rate` | \(A \exp(-E_a / RT)\) | Diffusion, conductivity, reaction or transport rates |
 | `arrhenius_sqrt_time` | \(b + \sqrt{A \exp(-E_a / RT)t}\) | Oxidation, diffusion depth, aging |
+| `arrhenius_linear_growth` | \(b + A \exp(-E_a / RT)t\) | Reaction-controlled oxidation or thermal aging |
+| `linear_growth` | \(b + k t\) | Linear oxidation, aging, thickness or mass growth |
+| `linear_parabolic_growth` | \(b + (\sqrt{k_l^2 + 4 k_p t} - k_l)/2\) | Mixed-control oxidation or growth |
 | `power_law` | \(b + c x^n\) | Load, rate, concentration, or field scaling |
 | `hall_petch` | \(\sigma_0 + k d^{-1/2}\) | Strength, hardness, yield stress with grain size |
 | `free_volume_exponential` | \(b + A \exp(-B/f_v)\) | Polymer diffusion, permeability, mobility |

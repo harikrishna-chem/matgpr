@@ -14,8 +14,9 @@ prediction accuracy.
 - Standard GPR baselines with scikit-learn and GPyTorch.
 - Physics-informed GPR models where a mechanistic equation enters the GP mean.
 - Reusable physics equation templates for common materials trends such as
-  Arrhenius behavior, power laws, Hall-Petch strengthening, free-volume
-  transport, and mixture rules.
+  Arrhenius behavior, Arrhenius linear growth, linear growth, linear-parabolic
+  growth, power laws, Hall-Petch strengthening, free-volume transport, and
+  mixture rules.
 - Physics-aware kernels such as Tanimoto similarity for molecular/polymer
   fingerprints, element-fraction kernels for inorganic compositions, and
   structure-feature kernels for crystal geometry.

@@ -9,6 +9,7 @@ from matgpr import (
     PhysicsFeatureSpec,
     PhysicsEquationTemplate,
     PhysicsParameterSpec,
+    arrhenius_linear_growth_equation,
     arrhenius_rate_equation,
     arrhenius_sqrt_time_equation,
     available_physics_equation_templates,
@@ -16,6 +17,8 @@ from matgpr import (
     free_volume_exponential_equation,
     get_physics_equation_template,
     hall_petch_equation,
+    linear_parabolic_growth_equation,
+    linear_growth_equation,
     list_physics_equation_templates,
     power_law_equation,
     rule_of_mixtures_equation,
@@ -32,8 +35,26 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
 
         self.assertIn("arrhenius_rate", names)
         self.assertIn("arrhenius", names_with_aliases)
+        self.assertIn("arrhenius_linear_growth", names)
+        self.assertIn("temperature_linear_oxidation", names_with_aliases)
+        self.assertIn("linear_growth", names)
+        self.assertIn("linear_oxidation", names_with_aliases)
+        self.assertIn("linear_parabolic_growth", names)
+        self.assertIn("linear_parabolic", names_with_aliases)
         self.assertTrue(all(isinstance(template, PhysicsEquationTemplate) for template in templates))
         self.assertEqual(get_physics_equation_template("arrhenius").name, "arrhenius_rate")
+        self.assertEqual(
+            get_physics_equation_template("linear_oxidation").name,
+            "linear_growth",
+        )
+        self.assertEqual(
+            get_physics_equation_template("temperature_linear_oxidation").name,
+            "arrhenius_linear_growth",
+        )
+        self.assertEqual(
+            get_physics_equation_template("linear_parabolic").name,
+            "linear_parabolic_growth",
+        )
 
     def test_template_metadata_describes_features_parameters_and_assumptions(self):
         template = get_physics_equation_template("arrhenius_rate")
@@ -105,6 +126,21 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
             {"free_volume_fraction": torch.tensor([0.5], dtype=torch.float64)},
             {"prefactor": 2.0, "barrier": 0.0, "offset": 1.0},
         )
+        linear_growth = linear_growth_equation(
+            {"time": torch.tensor([2.0, 5.0], dtype=torch.float64)},
+            {"rate": 3.0, "offset": 1.0},
+        )
+        arrhenius_linear_growth = arrhenius_linear_growth_equation(
+            {
+                "temperature_k": torch.tensor([300.0], dtype=torch.float64),
+                "time": torch.tensor([2.0, 5.0], dtype=torch.float64),
+            },
+            {"prefactor": 4.0, "activation_energy": 0.0, "offset": 1.0},
+        )
+        linear_parabolic_growth = linear_parabolic_growth_equation(
+            {"time": torch.tensor([0.0, 1.0], dtype=torch.float64)},
+            {"linear_rate": 2.0, "parabolic_rate": 3.0, "offset": 1.0},
+        )
         sqrt_time = arrhenius_sqrt_time_equation(
             {
                 "temperature_k": torch.tensor([300.0], dtype=torch.float64),
@@ -114,6 +150,24 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
         )
 
         self.assertTrue(torch.allclose(free_volume, torch.tensor([3.0], dtype=torch.float64)))
+        self.assertTrue(
+            torch.allclose(
+                linear_growth,
+                torch.tensor([7.0, 16.0], dtype=torch.float64),
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                arrhenius_linear_growth,
+                torch.tensor([9.0, 21.0], dtype=torch.float64),
+            )
+        )
+        self.assertTrue(
+            torch.allclose(
+                linear_parabolic_growth,
+                torch.tensor([1.0, 2.0], dtype=torch.float64),
+            )
+        )
         self.assertTrue(torch.allclose(sqrt_time, torch.tensor([7.0], dtype=torch.float64)))
 
     def test_template_builds_physics_informed_mean(self):

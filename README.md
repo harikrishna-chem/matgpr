@@ -47,8 +47,9 @@ physics-informed mean functions and uncertainty-aware prediction.
   search, and reusable validation workflows.
 - `PhysicsInformedMean` for combining mechanistic equations with learned GP
   residuals.
-- Reusable physics equation templates for Arrhenius, square-root-time,
-  power-law, Hall-Petch, free-volume, and rule-of-mixtures mean functions.
+- Reusable physics equation templates for Arrhenius, Arrhenius linear growth,
+  square-root-time, linear growth, linear-parabolic growth, power-law,
+  Hall-Petch, free-volume, and rule-of-mixtures mean functions.
 - Physics-aware kernels, including Tanimoto similarity for molecular and
   polymer fingerprints and element-fraction kernels for inorganic
   compositions plus structure-feature kernels for crystal descriptors.
