@@ -1,5 +1,7 @@
 # matgpr
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21210387.svg)](https://doi.org/10.5281/zenodo.21210387)
+
 Gaussian Process Regression tools for materials informatics, with first-class
 support for physics-informed mean functions.
 
@@ -175,7 +177,7 @@ physics-informed mean functions and uncertainty-aware prediction.
 
 ## Versioning And API Stability
 
-Current version: `0.1.0`.
+Current version: `0.1.1`.
 
 `matgpr` follows semantic-versioning conventions in spirit, but minor `0.x`
 releases may include breaking API changes while the package is still being
@@ -183,7 +185,7 @@ shaped. For publications, benchmarks, and production workflows, install from a
 release tag or exact commit instead of the moving `main` branch:
 
 ```bash
-python3 -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+python3 -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.1"
 ```
 
 Record the `matgpr` version or commit hash, Python version, and dependency lock
@@ -326,10 +328,11 @@ python3 -m pip install -e ".[materials-extra]"
 
 ## Citation
 
-If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
-Individual examples should also cite the original papers and datasets listed in
-their reports. See `docs/benchmark_summary.md` for public-example citation and
-benchmark reporting guidance.
+If you use `matgpr` in a publication, cite the archived release DOI:
+<https://doi.org/10.5281/zenodo.21210387>. The same citation metadata is also
+available in `CITATION.cff`. Individual examples should also cite the original
+papers and datasets listed in their reports. See `docs/benchmark_summary.md`
+for public-example citation and benchmark reporting guidance.
 
 ## License
 

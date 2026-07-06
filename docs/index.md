@@ -97,9 +97,10 @@ python -m mkdocs serve
 
 ## Citation
 
-If you use `matgpr` in a publication, cite the package using `CITATION.cff`.
-Individual example reports also list the original papers and datasets that
-should be cited.
+If you use `matgpr` in a publication, cite the archived release DOI:
+<https://doi.org/10.5281/zenodo.21210387>. The same citation metadata is also
+available in `CITATION.cff`. Individual example reports also list the original
+papers and datasets that should be cited.
 
 ## License
 

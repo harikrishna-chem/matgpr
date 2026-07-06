@@ -6,16 +6,15 @@ around materials-informatics workflows.
 
 ## Current Status
 
-- Current package version: `0.1.0`.
+- Current package version: `0.1.1`.
 - Python support: Python 3.10 or newer.
 - License: Apache-2.0.
 - Repository: <https://github.com/harikrishna-chem/matgpr>.
 
 The package already has CI, tests, examples, documentation, and a changelog, but
 it should still be treated as an early public release. APIs may change before
-`1.0.0` as the package adds missing capabilities such as multitask GPR, stronger
-missing-value handling, physics-equation discovery, learned heteroscedastic
-noise, and additional materials featurizers.
+`1.0.0` as the package adds more physics-informed workflows, Bayesian
+optimization examples, and additional materials-informatics integrations.
 
 ## Versioning Policy
 
@@ -40,7 +39,7 @@ Pin a release tag or commit hash instead.
 For a tagged GitHub release:
 
 ```bash
-python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.1"
 ```
 
 For an exact commit:
@@ -53,7 +52,7 @@ When `matgpr` is published to PyPI, use exact package pins for manuscripts,
 benchmarks, and production workflows:
 
 ```bash
-python -m pip install "matgpr[examples]==0.1.0"
+python -m pip install "matgpr[examples]==0.1.1"
 ```
 
 For long-lived projects, also save the Python version and dependency state:

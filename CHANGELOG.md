@@ -9,6 +9,18 @@ semantic-versioning conventions once the first public release is tagged.
 
 No unreleased changes yet.
 
+## 0.1.1 - 2026-07-05
+
+### Added
+
+- Zenodo metadata for DOI-backed GitHub release archiving.
+- Archived release DOI: <https://doi.org/10.5281/zenodo.21210387>.
+
+### Changed
+
+- Updated citation and versioning documentation for the DOI-backed `v0.1.1`
+  release.
+
 ## 0.1.0 - 2026-07-05
 
 ### Added

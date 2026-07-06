@@ -6,11 +6,11 @@ explicit release action.
 
 ## Current Status
 
-Status as of 2026-07-02:
+Status as of 2026-07-05:
 
 - Package name: `matgpr`.
 - Import package: `matgpr`.
-- Current version: `0.1.0`.
+- Current version: `0.1.1`.
 - License metadata: `Apache-2.0`.
 - Python support: Python 3.10, 3.11, and 3.12.
 - Build backend: `setuptools.build_meta`.
@@ -29,7 +29,7 @@ because PyPI availability can change.
 | Area | Current result | Status |
 | --- | --- | --- |
 | Project name | `matgpr` is valid and currently appears unused on PyPI | Ready, recheck before upload |
-| Version | `pyproject.toml`, `CITATION.cff`, and `matgpr.__version__` use `0.1.0` | Ready |
+| Version | `pyproject.toml`, `CITATION.cff`, and `matgpr.__version__` use `0.1.1` | Ready |
 | License | SPDX license expression and license file are included | Ready |
 | Author metadata | Author and maintainer metadata are present in `pyproject.toml` | Ready |
 | README | Markdown long description passes `twine check` | Ready |
@@ -63,7 +63,7 @@ project URLs:
 The wheel currently contains:
 
 - `matgpr/*.py`,
-- `matgpr-0.1.0.dist-info/*`,
+- `matgpr-0.1.1.dist-info/*`,
 - `LICENSE`.
 
 The wheel does not contain:
@@ -137,7 +137,7 @@ python -m venv /tmp/matgpr-testpypi
 /tmp/matgpr-testpypi/bin/python -m pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  "matgpr[examples,bo]==0.1.0"
+  "matgpr[examples,bo]==0.1.1"
 /tmp/matgpr-testpypi/bin/python -m pip check
 /tmp/matgpr-testpypi/bin/python -c "import matgpr; print(matgpr.__version__)"
 ```
@@ -168,7 +168,7 @@ After upload, immediately verify:
 ```bash
 python -m venv /tmp/matgpr-pypi
 /tmp/matgpr-pypi/bin/python -m pip install --upgrade pip
-/tmp/matgpr-pypi/bin/python -m pip install "matgpr[examples,bo]==0.1.0"
+/tmp/matgpr-pypi/bin/python -m pip install "matgpr[examples,bo]==0.1.1"
 /tmp/matgpr-pypi/bin/python -m pip check
 /tmp/matgpr-pypi/bin/python -c "import matgpr; print(matgpr.__version__)"
 ```

@@ -6,7 +6,9 @@ authors:
     given-names: "Harikrishna"
 repository-code: "https://github.com/harikrishna-chem/matgpr"
 url: "https://github.com/harikrishna-chem/matgpr"
-version: "0.1.0"
+version: "0.1.1"
+doi: "10.5281/zenodo.21210387"
+date-released: "2026-07-05"
 abstract: >
   matgpr is a materials-informatics toolkit for Gaussian Process Regression
   workflows, including standard and physics-informed GPR, uncertainty-aware

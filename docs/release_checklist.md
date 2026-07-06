@@ -194,7 +194,7 @@ For GitHub-connected Zenodo releases:
    `harikrishna-chem/matgpr`.
 2. Open the Zenodo GitHub settings page, sync repositories if needed, and enable
    archiving for `harikrishna-chem/matgpr`.
-3. Confirm that GitHub Release `v0.1.0` is archived or trigger the available
+3. Confirm that the target GitHub Release is archived or trigger the available
    Zenodo sync/archive action for the release.
 4. If Zenodo cannot archive an already-published GitHub release, keep the
    GitHub Release as the software release of record and create the DOI on the
