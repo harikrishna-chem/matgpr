@@ -17,7 +17,7 @@ Status as of 2026-07-05:
 - PyPI name check: `python -m pip index versions matgpr` returned no matching
   distribution on 2026-07-02.
 - Local build: source distribution and wheel build successfully.
-- README rendering check: `twine check dist/*` passes.
+- README rendering check: exact-version `twine check` passes.
 - Current recommendation: do not upload to live PyPI until the remaining
   blockers below are resolved.
 
@@ -34,7 +34,7 @@ because PyPI availability can change.
 | Author metadata | Author and maintainer metadata are present in `pyproject.toml` | Ready |
 | README | Markdown long description passes `twine check` | Ready |
 | Wheel contents | Wheel includes only the importable package and license metadata | Ready |
-| Source distribution contents | Source distribution includes package source, tests, README, license, and `pyproject.toml` | Acceptable |
+| Source distribution contents | Source distribution includes package source, tests, README, license, `pyproject.toml`, `CITATION.cff`, and `CHANGELOG.md` | Ready |
 | Public examples | Examples are not installed by the wheel; they remain repository examples | Intentional |
 | TestPyPI upload | Not yet performed | Blocking before live PyPI |
 | Clean install from TestPyPI | Not yet performed | Blocking before live PyPI |
@@ -85,11 +85,14 @@ The source distribution currently contains:
 - tests,
 - `README.md`,
 - `LICENSE`,
-- `pyproject.toml`.
+- `pyproject.toml`,
+- `CITATION.cff`,
+- `CHANGELOG.md`.
 
 Including tests in the source distribution is acceptable and useful for
-downstream verification. If a smaller source distribution is preferred later,
-add an explicit `MANIFEST.in` policy and recheck the artifact contents.
+downstream verification. Full documentation sources and public examples remain
+repository/Zenodo assets so notebooks and datasets are not silently installed
+through the Python package index.
 
 ## Remaining Blockers Before Live PyPI
 
@@ -120,13 +123,14 @@ Build and check artifacts:
 ```bash
 rm -rf dist build matgpr.egg-info
 python -m build
-python -m twine check dist/*
+VERSION=0.1.1
+python -m twine check dist/matgpr-${VERSION}*
 ```
 
 Upload to TestPyPI:
 
 ```bash
-python -m twine upload --repository testpypi dist/*
+python -m twine upload --repository testpypi dist/matgpr-${VERSION}*
 ```
 
 Install from TestPyPI with live PyPI as the dependency source:
@@ -160,7 +164,7 @@ Only upload to live PyPI after:
 Live upload command:
 
 ```bash
-python -m twine upload dist/*
+python -m twine upload dist/matgpr-${VERSION}*
 ```
 
 After upload, immediately verify:

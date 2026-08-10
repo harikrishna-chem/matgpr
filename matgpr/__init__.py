@@ -116,7 +116,13 @@ from .kernels import (
     pairwise_structure_distance,
     pairwise_tanimoto_similarity,
 )
-from .metrics import regression_metrics, train_test_regression_metrics
+from .metrics import (
+    json_safe_metrics,
+    json_safe_regression_metrics,
+    json_safe_train_test_regression_metrics,
+    regression_metrics,
+    train_test_regression_metrics,
+)
 from .multi_objective import (
     ObjectiveSpec,
     pareto_front_mask,
@@ -259,6 +265,8 @@ from .uncertainty import (
     calibration_curve,
     gaussian_nlpd,
     interval_coverage,
+    json_safe_diagnostics,
+    json_safe_uncertainty_diagnostics,
     prediction_interval_bounds,
     standardized_residuals,
     uncertainty_diagnostics,
@@ -477,6 +485,11 @@ __all__ = [
     "interval_coverage",
     "infer_next_bo_iteration",
     "is_optional_dependency_available",
+    "json_safe_diagnostics",
+    "json_safe_metrics",
+    "json_safe_regression_metrics",
+    "json_safe_train_test_regression_metrics",
+    "json_safe_uncertainty_diagnostics",
     "load_artifact",
     "load_closed_loop_log",
     "list_optional_dependencies",

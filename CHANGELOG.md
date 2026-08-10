@@ -7,7 +7,18 @@ semantic-versioning conventions once the first public release is tagged.
 
 ## Unreleased
 
-No unreleased changes yet.
+### Added
+
+- JSON-safe metric and uncertainty-diagnostic helpers for API/report payloads
+  that must pass strict JSON serialization.
+
+### Fixed
+
+- `log_experiment_result` now preserves valid CSV logs when later experiment
+  rows add, omit, or reorder metric columns.
+- Release documentation now requires a clean artifact build and exact versioned
+  upload globs to avoid stale `dist/*` files.
+- Source distributions now include `CITATION.cff` and `CHANGELOG.md`.
 
 ## 0.1.1 - 2026-07-05
 
@@ -126,8 +137,8 @@ No unreleased changes yet.
 
 ### Changed
 
-- Documentation workflow now builds docs only and does not deploy GitHub Pages
-  while the repository remains private.
+- Documentation workflow builds and deploys the MkDocs site through GitHub
+  Pages once repository Pages settings are enabled.
 - Heavy fingerprinting tools are organized as optional dependency extras.
 - `matminer` and `mendeleev` are optional ecosystem dependencies, not required
   runtime dependencies.

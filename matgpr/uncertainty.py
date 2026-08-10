@@ -6,10 +6,14 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
+from .metrics import json_safe_metrics
+
 __all__ = [
     "calibration_curve",
     "gaussian_nlpd",
     "interval_coverage",
+    "json_safe_diagnostics",
+    "json_safe_uncertainty_diagnostics",
     "prediction_interval_bounds",
     "standardized_residuals",
     "uncertainty_diagnostics",
@@ -190,6 +194,46 @@ def uncertainty_diagnostics(
         ),
         **coverage,
     }
+
+
+def json_safe_diagnostics(
+    diagnostics: dict[str, float],
+    *,
+    include_warnings: bool = True,
+    warning_key: str = "diagnostic_warnings",
+) -> dict[str, object]:
+    """Return strict-JSON-safe uncertainty diagnostics.
+
+    Undefined diagnostic values, such as uncertainty-error correlation for
+    constant uncertainties, are converted from ``NaN`` to ``None``.
+    """
+    return json_safe_metrics(
+        diagnostics,
+        include_warnings=include_warnings,
+        warning_key=warning_key,
+    )
+
+
+def json_safe_uncertainty_diagnostics(
+    y_true,
+    y_pred,
+    y_std,
+    *,
+    confidence_level: float = 0.95,
+    include_warnings: bool = True,
+    warning_key: str = "diagnostic_warnings",
+) -> dict[str, object]:
+    """Calculate uncertainty diagnostics and return a strict-JSON-safe dictionary."""
+    return json_safe_diagnostics(
+        uncertainty_diagnostics(
+            y_true,
+            y_pred,
+            y_std,
+            confidence_level=confidence_level,
+        ),
+        include_warnings=include_warnings,
+        warning_key=warning_key,
+    )
 
 
 def _validate_prediction_arrays(y_true, y_pred, y_std) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

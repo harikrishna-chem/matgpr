@@ -81,6 +81,9 @@ from matgpr import (
     fit_heteroscedastic_gpr,
     fit_multitask_gpytorch_gpr,
     fit_sparse_multitask_gpytorch_gpr,
+    json_safe_regression_metrics,
+    json_safe_train_test_regression_metrics,
+    json_safe_uncertainty_diagnostics,
     regression_metrics,
     train_test_regression_metrics,
     uncertainty_diagnostics,
@@ -2105,6 +2108,15 @@ Returned metrics:
 | `MAE` | Mean absolute error in target units. Lower is better. |
 | `r` | Pearson correlation coefficient. Higher absolute value indicates stronger linear association. |
 
+For one-sample validation splits, constant targets, or constant predictions,
+some metrics are scientifically undefined and are returned as `NaN`. If the
+metrics will be sent through a strict JSON API, use the JSON-safe companion
+helper to convert non-finite values to `None` and include a warning:
+
+```python
+metrics = json_safe_regression_metrics(y_test, prediction.mean)
+```
+
 For train/test summaries:
 
 ```python
@@ -2115,6 +2127,9 @@ metrics = train_test_regression_metrics(
     test_prediction.mean,
 )
 ```
+
+For strict JSON train/test summaries, use
+`json_safe_train_test_regression_metrics` with the same arguments.
 
 ### 10.3 Parity Plot With Uncertainty
 
@@ -2147,6 +2162,18 @@ diagnostics = uncertainty_diagnostics(
     confidence_level=0.95,
 )
 print(diagnostics)
+```
+
+Use the JSON-safe companion for API payloads and saved report records that must
+pass `json.dumps(..., allow_nan=False)`:
+
+```python
+diagnostics = json_safe_uncertainty_diagnostics(
+    y_test,
+    test_prediction.mean,
+    test_prediction.std,
+    confidence_level=0.95,
+)
 ```
 
 Important uncertainty diagnostics:
@@ -2897,6 +2924,10 @@ log_experiment_result(
     path="results/experiment_log.csv",
 )
 ```
+
+Existing result logs are schema-safe: if later runs add or omit metrics,
+`log_experiment_result` rewrites the CSV with the union of columns instead of
+appending malformed rows.
 
 ## 13. Common Troubleshooting
 

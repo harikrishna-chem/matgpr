@@ -95,8 +95,10 @@ Use the project development environment and run:
 python -m ruff check matgpr tests scripts
 python -m pytest
 python -m mkdocs build --strict
+rm -rf dist build matgpr.egg-info
 python -m build
-python -m twine check dist/*
+VERSION=0.1.1
+python -m twine check dist/matgpr-${VERSION}*
 ```
 
 For the public examples, run at least the reduced notebook smoke test:
@@ -219,9 +221,11 @@ are reviewed. Before any PyPI release:
 Recommended TestPyPI flow:
 
 ```bash
+rm -rf dist build matgpr.egg-info
 python -m build
-python -m twine check dist/*
-python -m twine upload --repository testpypi dist/*
+VERSION=0.1.1
+python -m twine check dist/matgpr-${VERSION}*
+python -m twine upload --repository testpypi dist/matgpr-${VERSION}*
 ```
 
 PyPI upload should be treated as a separate explicit release decision.

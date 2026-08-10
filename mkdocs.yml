@@ -69,6 +69,8 @@ nav:
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
   - PyPI Readiness: pypi_readiness.md
+  - Development Notes:
+      - Reviewer Feedback Hardening Plan: reviewer_feedback_hardening_plan.md
   - API Reference:
       - Overview: api/index.md
       - Estimators: api/estimators.md

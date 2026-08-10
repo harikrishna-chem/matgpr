@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import unittest
 
 os.environ.setdefault("MPLBACKEND", "Agg")
@@ -14,6 +15,7 @@ from matgpr import (
     calibration_curve,
     gaussian_nlpd,
     interval_coverage,
+    json_safe_uncertainty_diagnostics,
     plot_uncertainty_calibration,
     plot_uncertainty_vs_error,
     prediction_interval_bounds,
@@ -100,6 +102,23 @@ class UncertaintyMetricTests(unittest.TestCase):
             interval_coverage([0.0], [0.0, 1.0], [1.0])
         with self.assertRaises(ValueError):
             uncertainty_error_correlation([0.0, 1.0], [0.0, 0.0], [1.0, 1.0], method="kendall")
+
+    def test_json_safe_uncertainty_diagnostics_serializes_constant_uncertainty(self):
+        diagnostics = uncertainty_diagnostics(
+            [0.0, 1.0, 2.0],
+            [0.0, 1.0, 2.0],
+            [0.5, 0.5, 0.5],
+        )
+        safe = json_safe_uncertainty_diagnostics(
+            [0.0, 1.0, 2.0],
+            [0.0, 1.0, 2.0],
+            [0.5, 0.5, 0.5],
+        )
+
+        self.assertTrue(np.isnan(diagnostics["uncertainty_error_spearman"]))
+        self.assertIsNone(safe["uncertainty_error_spearman"])
+        self.assertIn("diagnostic_warnings", safe)
+        json.dumps(safe, allow_nan=False)
 
 
 class UncertaintyPlotTests(unittest.TestCase):
