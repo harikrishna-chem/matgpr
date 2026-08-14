@@ -29,6 +29,9 @@ types, and class methods.
   for incomplete target matrices with missing task observations.
 - [Physics Equation Templates](physics_equations.md): reusable Arrhenius,
   power-law, Hall-Petch, free-volume, and mixture mean equations.
+- [Safe Custom Equations](safe_equations.md): JSON-safe custom-equation schema
+  records, safe expression validation, NumPy previews, torch evaluation, and
+  trainable PI-GPR mean adapters for user-defined safe equation specs.
 - [Physics-Informed GPR](gpytorch_gpr.md): GPyTorch training, prediction, and
   mean-function utilities.
 - [Validation](validation.md): train/test evaluation, cross-validation, and

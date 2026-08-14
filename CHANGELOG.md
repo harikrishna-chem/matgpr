@@ -9,6 +9,18 @@ semantic-versioning conventions once the first public release is tagged.
 
 ### Added
 
+- Safe custom-equation schema records, JSON-safe serialization, validation
+  basics, schema snapshot, API docs, and tests for future user-defined PI-GPR
+  mean functions.
+- Safe custom-equation expression parser and validator using `ast.parse` plus
+  a manual allowlist for symbols, functions, operators, and constants.
+- Safe custom-equation NumPy evaluator and physics-mean preview helpers with
+  finite-output counts, JSON-safe values, and optional target-residual
+  summaries.
+- Safe custom-equation torch evaluator and differentiable parameter
+  initialization helpers for future PI-GPR mean-function conversion.
+- Safe custom-equation PI-GPR mean-function adapter and builder for training
+  user-defined safe equation specs with GPyTorch GPR.
 - JSON-safe metric and uncertainty-diagnostic helpers for API/report payloads
   that must pass strict JSON serialization.
 

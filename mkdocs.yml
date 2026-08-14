@@ -71,6 +71,7 @@ nav:
   - PyPI Readiness: pypi_readiness.md
   - Development Notes:
       - Reviewer Feedback Hardening Plan: reviewer_feedback_hardening_plan.md
+      - Safe Custom Equation Plan: safe_custom_equation_plan.md
   - API Reference:
       - Overview: api/index.md
       - Estimators: api/estimators.md
@@ -85,6 +86,7 @@ nav:
       - Multi-Fidelity GPR: api/multifidelity_gpr.md
       - Sparse Multitask GPR: api/sparse_multitask_gpr.md
       - Physics Equation Templates: api/physics_equations.md
+      - Safe Custom Equations: api/safe_equations.md
       - Physics-Informed GPR: api/gpytorch_gpr.md
       - Validation: api/validation.md
       - Candidate Generation: api/candidate_generation.md
