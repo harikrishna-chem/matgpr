@@ -143,11 +143,11 @@ Useful cleaning functions:
 | Function | Purpose |
 | --- | --- |
 | `normalize_column_names(df)` | Converts columns to lowercase `snake_case` and handles duplicates. |
-| `replace_missing_placeholders(df)` | Converts strings such as `""`, `"na"`, `"none"`, and `"-"` into `np.nan`. |
-| `drop_duplicate_rows(df, subset=None)` | Removes duplicate rows and resets the index. |
-| `drop_columns_by_missing_fraction(df, max_missing_fraction=0.5)` | Drops columns with too much missing data. |
-| `impute_missing_values(df, strategy="median", columns=None)` | Imputes selected columns with a scikit-learn `SimpleImputer`. |
-| `filter_iqr_outliers(df, columns, factor=1.5)` | Removes rows outside the IQR-based range for selected numeric columns. |
+| `replace_missing_placeholders(df)` | Converts string placeholders such as `""`, `"na"`, `"none"`, and `"-"` into `np.nan` using object/string columns only. |
+| `drop_duplicate_rows(df, subset=None, reset_index=True)` | Removes duplicate rows; set `reset_index=False` to preserve material IDs stored in the index. |
+| `drop_columns_by_missing_fraction(df, max_missing_fraction=0.5, return_dropped=False)` | Drops columns with too much missing data and can return the dropped-column list for reproducibility. |
+| `impute_missing_values(df, strategy="median", columns=None, return_imputer=False)` | Imputes selected columns with a scikit-learn `SimpleImputer` and can return the fitted imputer for validation/test reuse. |
+| `filter_iqr_outliers(df, columns, factor=1.5, drop_if="any")` | Removes rows outside IQR-based ranges; use `drop_if="all"` for less aggressive multi-column filtering. |
 
 Example:
 

@@ -47,7 +47,7 @@ class GPyTorchPrediction:
     upper: np.ndarray | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class GPyTorchGPRResult:
     """Container returned by ``fit_gpytorch_gpr``.
 
@@ -138,7 +138,9 @@ class PhysicsInformedMean(gpytorch.means.Mean):
         super().__init__()
         self.equation = equation
         self.feature_indices = _resolve_feature_indices(feature_indices, column_indices)
-        self.fixed_parameters = _validate_numeric_mapping(fixed_parameters or {}, "fixed_parameters")
+        self.fixed_parameters = _validate_numeric_mapping(
+            fixed_parameters or {}, "fixed_parameters"
+        )
         self.feature_means = _validate_numeric_mapping(feature_means or {}, "feature_means")
         self.feature_stds = _validate_positive_mapping(feature_stds or {}, "feature_stds")
         self.positive_parameters = set(positive_parameters)
@@ -361,9 +363,11 @@ def fit_gpytorch_gpr(
         are always returned in original target units.
     """
     _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
-    train_x = _to_tensor(X_train, device=device, dtype=dtype)
-    train_y = _to_tensor(y_train, device=device, dtype=dtype).reshape(-1)
+    device_object = torch.device(device)
+    train_x = _to_tensor(X_train, device=device_object, dtype=dtype)
+    train_y = _to_tensor(y_train, device=device_object, dtype=dtype).reshape(-1)
     _validate_training_arrays(train_x, train_y)
+    _validate_mean_module_feature_width(mean_module, train_x.shape[1])
 
     if standardize_y:
         target_mean = train_y.mean()
@@ -372,11 +376,11 @@ def fit_gpytorch_gpr(
             raise ValueError("y_train has zero standard deviation")
         train_y_model = (train_y - target_mean) / target_std
     else:
-        target_mean = torch.tensor(0.0, dtype=dtype, device=device)
-        target_std = torch.tensor(1.0, dtype=dtype, device=device)
+        target_mean = torch.tensor(0.0, dtype=dtype, device=device_object)
+        target_std = torch.tensor(1.0, dtype=dtype, device=device_object)
         train_y_model = train_y
 
-    likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device=device, dtype=dtype)
+    likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device=device_object, dtype=dtype)
     if initial_noise is not None:
         if initial_noise <= 0:
             raise ValueError("initial_noise must be positive")
@@ -386,7 +390,7 @@ def fit_gpytorch_gpr(
         mean_module,
         target_mean=target_mean,
         target_std=target_std,
-        device=device,
+        device=device_object,
         dtype=dtype,
     )
 
@@ -397,7 +401,7 @@ def fit_gpytorch_gpr(
         kernel=kernel,
         ard_num_dims=train_x.shape[1] if ard else None,
         mean_module=mean_module,
-    ).to(device=device, dtype=dtype)
+    ).to(device=device_object, dtype=dtype)
 
     model.target_mean = target_mean.detach()
     model.target_std = target_std.detach()
@@ -432,7 +436,7 @@ def fit_gpytorch_gpr(
         standardize_y=standardize_y,
         kernel=kernel,
         ard=ard,
-        device=device,
+        device=str(device_object),
         dtype=dtype,
     )
 
@@ -530,7 +534,7 @@ def _predict_gpytorch_gpr(
     _validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
-    test_x = _to_tensor(X, device=device, dtype=dtype)
+    test_x = _to_tensor(X, device=torch.device(device), dtype=dtype)
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         latent_distribution = model(test_x)
@@ -586,7 +590,7 @@ def _prepare_mean_module(
     *,
     target_mean: torch.Tensor,
     target_std: torch.Tensor,
-    device: str,
+    device: torch.device,
     dtype: torch.dtype,
 ) -> gpytorch.means.Mean:
     mean_module = mean_module or gpytorch.means.ConstantMean()
@@ -598,16 +602,22 @@ def _prepare_mean_module(
     return mean_module
 
 
-def _to_tensor(x, *, device: str, dtype: torch.dtype) -> torch.Tensor:
+def _to_tensor(x, *, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     """Convert NumPy, pandas, or torch input to a torch tensor."""
     if isinstance(x, torch.Tensor):
         return x.to(device=device, dtype=dtype)
     if hasattr(x, "to_numpy"):
-        x = x.to_numpy()
+        try:
+            x = x.to_numpy(dtype=float, na_value=np.nan)
+        except TypeError:
+            x = x.to_numpy()
     array = np.asarray(x)
     if not array.flags.writeable:
         array = array.copy()
-    return torch.as_tensor(array, dtype=dtype, device=device)
+    try:
+        return torch.as_tensor(array, dtype=dtype, device=device)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Input data must be numeric and convertible to a torch tensor") from error
 
 
 def _resolve_feature_indices(
@@ -641,7 +651,9 @@ def _validate_numeric_mapping(values: Mapping[str, float], mapping_name: str) ->
         try:
             validated[name] = float(value)
         except (TypeError, ValueError) as error:
-            raise ValueError(f"{mapping_name} values must be numeric; got {name}={value!r}") from error
+            raise ValueError(
+                f"{mapping_name} values must be numeric; got {name}={value!r}"
+            ) from error
     return validated
 
 
@@ -663,8 +675,13 @@ def _validate_torch_parameter_name(name: str) -> None:
 
 
 def _inverse_softplus(value: float) -> torch.Tensor:
-    value_tensor = torch.tensor(float(value))
-    return value_tensor + torch.log(-torch.expm1(-value_tensor))
+    value_tensor = torch.tensor(float(value), dtype=torch.float64)
+    if value_tensor <= 0:
+        raise ValueError("softplus inverse requires a positive value")
+    if value_tensor > 20:
+        return value_tensor
+    tiny = torch.finfo(value_tensor.dtype).tiny
+    return torch.log(torch.expm1(value_tensor).clamp_min(tiny))
 
 
 def _validate_training_options(*, lr: float, training_iter: int, log_every: int) -> None:
@@ -687,6 +704,18 @@ def _validate_training_arrays(train_x: torch.Tensor, train_y: torch.Tensor) -> N
         raise ValueError(
             f"At least two training samples are required; got n_samples = {train_x.shape[0]}"
         )
+    if not torch.isfinite(train_x).all():
+        raise ValueError("X_train must contain only finite values")
+    if not torch.isfinite(train_y).all():
+        raise ValueError("y_train must contain only finite values")
+
+
+def _validate_mean_module_feature_width(
+    mean_module: gpytorch.means.Mean | None,
+    n_features: int,
+) -> None:
+    if hasattr(mean_module, "_validate_feature_width"):
+        mean_module._validate_feature_width(n_features)
 
 
 def _validate_confidence_level(confidence_level: float | None) -> None:
@@ -708,12 +737,19 @@ def _print_training_status(
     model: ExactGPRModel,
 ) -> None:
     noise = likelihood.noise.item()
-    outputscale = model.covar_module.outputscale.item()
-    lengthscale = model.covar_module.base_kernel.lengthscale.detach().cpu().numpy()
+    outputscale = getattr(model.covar_module, "outputscale", None)
+    outputscale_value = float(outputscale.item()) if outputscale is not None else float("nan")
+    base_kernel = getattr(model.covar_module, "base_kernel", model.covar_module)
+    lengthscale = getattr(base_kernel, "lengthscale", None)
+    lengthscale_value = (
+        float(lengthscale.detach().cpu().numpy().mean())
+        if lengthscale is not None
+        else float("nan")
+    )
     print(
         f"Iter {iteration + 1:4d}/{training_iter} | "
         f"Loss: {loss.item():.4f} | "
         f"Noise: {noise:.4e} | "
-        f"Outputscale: {outputscale:.4e} | "
-        f"Mean lengthscale: {lengthscale.mean():.4e}"
+        f"Outputscale: {outputscale_value:.4e} | "
+        f"Mean lengthscale: {lengthscale_value:.4e}"
     )

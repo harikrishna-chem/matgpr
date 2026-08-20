@@ -4,6 +4,7 @@ from functools import reduce
 from operator import add, mul
 
 import numpy as np
+from scipy.spatial.distance import cdist
 from sklearn.base import clone
 from sklearn.gaussian_process.kernels import ConstantKernel, Hyperparameter, Kernel, WhiteKernel
 
@@ -48,6 +49,7 @@ class ElementFractionKernel(Kernel):
         normalize: bool = True,
         eps: float = 1e-12,
     ):
+        _validate_distance_metric(metric)
         self.length_scale = length_scale
         self.length_scale_bounds = length_scale_bounds
         self.metric = metric
@@ -78,9 +80,6 @@ class ElementFractionKernel(Kernel):
         elif self.metric == "l2":
             kernel = np.exp(-0.5 * distance / length_scale**2)
             log_gradient = kernel * distance / length_scale**2
-        else:
-            raise ValueError("metric must be either 'l1' or 'l2'")
-
         if eval_gradient:
             if self.hyperparameter_length_scale.fixed:
                 return kernel, np.empty((*kernel.shape, 0))
@@ -123,6 +122,7 @@ class StructureFeatureKernel(Kernel):
         metric: str = "l2",
         feature_scales=None,
     ):
+        _validate_distance_metric(metric)
         self.length_scale = length_scale
         self.length_scale_bounds = length_scale_bounds
         self.metric = metric
@@ -151,9 +151,6 @@ class StructureFeatureKernel(Kernel):
         elif self.metric == "l1":
             kernel = np.exp(-distance / length_scale)
             log_gradient = kernel * distance / length_scale
-        else:
-            raise ValueError("metric must be either 'l1' or 'l2'")
-
         if eval_gradient:
             if self.hyperparameter_length_scale.fixed:
                 return kernel, np.empty((*kernel.shape, 0))
@@ -170,11 +167,7 @@ class StructureFeatureKernel(Kernel):
         return True
 
     def __repr__(self) -> str:
-        return (
-            "StructureFeatureKernel("
-            f"length_scale={self.length_scale}, "
-            f"metric={self.metric!r})"
-        )
+        return f"StructureFeatureKernel(length_scale={self.length_scale}, metric={self.metric!r})"
 
 
 class TanimotoKernel(Kernel):
@@ -345,15 +338,18 @@ def pairwise_composition_distance(
         Small threshold used to reject all-zero composition rows.
     """
     X = _normalize_composition_vectors(X, normalize=normalize, eps=eps, name="X")
-    Y = X if Y is None else _normalize_composition_vectors(Y, normalize=normalize, eps=eps, name="Y")
+    Y = (
+        X
+        if Y is None
+        else _normalize_composition_vectors(Y, normalize=normalize, eps=eps, name="Y")
+    )
     if X.shape[1] != Y.shape[1]:
         raise ValueError("X and Y must have the same number of features")
 
-    difference = X[:, None, :] - Y[None, :, :]
     if metric == "l1":
-        return np.sum(np.abs(difference), axis=2)
+        return cdist(X, Y, metric="cityblock")
     if metric == "l2":
-        return np.sum(difference * difference, axis=2)
+        return cdist(X, Y, metric="sqeuclidean")
     raise ValueError("metric must be either 'l1' or 'l2'")
 
 
@@ -382,65 +378,70 @@ def pairwise_structure_distance(
     if X.shape[1] != Y.shape[1]:
         raise ValueError("X and Y must have the same number of features")
 
-    difference = X[:, None, :] - Y[None, :, :]
     if metric == "l2":
-        return np.sum(difference * difference, axis=2)
+        return cdist(X, Y, metric="sqeuclidean")
     if metric == "l1":
-        return np.sum(np.abs(difference), axis=2)
+        return cdist(X, Y, metric="cityblock")
     raise ValueError("metric must be either 'l1' or 'l2'")
 
 
 def build_element_fraction_gpr_kernel(
     *,
     constant_value: float = 1.0,
+    constant_value_bounds: tuple[float, float] | str = (1e-3, 1e3),
     length_scale: float = 1.0,
-    noise_level: float = 1.0,
+    length_scale_bounds: tuple[float, float] | str = (1e-5, 1e5),
+    noise_level: float = 1e-6,
+    noise_level_bounds: tuple[float, float] | str = (1e-10, 1e-1),
     metric: str = "l1",
     normalize: bool = True,
 ):
     """Build a scikit-learn GPR kernel for element-fraction composition vectors."""
-    return (
-        ConstantKernel(constant_value)
-        * ElementFractionKernel(
-            length_scale=length_scale,
-            metric=metric,
-            normalize=normalize,
-        )
-        + WhiteKernel(noise_level=noise_level)
-    )
+    return ConstantKernel(
+        constant_value, constant_value_bounds=constant_value_bounds
+    ) * ElementFractionKernel(
+        length_scale=length_scale,
+        length_scale_bounds=length_scale_bounds,
+        metric=metric,
+        normalize=normalize,
+    ) + WhiteKernel(noise_level=noise_level, noise_level_bounds=noise_level_bounds)
 
 
 def build_structure_gpr_kernel(
     *,
     constant_value: float = 1.0,
+    constant_value_bounds: tuple[float, float] | str = (1e-3, 1e3),
     length_scale: float = 1.0,
-    noise_level: float = 1.0,
+    length_scale_bounds: tuple[float, float] | str = (1e-5, 1e5),
+    noise_level: float = 1e-6,
+    noise_level_bounds: tuple[float, float] | str = (1e-10, 1e-1),
     metric: str = "l2",
     feature_scales=None,
 ):
     """Build a scikit-learn GPR kernel for continuous structure descriptors."""
-    return (
-        ConstantKernel(constant_value)
-        * StructureFeatureKernel(
-            length_scale=length_scale,
-            metric=metric,
-            feature_scales=feature_scales,
-        )
-        + WhiteKernel(noise_level=noise_level)
-    )
+    return ConstantKernel(
+        constant_value, constant_value_bounds=constant_value_bounds
+    ) * StructureFeatureKernel(
+        length_scale=length_scale,
+        length_scale_bounds=length_scale_bounds,
+        metric=metric,
+        feature_scales=feature_scales,
+    ) + WhiteKernel(noise_level=noise_level, noise_level_bounds=noise_level_bounds)
 
 
 def build_tanimoto_gpr_kernel(
     *,
     constant_value: float = 1.0,
-    noise_level: float = 1.0,
+    constant_value_bounds: tuple[float, float] | str = (1e-3, 1e3),
+    noise_level: float = 1e-6,
+    noise_level_bounds: tuple[float, float] | str = (1e-10, 1e-1),
     validate_nonnegative: bool = True,
 ):
     """Build a scikit-learn GPR kernel using Tanimoto fingerprint similarity."""
-    return (
-        ConstantKernel(constant_value)
-        * TanimotoKernel(validate_nonnegative=validate_nonnegative)
-        + WhiteKernel(noise_level=noise_level)
+    return ConstantKernel(
+        constant_value, constant_value_bounds=constant_value_bounds
+    ) * TanimotoKernel(validate_nonnegative=validate_nonnegative) + WhiteKernel(
+        noise_level=noise_level, noise_level_bounds=noise_level_bounds
     )
 
 
@@ -527,6 +528,11 @@ def _to_2d_float_array(values, name: str) -> np.ndarray:
 def _validate_nonnegative(values: np.ndarray, name: str) -> None:
     if np.any(values < 0):
         raise ValueError(f"{name} must contain only non-negative values")
+
+
+def _validate_distance_metric(metric: str) -> None:
+    if metric not in {"l1", "l2"}:
+        raise ValueError("metric must be either 'l1' or 'l2'")
 
 
 def _validate_length_scale(length_scale: float) -> float:

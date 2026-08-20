@@ -64,7 +64,11 @@ class CompositionFeaturizerTests(unittest.TestCase):
                 "comp_atomic_number_fwm",
             ],
         )
+        self.assertEqual(featurizer.n_features_in_, 2)
+        self.assertEqual(featurizer.feature_names_in_.tolist(), ["formula", "label"])
         self.assertEqual(featurizer.get_feature_names_out().tolist(), features.columns.tolist())
+        with self.assertRaises(ValueError):
+            featurizer.get_feature_names_out(["formula"])
         self.assertEqual(featurizer.failed_.shape[0], 0)
 
     def test_transform_array_and_report_failures(self):
@@ -205,7 +209,10 @@ class StructureFeaturizerTests(unittest.TestCase):
         features = featurizer.fit_transform(data)
 
         self.assertEqual(features.index.tolist(), [10, 20])
-        self.assertEqual(features.columns.tolist(), ["struct_density", "struct_log_volume_per_atom"])
+        self.assertEqual(
+            features.columns.tolist(), ["struct_density", "struct_log_volume_per_atom"]
+        )
+        self.assertEqual(featurizer.n_features_in_, 2)
         self.assertEqual(featurizer.get_feature_names_out().tolist(), features.columns.tolist())
         self.assertEqual(featurizer.failed_.shape[0], 0)
 

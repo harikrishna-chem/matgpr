@@ -64,6 +64,22 @@ class PhysicsInformedMeanTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             mean(torch.zeros(3, 1))
 
+    def test_rejects_feature_index_outside_training_matrix_width(self):
+        mean = PhysicsInformedMean(
+            equation=linear_physics_equation,
+            feature_indices={"temperature_c": 2},
+            learnable_parameters={"slope": 1.0, "intercept": 0.0},
+        )
+
+        with self.assertRaises(ValueError):
+            fit_gpytorch_gpr(
+                np.zeros((4, 1)),
+                np.arange(4.0),
+                mean_module=mean,
+                training_iter=1,
+                verbose=False,
+            )
+
 
 class GPyTorchTrainingTests(unittest.TestCase):
     def test_fit_result_predicts_in_original_target_units(self):
@@ -102,3 +118,10 @@ class GPyTorchTrainingTests(unittest.TestCase):
 
         self.assertEqual(mean.shape, (2,))
         self.assertEqual(std.shape, (2,))
+
+    def test_fit_rejects_nonfinite_training_values(self):
+        x = np.array([[0.0], [1.0], [np.nan]])
+        y = np.array([0.0, 1.0, 2.0])
+
+        with self.assertRaises(ValueError):
+            fit_gpytorch_gpr(x, y, training_iter=1, verbose=False)

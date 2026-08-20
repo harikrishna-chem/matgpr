@@ -77,11 +77,9 @@ class TanimotoKernelTests(unittest.TestCase):
             ]
         )
         y = np.array([1.0, 1.2, 0.8, 1.5])
-        kernel = (
-            ConstantKernel(1.0, constant_value_bounds="fixed")
-            * TanimotoKernel()
-            + WhiteKernel(noise_level=1e-4, noise_level_bounds="fixed")
-        )
+        kernel = ConstantKernel(
+            1.0, constant_value_bounds="fixed"
+        ) * TanimotoKernel() + WhiteKernel(noise_level=1e-4, noise_level_bounds="fixed")
 
         model = GaussianProcessRegressor(kernel=kernel, optimizer=None, normalize_y=True)
         model.fit(x, y)
@@ -98,6 +96,18 @@ class TanimotoKernelTests(unittest.TestCase):
 
         x = np.array([[1.0, 0.0], [1.0, 1.0]])
         self.assertTrue(np.allclose(kernel(x), direct(x)))
+
+    def test_build_sklearn_kernel_accepts_normalized_aliases(self):
+        x = np.array([[0.0, 1.0], [1.0, 0.0]])
+
+        kernel = build_sklearn_gpr_kernel("ARD-RBF", n_features=2)
+        spaced_alias_kernel = build_sklearn_gpr_kernel("ard rbf", n_features=2)
+
+        self.assertEqual(kernel(x).shape, (2, 2))
+        self.assertEqual(spaced_alias_kernel(x).shape, (2, 2))
+
+        with self.assertRaises(ValueError):
+            build_sklearn_gpr_kernel("ard_rbf", n_features=0)
 
 
 class KernelCompositionTests(unittest.TestCase):
@@ -165,6 +175,23 @@ class KernelCompositionTests(unittest.TestCase):
 
         x = np.array([[4.0, 1.0], [1.0, 1.0]])
         self.assertTrue(np.allclose(kernel(x), direct(x)))
+
+    def test_pairwise_composition_distance_handles_larger_inputs_without_broadcast_shape(self):
+        rng = np.random.default_rng(7)
+        x = rng.random((80, 5))
+        y = rng.random((90, 5))
+
+        distance = pairwise_composition_distance(x, y, metric="l2")
+
+        self.assertEqual(distance.shape, (80, 90))
+        self.assertTrue(np.all(distance >= 0.0))
+
+    def test_material_kernel_builders_use_small_noise_default(self):
+        x = np.array([[4.0, 1.0], [1.0, 1.0]])
+
+        kernel = build_element_fraction_gpr_kernel()
+
+        self.assertTrue(np.all(np.isfinite(kernel(x))))
 
     def test_build_sklearn_element_fraction_model_optimizes(self):
         x = np.array(

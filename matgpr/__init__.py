@@ -1,11 +1,6 @@
 """Utilities for data preparation, Gaussian Process Regression, and analysis."""
 
-from importlib.metadata import PackageNotFoundError, version
-
-try:
-    __version__ = version("matgpr")
-except PackageNotFoundError:  # pragma: no cover - source tree without installation
-    __version__ = "0.0.0+unknown"
+from ._version import __version__
 
 from .bayesian_optimization import (
     BayesianOptimizationResult,

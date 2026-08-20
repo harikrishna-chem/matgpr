@@ -72,7 +72,7 @@ DEFAULT_MAGPIE_STATISTICS: tuple[str, ...] = (
 )
 
 
-class CompositionFeaturizer(TransformerMixin, BaseEstimator):
+class CompositionFeaturizer(BaseEstimator, TransformerMixin):
     """Scikit-learn-style transformer for inorganic composition descriptors.
 
     The transformer wraps :func:`matgpr.featurize_compositions`, preserving the
@@ -103,6 +103,7 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None):
         """Store input-column metadata and deterministic descriptor names."""
         _validate_errors(self.errors)
+        _set_input_metadata(self, X)
         self.formula_column_ = _resolve_column(X, self.formula_column, kind="formula")
         feature_names = _composition_feature_names(
             properties=self.properties,
@@ -136,10 +137,11 @@ class CompositionFeaturizer(TransformerMixin, BaseEstimator):
     def get_feature_names_out(self, input_features=None) -> np.ndarray:
         """Return output descriptor names."""
         check_is_fitted(self, "feature_names_out_")
+        _validate_input_features(self, input_features)
         return self.feature_names_out_.copy()
 
 
-class MagpieCompositionFeaturizer(TransformerMixin, BaseEstimator):
+class MagpieCompositionFeaturizer(BaseEstimator, TransformerMixin):
     """Scikit-learn-style wrapper for matminer Magpie composition descriptors.
 
     Magpie descriptors summarize elemental properties with composition-weighted
@@ -170,6 +172,7 @@ class MagpieCompositionFeaturizer(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None):
         """Store input-column metadata and Magpie descriptor names."""
         _validate_errors(self.errors)
+        _set_input_metadata(self, X)
         self.formula_column_ = _resolve_column(X, self.formula_column, kind="formula")
         self.magpie_featurizer_ = _build_magpie_featurizer(
             properties=self.properties,
@@ -205,10 +208,11 @@ class MagpieCompositionFeaturizer(TransformerMixin, BaseEstimator):
     def get_feature_names_out(self, input_features=None) -> np.ndarray:
         """Return output Magpie descriptor names."""
         check_is_fitted(self, "feature_names_out_")
+        _validate_input_features(self, input_features)
         return self.feature_names_out_.copy()
 
 
-class StructureFeaturizer(TransformerMixin, BaseEstimator):
+class StructureFeaturizer(BaseEstimator, TransformerMixin):
     """Scikit-learn-style transformer for global crystal-structure descriptors."""
 
     def __init__(
@@ -231,6 +235,7 @@ class StructureFeaturizer(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None):
         """Store input-column metadata and deterministic descriptor names."""
         _validate_errors(self.errors)
+        _set_input_metadata(self, X)
         self.structure_column_ = _resolve_column(X, self.structure_column, kind="structure")
         self.feature_names_out_ = np.asarray(
             structure_feature_names(self.features, column_prefix=self.column_prefix),
@@ -261,10 +266,11 @@ class StructureFeaturizer(TransformerMixin, BaseEstimator):
     def get_feature_names_out(self, input_features=None) -> np.ndarray:
         """Return output descriptor names."""
         check_is_fitted(self, "feature_names_out_")
+        _validate_input_features(self, input_features)
         return self.feature_names_out_.copy()
 
 
-class SmilesFeaturizer(TransformerMixin, BaseEstimator):
+class SmilesFeaturizer(BaseEstimator, TransformerMixin):
     """Scikit-learn-style transformer for molecule or polymer SMILES.
 
     Molecule SMILES are canonicalized directly with RDKit. If
@@ -303,6 +309,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
     def fit(self, X, y=None):
         """Store input-column metadata and deterministic fingerprint names."""
         _validate_errors(self.errors)
+        _set_input_metadata(self, X)
         self.smiles_column_ = _resolve_column(X, self.smiles_column, kind="SMILES")
         empty_result = featurize_smiles(
             [],
@@ -355,6 +362,7 @@ class SmilesFeaturizer(TransformerMixin, BaseEstimator):
     def get_feature_names_out(self, input_features=None) -> np.ndarray:
         """Return output fingerprint or descriptor names."""
         check_is_fitted(self, "feature_names_out_")
+        _validate_input_features(self, input_features)
         return self.feature_names_out_.copy()
 
 
@@ -469,7 +477,9 @@ def _composition_feature_names(
     statistics: Sequence[str],
     column_prefix: str | None,
 ) -> list[str]:
-    names = [f"{property_name}_{statistic}" for property_name in properties for statistic in statistics]
+    names = [
+        f"{property_name}_{statistic}" for property_name in properties for statistic in statistics
+    ]
     if column_prefix is None:
         return names
     return [f"{column_prefix}_{name}" for name in names]
@@ -539,8 +549,11 @@ def _featurize_magpie_compositions_with_backend(
 
 
 def _as_pymatgen_composition(value: object):
-    if hasattr(value, "element_composition") and hasattr(value, "get_el_amt_dict"):
+    if isinstance(value, Composition):
         return value
+    composition = getattr(value, "composition", None)
+    if isinstance(composition, Composition):
+        return composition
     if value is None or (isinstance(value, (float, np.floating)) and np.isnan(value)):
         raise ValueError("formula is missing")
     formula = clean_formula(value)
@@ -656,3 +669,56 @@ def _format_transform_output(features: pd.DataFrame, return_dataframe: bool):
     if return_dataframe:
         return features
     return features.to_numpy()
+
+
+def _set_input_metadata(estimator, X) -> None:
+    if isinstance(X, pd.DataFrame):
+        estimator.n_features_in_ = X.shape[1]
+        if all(isinstance(column, str) for column in X.columns):
+            estimator.feature_names_in_ = np.asarray(X.columns, dtype=object)
+        elif hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
+        return
+
+    if isinstance(X, pd.Series):
+        estimator.n_features_in_ = 1
+        if isinstance(X.name, str):
+            estimator.feature_names_in_ = np.asarray([X.name], dtype=object)
+        elif hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
+        return
+
+    if not isinstance(X, np.ndarray) and _is_non_array_sequence(X):
+        estimator.n_features_in_ = 1
+        if hasattr(estimator, "feature_names_in_"):
+            delattr(estimator, "feature_names_in_")
+        return
+
+    array = np.asarray(X, dtype=object)
+    if array.ndim == 0:
+        raise ValueError("input must be one-dimensional or a two-dimensional table")
+    if array.ndim > 2:
+        raise ValueError("input must be one-dimensional or a two-dimensional table")
+    estimator.n_features_in_ = 1 if array.ndim == 1 else array.shape[1]
+    if hasattr(estimator, "feature_names_in_"):
+        delattr(estimator, "feature_names_in_")
+
+
+def _validate_input_features(estimator, input_features) -> None:
+    if input_features is None:
+        return
+    if len(input_features) != estimator.n_features_in_:
+        raise ValueError(
+            "input_features must have the same length as the fitted input; "
+            f"expected {estimator.n_features_in_}, got {len(input_features)}"
+        )
+
+
+def _is_non_array_sequence(value) -> bool:
+    if isinstance(value, str):
+        return False
+    try:
+        iter(value)
+    except TypeError:
+        return False
+    return True
