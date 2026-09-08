@@ -48,7 +48,7 @@ For an exact commit:
 python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@<commit-hash>"
 ```
 
-When `matgpr` is published to PyPI, use exact package pins for manuscripts,
+Now that `matgpr` is published to PyPI, use exact package pins for manuscripts,
 benchmarks, and production workflows:
 
 ```bash

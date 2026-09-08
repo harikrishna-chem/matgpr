@@ -173,10 +173,10 @@ physics-informed mean functions and uncertainty-aware prediction.
   to implement them in `matgpr` workflows.
 - `docs/versioning.md` explains the active-development status, API-stability
   policy, and how to pin releases or commits for reproducible workflows.
-- `docs/release_checklist.md` defines the release gate for `v0.2.0` and later
+- `docs/release_checklist.md` defines the release gate for `v0.2.x` and later
   `0.x` releases.
-- `docs/pypi_readiness.md` records the PyPI readiness audit and remaining
-  upload blockers.
+- `docs/pypi_readiness.md` records the current PyPI publication state and the
+  reusable release gate for future package uploads.
 
 ## Versioning And API Stability
 
@@ -391,9 +391,11 @@ from the repository.
 - Continue refining published-paper example workflows for
   materials-informatics users.
 - Expand documentation with tutorials, API references, and example equations.
-- Add multitask Gaussian-process models.
-- Add additional physics-informed model families.
+- Refine multitask and multi-fidelity examples for public materials datasets.
+- Add additional physics-informed examples and equation templates.
 - Expand Bayesian optimization examples for next-experiment selection.
+- Evaluate whether a local MCP server would make `matgpr` easier to use from
+  AI coding agents.
 
 ## Project Status
 

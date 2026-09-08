@@ -1,6 +1,6 @@
 # Release Checklist
 
-This checklist is the release gate for `matgpr` `v0.2.0` and later `0.x`
+This checklist is the release gate for `matgpr` `v0.2.x` and later `0.x`
 releases. The goal is to make each release reproducible,
 auditable, citable, and easy for materials-informatics users to install.
 
@@ -8,7 +8,7 @@ auditable, citable, and easy for materials-informatics users to install.
 
 Before tagging a release, write down the intended scope:
 
-- release version, for example `v0.2.0`,
+- release version, for example `v0.2.1`,
 - release date,
 - release owner,
 - short release theme,
@@ -16,7 +16,7 @@ Before tagging a release, write down the intended scope:
 - user-facing features intentionally deferred,
 - known limitations.
 
-For `v0.2.0`, the intended theme is:
+The completed `v0.2.0` release theme was:
 
 ```text
 First PyPI-ready release of matgpr: Gaussian Process Regression, uncertainty,
@@ -100,7 +100,7 @@ python -m pytest
 python -m mkdocs build --strict
 rm -rf dist build matgpr.egg-info
 python -m build
-VERSION=0.2.0
+VERSION=0.2.1
 python -m twine check dist/matgpr-${VERSION}*
 ```
 
@@ -110,7 +110,7 @@ For the public examples, run at least the reduced notebook smoke test:
 python scripts/smoke_notebooks.py
 ```
 
-For `v0.2.0`, also run a fresh-clone smoke test before tagging:
+For every public release, also run a fresh-clone smoke test before tagging:
 
 ```bash
 python -m venv /tmp/matgpr-release-smoke
@@ -168,13 +168,13 @@ Create a GitHub release from the tag. The release notes should include:
 Suggested install command for a GitHub-tagged release:
 
 ```bash
-python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.0"
+python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.1"
 ```
 
 If Bayesian optimization examples or APIs are needed:
 
 ```bash
-python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.0"
+python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.1"
 ```
 
 ## Zenodo DOI
@@ -240,7 +240,7 @@ Recommended TestPyPI flow with GitHub Actions Trusted Publishing:
 gh workflow run publish-pypi.yml \
   --ref main \
   -f target=testpypi \
-  -f version=0.2.0
+  -f version=0.2.1
 ```
 
 3. Install from TestPyPI with live PyPI as the dependency source:
@@ -251,7 +251,7 @@ python -m venv /tmp/matgpr-testpypi
 /tmp/matgpr-testpypi/bin/python -m pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  "matgpr[examples,bo]==0.2.0"
+  "matgpr[examples,bo]==0.2.1"
 /tmp/matgpr-testpypi/bin/python -m pip check
 /tmp/matgpr-testpypi/bin/python -c "import matgpr; print(matgpr.__version__)"
 ```
@@ -261,7 +261,7 @@ Recommended local artifact check before running the workflow:
 ```bash
 rm -rf dist build matgpr.egg-info
 python -m build
-VERSION=0.2.0
+VERSION=0.2.1
 python -m twine check dist/matgpr-${VERSION}*
 ```
 
@@ -272,18 +272,18 @@ Recommended live PyPI flow after TestPyPI passes:
    - repository: `matgpr`
    - workflow: `publish-pypi.yml`
    - environment: `pypi`
-2. Create and push the final `v0.2.0` tag.
+2. Create and push the final tag, for example `v0.2.1`.
 3. Run the manual workflow from the tag:
 
 ```bash
 gh workflow run publish-pypi.yml \
-  --ref v0.2.0 \
+  --ref v0.2.1 \
   -f target=pypi \
-  -f version=0.2.0
+  -f version=0.2.1
 ```
 
 PyPI upload should be treated as a separate explicit release decision. The live
-publish job intentionally fails if it is not run from tag `v0.2.0`.
+publish job intentionally fails if it is not run from the matching release tag.
 
 ## Documentation Deployment
 
