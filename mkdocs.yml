@@ -69,7 +69,9 @@ nav:
   - Versioning And Stability: versioning.md
   - Release Checklist: release_checklist.md
   - PyPI Readiness: pypi_readiness.md
+  - MCP Server: mcp_server.md
   - Development Notes:
+      - MCP Server Design: mcp_server_design.md
       - PyPI v0.2.0 Release Plan: pypi_release_v0_2_0_plan.md
       - Reviewer Feedback Hardening Plan: reviewer_feedback_hardening_plan.md
       - Safe Custom Equation Plan: safe_custom_equation_plan.md

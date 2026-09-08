@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
+import sys
 import unittest
 from importlib.metadata import version
 from pathlib import Path
@@ -11,6 +13,21 @@ class PublicApiTests(unittest.TestCase):
         import matgpr
 
         self.assertEqual(matgpr.__version__, version("matgpr"))
+
+    def test_package_import_does_not_eagerly_load_heavy_modeling_modules(self):
+        script = (
+            "import sys; import matgpr; "
+            "print('matgpr.gpytorch_gpr' in sys.modules); "
+            "print('torch' in sys.modules)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.stdout.splitlines(), ["False", "False"])
 
     def test_module_all_exports_are_explicit_and_resolvable(self):
         modules = ["matgpr"]

@@ -78,6 +78,12 @@ OPTIONAL_DEPENDENCIES: dict[str, OptionalDependency] = {
         extra="materials-extra",
         purpose="Mendeleev elemental-property tables",
     ),
+    "mcp": OptionalDependency(
+        import_name="mcp",
+        package_name="mcp",
+        extra="mcp",
+        purpose="Model Context Protocol server support",
+    ),
     "jarvis": OptionalDependency(
         import_name="jarvis",
         package_name="jarvis-tools",
@@ -190,6 +196,6 @@ def _missing_dependency_message(metadata: OptionalDependency) -> str:
     return (
         f"{metadata.purpose} requires optional dependency `{metadata.package_name}`. "
         f"Install the optional {metadata.extra} extra with "
-        f"`python -m pip install \"matgpr[{metadata.extra}]\"`, or install the "
+        f'`python -m pip install "matgpr[{metadata.extra}]"`, or install the '
         f"backend directly with `python -m pip install {metadata.package_name}`."
     )

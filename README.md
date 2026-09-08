@@ -177,6 +177,10 @@ physics-informed mean functions and uncertainty-aware prediction.
   `0.x` releases.
 - `docs/pypi_readiness.md` records the current PyPI publication state and the
   reusable release gate for future package uploads.
+- `docs/mcp_server.md` explains how to install and connect the optional local
+  MCP server for AI-agent access to public `matgpr` helpers.
+- `docs/mcp_server_design.md` records the local MCP server architecture and
+  staged implementation plan.
 
 ## Versioning And API Stability
 

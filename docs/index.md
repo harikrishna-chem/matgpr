@@ -71,7 +71,9 @@ prediction accuracy.
    package release.
 14. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
    distribution.
-15. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+15. Use the [MCP Server](mcp_server.md) guide to connect `matgpr` to local AI
+    coding agents.
+16. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 
