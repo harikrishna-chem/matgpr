@@ -2,6 +2,9 @@
 
 Date: 2026-09-07
 
+Status: completed. `v0.2.0` was published to live PyPI and archived on Zenodo
+on 2026-09-08.
+
 ## Scope
 
 Prepare `matgpr` for its first PyPI release as `v0.2.0`.
@@ -69,3 +72,12 @@ After review and push, configure Trusted Publishers on TestPyPI and PyPI using:
 
 Then run the workflow manually for TestPyPI first. Only run the live PyPI job
 from the final `v0.2.0` tag after TestPyPI install checks pass.
+
+Completion notes:
+
+- GitHub tag: `v0.2.0`
+- Release commit: `adf19acfd6f4cdd7460fa40cf66d5ba58b165ea0`
+- PyPI: <https://pypi.org/project/matgpr/0.2.0/>
+- TestPyPI: <https://test.pypi.org/project/matgpr/0.2.0/>
+- Zenodo version DOI: <https://doi.org/10.5281/zenodo.22653726>
+- Zenodo concept DOI: <https://doi.org/10.5281/zenodo.21210386>

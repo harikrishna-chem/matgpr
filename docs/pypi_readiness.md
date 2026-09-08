@@ -6,33 +6,32 @@ explicit release action.
 
 ## Current Status
 
-Status as of 2026-09-07:
+Status as of 2026-09-08:
 
 - Package name: `matgpr`.
 - Import package: `matgpr`.
-- Target release version: `0.2.0`.
+- Current PyPI release version: `0.2.0`.
 - License metadata: `Apache-2.0`.
 - Python support: Python 3.10, 3.11, and 3.12.
 - Build backend: `setuptools.build_meta`.
-- PyPI name check: `python -m pip index versions matgpr` returned no matching
-  distribution on 2026-09-07.
-- Local package metadata, version files, release docs, and publish workflow are
+- PyPI project: <https://pypi.org/project/matgpr/0.2.0/>.
+- TestPyPI project: <https://test.pypi.org/project/matgpr/0.2.0/>.
+- Zenodo version DOI: <https://doi.org/10.5281/zenodo.22653726>.
+- Zenodo concept DOI: <https://doi.org/10.5281/zenodo.21210386>.
+- Local package metadata, version files, release docs, and publish workflow were
   prepared for `0.2.0`.
 - Local build: source distribution and wheel built successfully on 2026-09-07.
 - README rendering check: exact-version `twine check` passed on 2026-09-07.
-- Recommended publishing path: GitHub Actions Trusted Publishing with separate
-  TestPyPI and PyPI environments.
-- Current recommendation: upload to TestPyPI first, verify a clean install,
-  then run the live PyPI job only from tag `v0.2.0`.
-
-The package name should be checked again immediately before the first upload
-because PyPI availability can change.
+- Publishing path: GitHub Actions Trusted Publishing with separate TestPyPI and
+  PyPI environments.
+- TestPyPI publication and clean install passed on 2026-09-08.
+- Live PyPI publication and clean install passed on 2026-09-08.
 
 ## Audit Results
 
 | Area | Current result | Status |
 | --- | --- | --- |
-| Project name | `matgpr` is valid and currently appears unused on PyPI | Ready, recheck before upload |
+| Project name | `matgpr` is published on PyPI | Complete |
 | Version | `pyproject.toml`, `CITATION.cff`, and `matgpr.__version__` use `0.2.0` | Ready |
 | License | SPDX license expression and license file are included | Ready |
 | Author metadata | Author and maintainer metadata are present in `pyproject.toml` | Ready |
@@ -41,10 +40,11 @@ because PyPI availability can change.
 | Source distribution contents | Source distribution includes package source, tests, README, license, `pyproject.toml`, `CITATION.cff`, and `CHANGELOG.md` | Ready |
 | Public examples | Examples are not installed by the wheel; they remain repository examples | Intentional |
 | Trusted Publishing workflow | `.github/workflows/publish-pypi.yml` builds artifacts and publishes through OIDC | Ready after CI review |
-| TestPyPI trusted publisher | Must be configured in TestPyPI before running the workflow | Blocking before TestPyPI |
-| Clean install from TestPyPI | Not yet performed | Blocking before live PyPI |
+| TestPyPI trusted publisher | Configured for `publish-pypi.yml` and environment `testpypi` | Complete |
+| Clean install from TestPyPI | Passed for `matgpr[examples,bo]==0.2.0` | Complete |
 | Documentation URL | `pyproject.toml` points to the configured GitHub Pages custom domain | Verify after each Pages deployment |
-| PyPI trusted publisher | Must be configured in PyPI before live upload | Blocking before live PyPI |
+| PyPI trusted publisher | Configured for `publish-pypi.yml` and environment `pypi` | Complete |
+| Clean install from PyPI | Passed for `matgpr==0.2.0` | Complete |
 
 ## Metadata Notes
 
@@ -117,27 +117,21 @@ PyPI:
 Use GitHub environments named `testpypi` and `pypi` so publish jobs can be
 review-gated in GitHub before an upload occurs.
 
-## Remaining Blockers Before Live PyPI
+## Completed v0.2.0 Release Checks
 
-Do not upload to live PyPI until all of these are resolved:
+The first live PyPI release has passed these checks:
 
-- Confirm `https://harikrishnasahu.com/matgpr/` opens after the GitHub Pages
-  deploy workflow runs.
-- Confirm the `matgpr` project name still appears available.
-- Register or verify the PyPI owner account and project ownership plan.
-- Register or verify the TestPyPI account.
-- Configure TestPyPI Trusted Publishing for `.github/workflows/publish-pypi.yml`
-  with environment `testpypi`.
-- Run the manual TestPyPI workflow.
-- Install from TestPyPI in a clean environment.
-- Run `pip check` after the TestPyPI install.
-- Verify `import matgpr` and `matgpr.__version__`.
-- Verify extras installation strategy, especially `examples`, `docs`, and
-  `bo`.
-- Create the final `v0.2.0` GitHub tag and release after CI/docs are green.
-- Configure PyPI Trusted Publishing for `.github/workflows/publish-pypi.yml`
-  with environment `pypi`.
-- Run the manual live PyPI workflow from tag `v0.2.0`.
+- `https://harikrishnasahu.com/matgpr/` returned `HTTP/2 200`.
+- `https://pypi.org/project/matgpr/` returned `HTTP/2 200`.
+- `python -m pip index versions matgpr` reported `0.2.0` as latest.
+- TestPyPI Trusted Publishing was configured and the TestPyPI workflow passed.
+- TestPyPI clean install passed for `matgpr[examples,bo]==0.2.0`.
+- PyPI Trusted Publishing was configured and the live PyPI workflow passed.
+- Live PyPI clean install passed for `matgpr==0.2.0`.
+- `pip check` passed after both TestPyPI and live PyPI clean installs.
+- `matgpr.__version__` reported `0.2.0` after clean installation.
+- Zenodo archived `v0.2.0` with DOI
+  <https://doi.org/10.5281/zenodo.22653726>.
 
 ## Local Artifact Check
 
@@ -207,12 +201,12 @@ python -m venv /tmp/matgpr-pypi
 
 ## DOI Follow-Up
 
-`CITATION.cff` is prepared for `0.2.0` but does not include a new version DOI
-until Zenodo archives the `v0.2.0` GitHub release. After Zenodo creates the new
-record, update `README.md`, `CITATION.cff`, `.zenodo.json` if needed, and the
-documentation with the exact `v0.2.0` DOI.
+Zenodo archived the `v0.2.0` GitHub release as
+<https://doi.org/10.5281/zenodo.22653726>. The all-versions concept DOI is
+<https://doi.org/10.5281/zenodo.21210386>.
 
 ## Final Recommendation
 
-`matgpr` is ready for a controlled first PyPI release once the local gate, CI,
-docs workflow, TestPyPI upload, and TestPyPI clean-install checks pass.
+For future releases, keep using the same controlled path: local gate, CI/docs,
+TestPyPI upload and clean install, live PyPI upload from the final tag, GitHub
+Release, Zenodo archive check, then DOI documentation follow-up.

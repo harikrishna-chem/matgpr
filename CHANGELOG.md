@@ -16,7 +16,7 @@ phase.
 
 - Nothing yet.
 
-## 0.2.0 - 2026-09-07
+## 0.2.0 - 2026-09-08
 
 ### Added
 
@@ -38,6 +38,7 @@ phase.
   package publication without long-lived API tokens.
 - PyPI `v0.2.0` release-preparation plan and refreshed TestPyPI/PyPI release
   documentation.
+- Archived release DOI: <https://doi.org/10.5281/zenodo.22653726>.
 
 ### Fixed
 

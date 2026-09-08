@@ -75,7 +75,7 @@ prediction accuracy.
 
 ## Installation
 
-From PyPI, after the `v0.2.0` release is published:
+From PyPI:
 
 ```bash
 python -m pip install matgpr
@@ -111,13 +111,17 @@ python -m mkdocs serve
 ## Citation
 
 If you use `matgpr` in a publication, cite the exact release, tag, or commit
-you used. Citation metadata is available in `CITATION.cff`; release DOIs are
-added after Zenodo archives each GitHub release. Individual example reports
-also list the original papers and datasets that should be cited.
+you used. Citation metadata is available in `CITATION.cff`.
+
+For `v0.2.0`, cite the Zenodo version DOI:
+<https://doi.org/10.5281/zenodo.22653726>.
+
+The all-versions Zenodo concept DOI is
+<https://doi.org/10.5281/zenodo.21210386>. Individual example reports also
+list the original papers and datasets that should be cited.
 
 The previous archived release DOI for `v0.1.1` is
-<https://doi.org/10.5281/zenodo.21210387>. Do not cite that DOI for `v0.2.0`
-unless the analysis used the `v0.1.1` release.
+<https://doi.org/10.5281/zenodo.21210387>.
 
 ## License
 

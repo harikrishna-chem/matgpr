@@ -111,3 +111,9 @@ When publishing results built with `matgpr`, cite:
 
 Once release DOIs are enabled, prefer citing the DOI for the exact release used
 in the study.
+
+Current archived release DOIs:
+
+- `v0.2.0`: <https://doi.org/10.5281/zenodo.22653726>
+- `v0.1.1`: <https://doi.org/10.5281/zenodo.21210387>
+- all versions: <https://doi.org/10.5281/zenodo.21210386>

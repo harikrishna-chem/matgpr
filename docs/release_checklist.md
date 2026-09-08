@@ -193,6 +193,12 @@ Before the first DOI-backed release:
 Once a DOI exists, tell users to cite the DOI for the exact release they used
 and the original papers for the example datasets.
 
+Current archived release DOIs:
+
+- `v0.2.0`: <https://doi.org/10.5281/zenodo.22653726>
+- `v0.1.1`: <https://doi.org/10.5281/zenodo.21210387>
+- all versions: <https://doi.org/10.5281/zenodo.21210386>
+
 For GitHub-connected Zenodo releases:
 
 1. Log in to Zenodo with the GitHub account that can access

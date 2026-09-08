@@ -1,5 +1,8 @@
 # matgpr
 
+[![PyPI version](https://img.shields.io/pypi/v/matgpr.svg)](https://pypi.org/project/matgpr/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22653726.svg)](https://doi.org/10.5281/zenodo.22653726)
+
 Gaussian Process Regression tools for materials informatics, with first-class
 support for physics-informed mean functions.
 
@@ -292,7 +295,7 @@ learned_parameters = model.learned_physics_parameters_
 
 ## Installation
 
-From PyPI, after the `v0.2.0` release is published:
+From PyPI:
 
 ```bash
 python3 -m pip install matgpr
@@ -341,15 +344,19 @@ python3 -m pip install -e ".[materials-extra]"
 ## Citation
 
 If you use `matgpr` in a publication, cite the exact release, tag, or commit
-you used. Citation metadata is available in `CITATION.cff`; release DOIs are
-added after Zenodo archives each GitHub release. Individual examples should
-also cite the original papers and datasets listed in their reports. See
+you used. Citation metadata is available in `CITATION.cff`.
+
+For `v0.2.0`, cite the Zenodo version DOI:
+<https://doi.org/10.5281/zenodo.22653726>.
+
+The all-versions Zenodo concept DOI is
+<https://doi.org/10.5281/zenodo.21210386>. Individual examples should also
+cite the original papers and datasets listed in their reports. See
 `docs/benchmark_summary.md` for public-example citation and benchmark
 reporting guidance.
 
 The previous archived release DOI for `v0.1.1` is
-<https://doi.org/10.5281/zenodo.21210387>. Do not cite that DOI for `v0.2.0`
-unless the analysis used the `v0.1.1` release.
+<https://doi.org/10.5281/zenodo.21210387>.
 
 ## License
 
