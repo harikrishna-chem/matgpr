@@ -70,6 +70,7 @@ nav:
   - Release Checklist: release_checklist.md
   - PyPI Readiness: pypi_readiness.md
   - Development Notes:
+      - PyPI v0.2.0 Release Plan: pypi_release_v0_2_0_plan.md
       - Reviewer Feedback Hardening Plan: reviewer_feedback_hardening_plan.md
       - Safe Custom Equation Plan: safe_custom_equation_plan.md
   - API Reference:

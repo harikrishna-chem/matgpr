@@ -1,14 +1,13 @@
 # matgpr
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21210387.svg)](https://doi.org/10.5281/zenodo.21210387)
-
 Gaussian Process Regression tools for materials informatics, with first-class
 support for physics-informed mean functions.
 
 `matgpr` is an early-stage research package for building reproducible GPR
-workflows on materials datasets. The first release focuses on clean data
+workflows on materials datasets. The `0.2.x` line focuses on clean data
 preparation utilities, scikit-learn and GPyTorch GPR models, uncertainty-aware
-prediction, and a flexible physics-informed mean-function API.
+prediction, Bayesian optimization, and flexible physics-informed mean-function
+APIs.
 
 The importable package is `matgpr`. Python 3.10 or newer is required.
 
@@ -171,14 +170,14 @@ physics-informed mean functions and uncertainty-aware prediction.
   to implement them in `matgpr` workflows.
 - `docs/versioning.md` explains the active-development status, API-stability
   policy, and how to pin releases or commits for reproducible workflows.
-- `docs/release_checklist.md` defines the release gate for `v0.1.0` and later
+- `docs/release_checklist.md` defines the release gate for `v0.2.0` and later
   `0.x` releases.
 - `docs/pypi_readiness.md` records the PyPI readiness audit and remaining
   upload blockers.
 
 ## Versioning And API Stability
 
-Current version: `0.1.1`.
+Current version: `0.2.0`.
 
 `matgpr` follows semantic-versioning conventions in spirit, but minor `0.x`
 releases may include breaking API changes while the package is still being
@@ -186,7 +185,7 @@ shaped. For publications, benchmarks, and production workflows, install from a
 release tag or exact commit instead of the moving `main` branch:
 
 ```bash
-python3 -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.1"
+python3 -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.0"
 ```
 
 Record the `matgpr` version or commit hash, Python version, and dependency lock
@@ -293,6 +292,18 @@ learned_parameters = model.learned_physics_parameters_
 
 ## Installation
 
+From PyPI, after the `v0.2.0` release is published:
+
+```bash
+python3 -m pip install matgpr
+```
+
+For optional example and Bayesian-optimization dependencies:
+
+```bash
+python3 -m pip install "matgpr[examples,bo]"
+```
+
 From a local checkout:
 
 ```bash
@@ -329,11 +340,16 @@ python3 -m pip install -e ".[materials-extra]"
 
 ## Citation
 
-If you use `matgpr` in a publication, cite the archived release DOI:
-<https://doi.org/10.5281/zenodo.21210387>. The same citation metadata is also
-available in `CITATION.cff`. Individual examples should also cite the original
-papers and datasets listed in their reports. See `docs/benchmark_summary.md`
-for public-example citation and benchmark reporting guidance.
+If you use `matgpr` in a publication, cite the exact release, tag, or commit
+you used. Citation metadata is available in `CITATION.cff`; release DOIs are
+added after Zenodo archives each GitHub release. Individual examples should
+also cite the original papers and datasets listed in their reports. See
+`docs/benchmark_summary.md` for public-example citation and benchmark
+reporting guidance.
+
+The previous archived release DOI for `v0.1.1` is
+<https://doi.org/10.5281/zenodo.21210387>. Do not cite that DOI for `v0.2.0`
+unless the analysis used the `v0.1.1` release.
 
 ## License
 

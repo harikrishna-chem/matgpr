@@ -1,25 +1,29 @@
 # PyPI Readiness Audit
 
 This page records the current PyPI readiness status for `matgpr`. It is not an
-upload instruction by itself. Treat every PyPI or TestPyPI upload as an
+upload instruction by itself. Treat every TestPyPI or PyPI upload as an
 explicit release action.
 
 ## Current Status
 
-Status as of 2026-07-05:
+Status as of 2026-09-07:
 
 - Package name: `matgpr`.
 - Import package: `matgpr`.
-- Current version: `0.1.1`.
+- Target release version: `0.2.0`.
 - License metadata: `Apache-2.0`.
 - Python support: Python 3.10, 3.11, and 3.12.
 - Build backend: `setuptools.build_meta`.
 - PyPI name check: `python -m pip index versions matgpr` returned no matching
-  distribution on 2026-07-02.
-- Local build: source distribution and wheel build successfully.
-- README rendering check: exact-version `twine check` passes.
-- Current recommendation: do not upload to live PyPI until the remaining
-  blockers below are resolved.
+  distribution on 2026-09-07.
+- Local package metadata, version files, release docs, and publish workflow are
+  prepared for `0.2.0`.
+- Local build: source distribution and wheel built successfully on 2026-09-07.
+- README rendering check: exact-version `twine check` passed on 2026-09-07.
+- Recommended publishing path: GitHub Actions Trusted Publishing with separate
+  TestPyPI and PyPI environments.
+- Current recommendation: upload to TestPyPI first, verify a clean install,
+  then run the live PyPI job only from tag `v0.2.0`.
 
 The package name should be checked again immediately before the first upload
 because PyPI availability can change.
@@ -29,17 +33,18 @@ because PyPI availability can change.
 | Area | Current result | Status |
 | --- | --- | --- |
 | Project name | `matgpr` is valid and currently appears unused on PyPI | Ready, recheck before upload |
-| Version | `pyproject.toml`, `CITATION.cff`, and `matgpr.__version__` use `0.1.1` | Ready |
+| Version | `pyproject.toml`, `CITATION.cff`, and `matgpr.__version__` use `0.2.0` | Ready |
 | License | SPDX license expression and license file are included | Ready |
 | Author metadata | Author and maintainer metadata are present in `pyproject.toml` | Ready |
-| README | Markdown long description passes `twine check` | Ready |
-| Wheel contents | Wheel includes only the importable package and license metadata | Ready |
+| README | Markdown long description passes exact-version `twine check` | Ready |
+| Wheel contents | Wheel includes the importable package and license metadata | Ready |
 | Source distribution contents | Source distribution includes package source, tests, README, license, `pyproject.toml`, `CITATION.cff`, and `CHANGELOG.md` | Ready |
 | Public examples | Examples are not installed by the wheel; they remain repository examples | Intentional |
-| TestPyPI upload | Not yet performed | Blocking before live PyPI |
+| Trusted Publishing workflow | `.github/workflows/publish-pypi.yml` builds artifacts and publishes through OIDC | Ready after CI review |
+| TestPyPI trusted publisher | Must be configured in TestPyPI before running the workflow | Blocking before TestPyPI |
 | Clean install from TestPyPI | Not yet performed | Blocking before live PyPI |
 | Documentation URL | `pyproject.toml` points to the configured GitHub Pages custom domain | Verify after each Pages deployment |
-| Live PyPI account/token | Not verified in this audit | Blocking before live PyPI |
+| PyPI trusted publisher | Must be configured in PyPI before live upload | Blocking before live PyPI |
 
 ## Metadata Notes
 
@@ -51,22 +56,18 @@ because PyPI availability can change.
 - `[project.optional-dependencies]` extras for examples, documentation,
   Bayesian optimization, and heavier fingerprinting backends.
 
-The Python Packaging User Guide recommends declaring the build backend and
-project metadata in `pyproject.toml`, including project name, version,
-description, README, dependencies, license expression, license files, and
-project URLs:
-
-- <https://packaging.python.org/en/latest/guides/writing-pyproject-toml/>
+Use Trusted Publishing/OIDC for uploads where possible. This avoids storing
+long-lived PyPI API tokens in GitHub Secrets.
 
 ## Package Contents
 
-The wheel currently contains:
+The wheel should contain:
 
 - `matgpr/*.py`,
-- `matgpr-0.1.1.dist-info/*`,
+- `matgpr-0.2.0.dist-info/*`,
 - `LICENSE`.
 
-The wheel does not contain:
+The wheel should not contain:
 
 - public example notebooks,
 - example datasets,
@@ -79,7 +80,7 @@ This is a clean wheel for library installation. Public examples remain in the
 GitHub repository, where Colab notebooks can fetch `dataset.pkl` files by raw
 URL.
 
-The source distribution currently contains:
+The source distribution should contain:
 
 - package source,
 - tests,
@@ -94,43 +95,71 @@ downstream verification. Full documentation sources and public examples remain
 repository/Zenodo assets so notebooks and datasets are not silently installed
 through the Python package index.
 
+## Required Trusted Publisher Setup
+
+Before running the publish workflow, configure Trusted Publishers on TestPyPI
+and PyPI.
+
+TestPyPI:
+
+- owner: `harikrishna-chem`
+- repository: `matgpr`
+- workflow filename: `publish-pypi.yml`
+- environment: `testpypi`
+
+PyPI:
+
+- owner: `harikrishna-chem`
+- repository: `matgpr`
+- workflow filename: `publish-pypi.yml`
+- environment: `pypi`
+
+Use GitHub environments named `testpypi` and `pypi` so publish jobs can be
+review-gated in GitHub before an upload occurs.
+
 ## Remaining Blockers Before Live PyPI
 
 Do not upload to live PyPI until all of these are resolved:
 
 - Confirm `https://harikrishnasahu.com/matgpr/` opens after the GitHub Pages
   deploy workflow runs.
+- Confirm the `matgpr` project name still appears available.
 - Register or verify the PyPI owner account and project ownership plan.
 - Register or verify the TestPyPI account.
-- Create scoped API tokens for TestPyPI and PyPI.
-- Upload to TestPyPI first.
+- Configure TestPyPI Trusted Publishing for `.github/workflows/publish-pypi.yml`
+  with environment `testpypi`.
+- Run the manual TestPyPI workflow.
 - Install from TestPyPI in a clean environment.
 - Run `pip check` after the TestPyPI install.
 - Verify `import matgpr` and `matgpr.__version__`.
 - Verify extras installation strategy, especially `examples`, `docs`, and
   `bo`.
-- Recheck package-name availability immediately before live upload.
+- Create the final `v0.2.0` GitHub tag and release after CI/docs are green.
+- Configure PyPI Trusted Publishing for `.github/workflows/publish-pypi.yml`
+  with environment `pypi`.
+- Run the manual live PyPI workflow from tag `v0.2.0`.
 
-## Recommended TestPyPI Flow
+## Local Artifact Check
 
-TestPyPI is a separate package index for testing the publishing flow. It has a
-separate user database and can be used without affecting live PyPI:
-
-- <https://packaging.python.org/en/latest/guides/using-testpypi/>
-
-Build and check artifacts:
+Build and check artifacts before triggering any upload workflow:
 
 ```bash
 rm -rf dist build matgpr.egg-info
 python -m build
-VERSION=0.1.1
+VERSION=0.2.0
 python -m twine check dist/matgpr-${VERSION}*
 ```
 
-Upload to TestPyPI:
+## TestPyPI Flow
+
+Run the manual workflow from `main` after the TestPyPI trusted publisher is
+configured:
 
 ```bash
-python -m twine upload --repository testpypi dist/matgpr-${VERSION}*
+gh workflow run publish-pypi.yml \
+  --ref main \
+  -f target=testpypi \
+  -f version=0.2.0
 ```
 
 Install from TestPyPI with live PyPI as the dependency source:
@@ -141,14 +170,10 @@ python -m venv /tmp/matgpr-testpypi
 /tmp/matgpr-testpypi/bin/python -m pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  "matgpr[examples,bo]==0.1.1"
+  "matgpr[examples,bo]==0.2.0"
 /tmp/matgpr-testpypi/bin/python -m pip check
 /tmp/matgpr-testpypi/bin/python -c "import matgpr; print(matgpr.__version__)"
 ```
-
-The Python Packaging User Guide notes that TestPyPI is separate from live PyPI
-and that `--extra-index-url` can be useful when dependencies come from live
-PyPI.
 
 ## Live PyPI Upload Gate
 
@@ -156,15 +181,18 @@ Only upload to live PyPI after:
 
 - TestPyPI upload and install are successful,
 - CI and docs workflows are green on the release commit,
-- release tag is final,
+- release tag `v0.2.0` is final,
 - README, metadata, license, and citation are reviewed,
 - documentation URL decision is resolved,
 - `CHANGELOG.md` has a dated release entry.
 
-Live upload command:
+Run the manual workflow from the final tag:
 
 ```bash
-python -m twine upload dist/matgpr-${VERSION}*
+gh workflow run publish-pypi.yml \
+  --ref v0.2.0 \
+  -f target=pypi \
+  -f version=0.2.0
 ```
 
 After upload, immediately verify:
@@ -172,18 +200,19 @@ After upload, immediately verify:
 ```bash
 python -m venv /tmp/matgpr-pypi
 /tmp/matgpr-pypi/bin/python -m pip install --upgrade pip
-/tmp/matgpr-pypi/bin/python -m pip install "matgpr[examples,bo]==0.1.1"
+/tmp/matgpr-pypi/bin/python -m pip install "matgpr[examples,bo]==0.2.0"
 /tmp/matgpr-pypi/bin/python -m pip check
 /tmp/matgpr-pypi/bin/python -c "import matgpr; print(matgpr.__version__)"
 ```
 
+## DOI Follow-Up
+
+`CITATION.cff` is prepared for `0.2.0` but does not include a new version DOI
+until Zenodo archives the `v0.2.0` GitHub release. After Zenodo creates the new
+record, update `README.md`, `CITATION.cff`, `.zenodo.json` if needed, and the
+documentation with the exact `v0.2.0` DOI.
+
 ## Final Recommendation
 
-`matgpr` is close to PyPI-ready, but the first live upload should wait until:
-
-- the documentation URL is deployed and verified,
-- TestPyPI upload and clean install are completed,
-- PyPI account ownership and token handling are confirmed.
-
-Until then, the best public installation path remains a pinned GitHub release
-or exact commit.
+`matgpr` is ready for a controlled first PyPI release once the local gate, CI,
+docs workflow, TestPyPI upload, and TestPyPI clean-install checks pass.

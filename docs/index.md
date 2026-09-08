@@ -75,6 +75,18 @@ prediction accuracy.
 
 ## Installation
 
+From PyPI, after the `v0.2.0` release is published:
+
+```bash
+python -m pip install matgpr
+```
+
+For optional example and Bayesian-optimization dependencies:
+
+```bash
+python -m pip install "matgpr[examples,bo]"
+```
+
 From a local checkout:
 
 ```bash
@@ -98,10 +110,14 @@ python -m mkdocs serve
 
 ## Citation
 
-If you use `matgpr` in a publication, cite the archived release DOI:
-<https://doi.org/10.5281/zenodo.21210387>. The same citation metadata is also
-available in `CITATION.cff`. Individual example reports also list the original
-papers and datasets that should be cited.
+If you use `matgpr` in a publication, cite the exact release, tag, or commit
+you used. Citation metadata is available in `CITATION.cff`; release DOIs are
+added after Zenodo archives each GitHub release. Individual example reports
+also list the original papers and datasets that should be cited.
+
+The previous archived release DOI for `v0.1.1` is
+<https://doi.org/10.5281/zenodo.21210387>. Do not cite that DOI for `v0.2.0`
+unless the analysis used the `v0.1.1` release.
 
 ## License
 

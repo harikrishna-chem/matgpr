@@ -2,10 +2,21 @@
 
 All notable changes to `matgpr` will be documented in this file.
 
-The format follows the spirit of Keep a Changelog, and versioning will follow
-semantic-versioning conventions once the first public release is tagged.
+The format follows the spirit of Keep a Changelog, and versioning follows
+semantic-versioning conventions in spirit during the active-development `0.x`
+phase.
 
 ## Unreleased
+
+### Added
+
+- Nothing yet.
+
+### Fixed
+
+- Nothing yet.
+
+## 0.2.0 - 2026-09-07
 
 ### Added
 
@@ -23,6 +34,10 @@ semantic-versioning conventions once the first public release is tagged.
   user-defined safe equation specs with GPyTorch GPR.
 - JSON-safe metric and uncertainty-diagnostic helpers for API/report payloads
   that must pass strict JSON serialization.
+- Manual GitHub Actions Trusted Publishing workflow for TestPyPI and live PyPI
+  package publication without long-lived API tokens.
+- PyPI `v0.2.0` release-preparation plan and refreshed TestPyPI/PyPI release
+  documentation.
 
 ### Fixed
 

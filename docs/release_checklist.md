@@ -1,14 +1,14 @@
 # Release Checklist
 
-This checklist is the release gate for `matgpr` `v0.1.0` and can be reused for
-later `0.x` releases. The goal is to make each release reproducible,
+This checklist is the release gate for `matgpr` `v0.2.0` and later `0.x`
+releases. The goal is to make each release reproducible,
 auditable, citable, and easy for materials-informatics users to install.
 
 ## Release Scope
 
 Before tagging a release, write down the intended scope:
 
-- release version, for example `v0.1.0`,
+- release version, for example `v0.2.0`,
 - release date,
 - release owner,
 - short release theme,
@@ -16,12 +16,13 @@ Before tagging a release, write down the intended scope:
 - user-facing features intentionally deferred,
 - known limitations.
 
-For `v0.1.0`, the intended theme is:
+For `v0.2.0`, the intended theme is:
 
 ```text
-First public release of matgpr: Gaussian Process Regression, uncertainty,
-materials featurization, physics-informed mean functions, validation helpers,
-Bayesian-optimization utilities, and two published-paper examples.
+First PyPI-ready release of matgpr: Gaussian Process Regression, uncertainty,
+materials featurization, physics-informed mean functions, safe custom
+equations, validation helpers, Bayesian-optimization utilities, and two
+published-paper examples.
 ```
 
 ## Do Not Release If
@@ -54,6 +55,8 @@ Confirm these files are correct before release:
   - title
   - author list
   - version
+  - date released
+  - exact release DOI if already available, otherwise no stale DOI
   - repository URL
   - license
 - `CHANGELOG.md`
@@ -97,7 +100,7 @@ python -m pytest
 python -m mkdocs build --strict
 rm -rf dist build matgpr.egg-info
 python -m build
-VERSION=0.1.1
+VERSION=0.2.0
 python -m twine check dist/matgpr-${VERSION}*
 ```
 
@@ -107,7 +110,7 @@ For the public examples, run at least the reduced notebook smoke test:
 python scripts/smoke_notebooks.py
 ```
 
-For `v0.1.0`, also run a fresh-clone smoke test before tagging:
+For `v0.2.0`, also run a fresh-clone smoke test before tagging:
 
 ```bash
 python -m venv /tmp/matgpr-release-smoke
@@ -141,8 +144,8 @@ The release tag should point to a green commit on `main`.
 After local checks and CI are green, create an annotated tag:
 
 ```bash
-git tag -a v0.1.0 -m "matgpr v0.1.0"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "matgpr v0.2.0"
+git push origin v0.2.0
 ```
 
 Use an annotated tag so the release has explicit release metadata. Do not
@@ -165,13 +168,13 @@ Create a GitHub release from the tag. The release notes should include:
 Suggested install command for a GitHub-tagged release:
 
 ```bash
-python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.0"
 ```
 
 If Bayesian optimization examples or APIs are needed:
 
 ```bash
-python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.2.0"
 ```
 
 ## Zenodo DOI
@@ -180,7 +183,7 @@ Before the first DOI-backed release:
 
 - enable or confirm GitHub-Zenodo archiving for the repository,
 - keep `.zenodo.json` metadata current before tagging future releases,
-- confirm `CITATION.cff` is correct,
+- confirm `CITATION.cff` is correct and does not contain a stale version DOI,
 - create the GitHub release from the final tag,
 - let Zenodo archive the release,
 - edit the Zenodo record metadata if needed,
@@ -218,17 +221,63 @@ are reviewed. Before any PyPI release:
 - confirm the README renders correctly on the package index,
 - only then upload to PyPI.
 
-Recommended TestPyPI flow:
+Recommended TestPyPI flow with GitHub Actions Trusted Publishing:
+
+1. Configure a TestPyPI Trusted Publisher:
+   - owner: `harikrishna-chem`
+   - repository: `matgpr`
+   - workflow: `publish-pypi.yml`
+   - environment: `testpypi`
+2. Run the manual workflow from `main`:
+
+```bash
+gh workflow run publish-pypi.yml \
+  --ref main \
+  -f target=testpypi \
+  -f version=0.2.0
+```
+
+3. Install from TestPyPI with live PyPI as the dependency source:
+
+```bash
+python -m venv /tmp/matgpr-testpypi
+/tmp/matgpr-testpypi/bin/python -m pip install --upgrade pip
+/tmp/matgpr-testpypi/bin/python -m pip install \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ \
+  "matgpr[examples,bo]==0.2.0"
+/tmp/matgpr-testpypi/bin/python -m pip check
+/tmp/matgpr-testpypi/bin/python -c "import matgpr; print(matgpr.__version__)"
+```
+
+Recommended local artifact check before running the workflow:
 
 ```bash
 rm -rf dist build matgpr.egg-info
 python -m build
-VERSION=0.1.1
+VERSION=0.2.0
 python -m twine check dist/matgpr-${VERSION}*
-python -m twine upload --repository testpypi dist/matgpr-${VERSION}*
 ```
 
-PyPI upload should be treated as a separate explicit release decision.
+Recommended live PyPI flow after TestPyPI passes:
+
+1. Configure a PyPI Trusted Publisher:
+   - owner: `harikrishna-chem`
+   - repository: `matgpr`
+   - workflow: `publish-pypi.yml`
+   - environment: `pypi`
+2. Create and push the final `v0.2.0` tag.
+3. Run the manual workflow from the tag:
+
+```bash
+gh workflow run publish-pypi.yml \
+  --ref v0.2.0 \
+  -f target=pypi \
+  -f version=0.2.0
+```
+
+PyPI upload should be treated as a separate explicit release decision. The live
+publish job intentionally fails if it is not run from tag `v0.2.0`.
 
 ## Documentation Deployment
 
@@ -253,7 +302,7 @@ https://harikrishnasahu.com/matgpr/
 
 After the release is published:
 
-- install from the release tag in a clean environment,
+- install from PyPI and from the release tag in clean environments,
 - run `pip check`,
 - run a minimal standard GPR example,
 - run a minimal physics-informed GPR example,
@@ -266,12 +315,13 @@ After the release is published:
 ## Release Notes Template
 
 ````markdown
-# matgpr v0.1.0
+# matgpr v0.2.0
 
-matgpr v0.1.0 is the first public release of a Gaussian Process Regression
-toolkit for materials informatics, with physics-informed mean functions,
-uncertainty-aware prediction, reusable validation workflows, materials
-featurization, and published-paper examples.
+matgpr v0.2.0 is the first PyPI-ready release of a Gaussian Process
+Regression toolkit for materials informatics, with physics-informed mean
+functions, uncertainty-aware prediction, reusable validation workflows,
+materials featurization, Bayesian optimization, safe custom equations, and
+published-paper examples.
 
 ## Highlights
 
@@ -287,7 +337,7 @@ featurization, and published-paper examples.
 ## Install
 
 ```bash
-python -m pip install "matgpr[examples] @ git+https://github.com/harikrishna-chem/matgpr.git@v0.1.0"
+python -m pip install "matgpr[examples,bo]==0.2.0"
 ```
 
 ## Cite
