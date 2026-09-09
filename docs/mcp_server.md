@@ -19,6 +19,8 @@ The first MCP version is intentionally conservative:
 
 - local STDIO transport,
 - read-only tools,
+- read-only prompt templates,
+- read-only static guide resources,
 - JSON-safe outputs,
 - no model fitting,
 - no Bayesian-optimization execution,
@@ -54,7 +56,7 @@ The command starts a local STDIO MCP server. Most users will not run it
 directly; their MCP host will start it when needed.
 
 Verify that a real MCP client can initialize the server and list the expected
-tools:
+tools, prompts, and resources:
 
 ```bash
 matgpr-mcp-smoke
@@ -115,6 +117,30 @@ The initial server exposes read-only helper tools.
 | `suggest_validation_workflow` | Recommends learning-curve, train/test, cross-validation, and uncertainty-diagnostic protocols. |
 | `suggest_bo_workflow` | Recommends a finite-pool Bayesian-optimization setup without executing BO. |
 
+## Prompt Overview
+
+The server also exposes prompt templates that help AI agents follow documented
+`matgpr` workflows instead of inventing package usage from memory.
+
+| Prompt | Purpose |
+| --- | --- |
+| `plan_featurization_workflow` | Plans column-role detection and featurizer selection from schema/sample-row evidence. |
+| `plan_physics_informed_gpr_workflow` | Plans PI-GPR setup with physics-template lookup, safe-equation checks, feature maps, and model comparison. |
+| `plan_validation_workflow` | Plans learning curves, train/test splits, metrics, and uncertainty diagnostics. |
+| `plan_bayesian_optimization_workflow` | Plans finite-pool BO or active-learning recommendations with uncertainty, constraints, and duplicate avoidance. |
+
+## Resource Overview
+
+Static guide resources provide compact Markdown notes for common agent tasks.
+
+| Resource URI | Purpose |
+| --- | --- |
+| `matgpr://guide/capabilities` | Public MCP capability map and safety boundary. |
+| `matgpr://guide/featurization` | Materials column types and matching featurizers. |
+| `matgpr://guide/physics-informed-gpr` | PI-GPR mean-function setup and reporting expectations. |
+| `matgpr://guide/validation` | Validation outputs, repeated splits, and uncertainty checks. |
+| `matgpr://guide/bayesian-optimization` | Finite-pool BO planning flow and optional dependency notes. |
+
 ## Example Agent Prompts
 
 After connecting the server, useful prompts include:
@@ -141,6 +167,11 @@ summarize the physics mean values.
 ```text
 Ask matgpr to suggest a low-data validation workflow for a 75-row regression
 dataset.
+```
+
+```text
+Use the matgpr PI-GPR planning prompt for a diffusivity model with temperature,
+polymer fingerprint, and solvent fingerprint features.
 ```
 
 ## Featurizer Recommendation Inputs

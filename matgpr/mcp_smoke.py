@@ -9,13 +9,22 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .mcp_server import MCP_SERVER_NAME, MCP_TOOL_FUNCTIONS
+from .mcp_server import (
+    MCP_PROMPT_REGISTRATIONS,
+    MCP_RESOURCE_REGISTRATIONS,
+    MCP_SERVER_NAME,
+    MCP_TOOL_FUNCTIONS,
+)
 
 __all__ = [
+    "EXPECTED_PROMPT_NAMES",
+    "EXPECTED_RESOURCE_URIS",
     "EXPECTED_TOOL_NAMES",
     "main",
 ]
 
+EXPECTED_PROMPT_NAMES = tuple(registration.name for registration in MCP_PROMPT_REGISTRATIONS)
+EXPECTED_RESOURCE_URIS = tuple(registration.uri for registration in MCP_RESOURCE_REGISTRATIONS)
 EXPECTED_TOOL_NAMES = tuple(function.__name__ for function in MCP_TOOL_FUNCTIONS)
 
 
@@ -76,6 +85,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="Only initialize and list tools; skip the get_matgpr_info tool call.",
     )
     parser.add_argument(
+        "--skip-prompt-resource-checks",
+        action="store_true",
+        help="Only check tools; skip prompt and resource listing checks.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Print a JSON-safe smoke-test payload instead of a human summary.",
@@ -103,10 +117,24 @@ async def _run_smoke(
             initialization = await session.initialize()
             tools_result = await session.list_tools()
             tool_names = [str(tool.name) for tool in tools_result.tools]
-            missing_tools = [name for name in EXPECTED_TOOL_NAMES if name not in tool_names]
-            if missing_tools:
-                missing = ", ".join(missing_tools)
-                raise RuntimeError(f"server did not expose expected tool(s): {missing}")
+            _raise_if_missing("tool", EXPECTED_TOOL_NAMES, tool_names)
+
+            prompt_names: list[str] = []
+            resource_uris: list[str] = []
+            checked_prompt: str | None = None
+            checked_resource: str | None = None
+            if not args.skip_prompt_resource_checks:
+                prompts_result = await session.list_prompts()
+                prompt_names = [str(prompt.name) for prompt in prompts_result.prompts]
+                _raise_if_missing("prompt", EXPECTED_PROMPT_NAMES, prompt_names)
+                await session.get_prompt(EXPECTED_PROMPT_NAMES[0], arguments={})
+                checked_prompt = EXPECTED_PROMPT_NAMES[0]
+
+                resources_result = await session.list_resources()
+                resource_uris = [str(resource.uri) for resource in resources_result.resources]
+                _raise_if_missing("resource", EXPECTED_RESOURCE_URIS, resource_uris)
+                await session.read_resource(EXPECTED_RESOURCE_URIS[0])
+                checked_resource = EXPECTED_RESOURCE_URIS[0]
 
             info_payload: Mapping[str, object] | None = None
             if not args.skip_info_call:
@@ -128,6 +156,14 @@ async def _run_smoke(
         "tool_count": len(tool_names),
         "tool_names": tool_names,
         "expected_tool_names": list(EXPECTED_TOOL_NAMES),
+        "prompt_count": len(prompt_names),
+        "prompt_names": prompt_names,
+        "expected_prompt_names": list(EXPECTED_PROMPT_NAMES),
+        "checked_prompt": checked_prompt,
+        "resource_count": len(resource_uris),
+        "resource_uris": resource_uris,
+        "expected_resource_uris": list(EXPECTED_RESOURCE_URIS),
+        "checked_resource": checked_resource,
         "package_info": dict(info_payload) if info_payload is not None else None,
         "server_info": _object_to_json_safe_dict(server_info),
     }
@@ -167,14 +203,41 @@ def _format_human_summary(payload: Mapping[str, object]) -> str:
         if name and version:
             package_line = f"Package: {name} {version}"
 
+    tool_names = _string_list(payload.get("tool_names", ()))
+    prompt_names = _string_list(payload.get("prompt_names", ()))
+    resource_uris = _string_list(payload.get("resource_uris", ()))
     lines = [
         "matgpr MCP smoke passed.",
-        f"Command: {payload['command']}",
-        f"Tools: {payload['tool_count']} ({', '.join(payload['tool_names'])})",
+        f"Command: {payload.get('command', '')}",
+        f"Tools: {payload.get('tool_count', len(tool_names))} ({', '.join(tool_names)})",
     ]
+    if prompt_names:
+        lines.append(
+            f"Prompts: {payload.get('prompt_count', len(prompt_names))} ({', '.join(prompt_names)})"
+        )
+    if resource_uris:
+        lines.append(
+            f"Resources: {payload.get('resource_count', len(resource_uris))} "
+            f"({', '.join(resource_uris)})"
+        )
     if package_line:
         lines.append(package_line)
     return "\n".join(lines)
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, Sequence):
+        return [str(item) for item in value]
+    return []
+
+
+def _raise_if_missing(kind: str, expected: Sequence[str], observed: Sequence[str]) -> None:
+    missing = [name for name in expected if name not in observed]
+    if missing:
+        missing_text = ", ".join(missing)
+        raise RuntimeError(f"server did not expose expected {kind}(s): {missing_text}")
 
 
 def _object_to_json_safe_dict(value: Any) -> dict[str, object] | None:

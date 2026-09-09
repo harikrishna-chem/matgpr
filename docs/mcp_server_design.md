@@ -3,10 +3,10 @@
 Date: 2026-09-08
 
 Status: optional MCP entry-point scaffold, pure-Python read-only helper layer,
-safe-equation preview helper, user-facing MCP guide, unit tests, package build
-check, packaged MCP smoke command, and real local command smoke test are
-complete. Full host UI configuration is deferred until after the first
-read-only server is reviewed.
+safe-equation preview helper, read-only prompt/resource layer, user-facing MCP
+guide, unit tests, package build check, packaged MCP smoke command, and real
+local command smoke test are complete. Full host UI configuration is deferred
+until after the first read-only server is reviewed.
 
 ## Goal
 
@@ -97,10 +97,14 @@ Add the MCP implementation as optional code:
 
 ```text
 matgpr/
+  mcp_prompts.py
+  mcp_resources.py
   mcp_server.py
   mcp_smoke.py
   mcp_tools.py
 tests/
+  test_mcp_prompts.py
+  test_mcp_resources.py
   test_mcp_smoke.py
   test_mcp_tools.py
   test_mcp_server.py
@@ -297,38 +301,29 @@ Recommend finite-pool Bayesian-optimization setup:
 This tool should be advisory in the first release. Actual BO execution can be
 added later after the read-only server is stable.
 
-## Possible Resources
+## Resources
 
-Expose compact resources for agent context:
+Expose compact static resources for agent context:
 
-- `matgpr://docs/quickstart`
-- `matgpr://docs/physics-informed-gpr`
-- `matgpr://docs/fingerprinting-options`
-- `matgpr://docs/bayesian-optimization`
-- `matgpr://docs/versioning`
-- `matgpr://schemas/safe-equation`
+- `matgpr://guide/capabilities`
+- `matgpr://guide/featurization`
+- `matgpr://guide/physics-informed-gpr`
+- `matgpr://guide/validation`
+- `matgpr://guide/bayesian-optimization`
 
-Because full documentation is not currently installed inside the wheel, the
-first implementation should either:
+The first implementation provides short built-in Markdown summaries plus
+canonical hosted-doc paths in prompt text. Because full documentation is not
+currently installed inside the wheel, do not silently bundle the full docs tree
+unless package contents and PyPI size policy are reviewed.
 
-- provide short built-in summaries plus canonical hosted-doc URLs, or
-- intentionally expose only tools and prompts until a package-data strategy is
-  chosen.
-
-Do not silently bundle the full docs tree into the wheel unless the package
-contents and PyPI size policy are reviewed.
-
-## Possible Prompts
+## Prompts
 
 Expose reusable prompts for common agent workflows:
 
-- `draft_pi_gpr_notebook`
-- `review_materials_dataset_schema`
-- `choose_physics_equation`
-- `design_learning_curve`
-- `design_finite_pool_bo_campaign`
-- `write_model_card`
-- `write_dataset_card`
+- `plan_featurization_workflow`
+- `plan_physics_informed_gpr_workflow`
+- `plan_validation_workflow`
+- `plan_bayesian_optimization_workflow`
 
 Prompts should direct the agent to use `matgpr` APIs and cite relevant docs.
 They should not embed downstream product-specific workflows.
@@ -394,12 +389,13 @@ Users can then ask an AI coding agent questions such as:
    featurizer recommendations, physics-template lookup, safe-equation
    validation, and safe-equation preview.
 4. Add unit tests for the helper functions without requiring an MCP runtime.
-5. Add the MCP server wrapper using the official Python MCP SDK.
-6. Add MCP smoke tests that verify the server object exposes the expected
-   tools when the optional dependency is installed.
-7. Maintain `docs/mcp_server.md` with install, Codex, Claude Code, and
+5. Add read-only prompt templates and compact static guide resources.
+6. Add the MCP server wrapper using the official Python MCP SDK.
+7. Add MCP smoke tests that verify the server object exposes the expected
+   tools, prompts, and resources when the optional dependency is installed.
+8. Maintain `docs/mcp_server.md` with install, Codex, Claude Code, and
    troubleshooting instructions.
-8. Run local validation:
+9. Run local validation:
 
 ```bash
 python -m ruff check matgpr tests scripts
@@ -409,12 +405,12 @@ python -m build
 python -m twine check dist/*
 ```
 
-9. Add a packaged `matgpr-mcp-smoke` command that verifies initialize,
-   list-tools, and a lightweight package-info tool call through the real MCP
-   SDK.
-10. Test with at least one local MCP host or MCP Inspector before announcing
+10. Add a packaged `matgpr-mcp-smoke` command that verifies initialize,
+   list-tools, list-prompts, list-resources, a lightweight package-info tool
+   call, one prompt fetch, and one resource read through the real MCP SDK.
+11. Test with at least one local MCP host or MCP Inspector before announcing
     host-specific setup as fully validated.
-11. Release as a future patch version only after the MCP server is stable.
+12. Release as a future patch version only after the MCP server is stable.
 
 ## Acceptance Criteria
 
@@ -422,8 +418,9 @@ python -m twine check dist/*
 - `pip install "matgpr[mcp]"` installs the server dependency.
 - `matgpr-mcp` starts successfully as a local STDIO server.
 - `matgpr-mcp-smoke` verifies a real MCP client can initialize the server and
-  list the expected tools.
-- The server exposes a small set of documented read-only tools.
+  list the expected tools, prompts, and resources.
+- The server exposes a small set of documented read-only tools, prompt
+  templates, and static guide resources.
 - Tool outputs are deterministic and JSON-safe.
 - Invalid equations, invalid sample rows, missing features, and missing
   optional dependencies produce clear errors.
@@ -435,7 +432,6 @@ python -m twine check dist/*
 
 - Should compact docs resources be bundled as package data, or should the MCP
   server return hosted documentation links only?
-- Should the first server expose prompts, or only tools?
 - Should any modeling execution tools be added before `v0.3.0`, or should the
   `v0.2.x` line remain read-only/advisory for MCP?
 - Should a hosted MCP server ever be part of the public `matgpr` project, or
@@ -455,6 +451,21 @@ extra with these tools:
 - `preview_safe_equation`
 - `suggest_validation_workflow`
 - `suggest_bo_workflow`
+
+Add prompt templates for:
+
+- `plan_featurization_workflow`
+- `plan_physics_informed_gpr_workflow`
+- `plan_validation_workflow`
+- `plan_bayesian_optimization_workflow`
+
+Add static guide resources for:
+
+- `matgpr://guide/capabilities`
+- `matgpr://guide/featurization`
+- `matgpr://guide/physics-informed-gpr`
+- `matgpr://guide/validation`
+- `matgpr://guide/bayesian-optimization`
 
 Defer model fitting, file writes, and hosted HTTP transport until the local
 advisory server is stable.

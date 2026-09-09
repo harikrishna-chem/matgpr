@@ -6,7 +6,14 @@ import unittest
 from unittest.mock import patch
 
 from matgpr._version import __version__
-from matgpr.mcp_server import MCP_SERVER_NAME, MCP_TOOL_FUNCTIONS, create_server, main
+from matgpr.mcp_server import (
+    MCP_PROMPT_REGISTRATIONS,
+    MCP_RESOURCE_REGISTRATIONS,
+    MCP_SERVER_NAME,
+    MCP_TOOL_FUNCTIONS,
+    create_server,
+    main,
+)
 
 
 class FakeFastMCP:
@@ -14,11 +21,54 @@ class FakeFastMCP:
         self.name = name
         self.kwargs = kwargs
         self.tools: dict[str, object] = {}
+        self.prompts: dict[str, object] = {}
+        self.resources: dict[str, object] = {}
         self.ran = False
 
     def tool(self):
         def decorator(function):
             self.tools[function.__name__] = function
+            return function
+
+        return decorator
+
+    def prompt(self, name=None, title=None, description=None, icons=None):
+        def decorator(function):
+            self.prompts[name or function.__name__] = {
+                "function": function,
+                "title": title,
+                "description": description,
+                "icons": icons,
+            }
+            return function
+
+        return decorator
+
+    def resource(
+        self,
+        uri,
+        *,
+        name=None,
+        title=None,
+        description=None,
+        mime_type=None,
+        icons=None,
+        annotations=None,
+        meta=None,
+        security=None,
+    ):
+        def decorator(function):
+            self.resources[uri] = {
+                "function": function,
+                "name": name,
+                "title": title,
+                "description": description,
+                "mime_type": mime_type,
+                "icons": icons,
+                "annotations": annotations,
+                "meta": meta,
+                "security": security,
+            }
             return function
 
         return decorator
@@ -57,12 +107,28 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(server.name, MCP_SERVER_NAME)
         self.assertEqual(server.kwargs["title"], "matgpr")
         self.assertEqual(set(server.tools), {function.__name__ for function in MCP_TOOL_FUNCTIONS})
+        self.assertEqual(
+            set(server.prompts),
+            {registration.name for registration in MCP_PROMPT_REGISTRATIONS},
+        )
+        self.assertEqual(
+            set(server.resources),
+            {registration.uri for registration in MCP_RESOURCE_REGISTRATIONS},
+        )
         self.assertIn("preview_safe_equation", server.tools)
+        self.assertIn("plan_featurization_workflow", server.prompts)
+        self.assertIn("matgpr://guide/capabilities", server.resources)
 
         info = server.tools["get_matgpr_info"]()
         self.assertEqual(info["name"], "matgpr")
         self.assertEqual(info["version"], __version__)
         self.assertIn("physics-informed GPR", info["capabilities"])
+
+        prompt = server.prompts["plan_featurization_workflow"]["function"](columns="formula,target")
+        self.assertIn("recommend_featurizers", prompt)
+
+        resource = server.resources["matgpr://guide/capabilities"]["function"]()
+        self.assertIn("read-only", resource)
 
     def test_create_server_supports_legacy_fastmcp_import_path(self):
         with patch.dict(sys.modules, fake_mcp_modules()):

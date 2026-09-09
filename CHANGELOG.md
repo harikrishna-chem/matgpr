@@ -13,6 +13,8 @@ phase.
 - `matgpr-mcp-smoke` command for verifying that the optional local MCP server
   can initialize over stdio, expose all expected tools, and return package
   metadata from a real MCP client session.
+- Read-only MCP prompt templates and static guide resources for featurization,
+  physics-informed GPR, validation, and Bayesian-optimization planning.
 
 ### Fixed
 

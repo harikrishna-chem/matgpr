@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ._version import __version__
+from .mcp_prompts import MCP_PROMPT_REGISTRATIONS
+from .mcp_resources import MCP_RESOURCE_REGISTRATIONS
 from .mcp_tools import (
     get_matgpr_info,
     get_physics_equation,
@@ -19,6 +21,8 @@ from .mcp_tools import (
 from .optional_dependencies import require_optional_dependency
 
 __all__ = [
+    "MCP_PROMPT_REGISTRATIONS",
+    "MCP_RESOURCE_REGISTRATIONS",
     "MCP_TOOL_FUNCTIONS",
     "MCP_SERVER_NAME",
     "create_server",
@@ -56,6 +60,20 @@ def create_server() -> Any:
     )
     for tool_function in MCP_TOOL_FUNCTIONS:
         server.tool()(tool_function)
+    for registration in MCP_PROMPT_REGISTRATIONS:
+        server.prompt(
+            name=registration.name,
+            title=registration.title,
+            description=registration.description,
+        )(registration.function)
+    for registration in MCP_RESOURCE_REGISTRATIONS:
+        server.resource(
+            registration.uri,
+            name=registration.name,
+            title=registration.title,
+            description=registration.description,
+            mime_type=registration.mime_type,
+        )(registration.function)
 
     return server
 
