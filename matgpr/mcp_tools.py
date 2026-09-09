@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 import sys
+import warnings
 from collections.abc import Mapping, Sequence
+from importlib import import_module
+from types import ModuleType
 from typing import Any
 
 from ._version import __version__
@@ -16,6 +19,7 @@ __all__ = [
     "get_physics_equation",
     "list_capabilities",
     "list_physics_equations",
+    "preview_safe_equation",
     "recommend_featurizers",
     "suggest_bo_workflow",
     "suggest_validation_workflow",
@@ -34,6 +38,7 @@ _MISSING_STRINGS = {"", "na", "n/a", "nan", "none", "null", "<na>"}
 _FORMULA_PATTERN = re.compile(r"^(?:[A-Z][a-z]?(?:\d+(?:\.\d*)?|\.\d+)*)+$")
 _STRUCTURE_SUFFIXES = (".cif", ".poscar", ".vasp", ".json")
 _SMILES_CHARS = frozenset("[]=#()@+\\/-.")
+_TORCH_JIT_DEPRECATION_PATTERN = r"`torch\.jit\.script` is deprecated.*"
 
 
 def get_matgpr_info() -> dict[str, object]:
@@ -240,20 +245,17 @@ def list_physics_equations(
     required_features: Sequence[str] | None = None,
 ) -> dict[str, object]:
     """Return public physics-equation templates matching optional filters."""
-    from .physics_equations import (
-        list_physics_equation_templates,
-        search_physics_equation_templates,
-    )
+    physics_equations = _import_matgpr_module_quietly(".physics_equations")
 
     if any(value is not None for value in (query, application, tag, required_features)):
-        templates = search_physics_equation_templates(
+        templates = physics_equations.search_physics_equation_templates(
             query=query,
             application=application,
             tag=tag,
             required_features=required_features,
         )
     else:
-        templates = list_physics_equation_templates()
+        templates = physics_equations.list_physics_equation_templates()
     records = [template.discovery_record() for template in templates]
     return {
         "schema_version": MCP_HELPER_SCHEMA_VERSION,
@@ -270,20 +272,19 @@ def list_physics_equations(
 
 def get_physics_equation(name: str) -> dict[str, object]:
     """Return one public physics-equation template by name or alias."""
-    from .physics_equations import (
-        available_physics_equation_templates,
-        describe_physics_equation_template,
-    )
+    physics_equations = _import_matgpr_module_quietly(".physics_equations")
 
     try:
-        record = describe_physics_equation_template(name)
+        record = physics_equations.describe_physics_equation_template(name)
     except ValueError as exc:
         return {
             "schema_version": MCP_HELPER_SCHEMA_VERSION,
             "found": False,
             "name": str(name),
             "error": str(exc),
-            "available_templates": list(available_physics_equation_templates(include_aliases=True)),
+            "available_templates": list(
+                physics_equations.available_physics_equation_templates(include_aliases=True)
+            ),
         }
 
     return {
@@ -314,16 +315,12 @@ def get_physics_equation(name: str) -> dict[str, object]:
 
 def validate_safe_equation(spec: Mapping[str, Any]) -> dict[str, object]:
     """Validate a safe custom equation spec and return JSON-safe diagnostics."""
-    from .safe_equations import (
-        SafeEquationSpec,
-        safe_equation_schema_snapshot,
-        validate_safe_equation_spec,
-    )
+    safe_equations = _import_matgpr_module_quietly(".safe_equations")
 
-    validation = validate_safe_equation_spec(spec)
+    validation = safe_equations.validate_safe_equation_spec(spec)
     normalized_spec = None
     if validation.is_valid:
-        normalized_spec = SafeEquationSpec.from_dict(spec).to_dict()
+        normalized_spec = safe_equations.SafeEquationSpec.from_dict(spec).to_dict()
 
     hints = [
         "Declare every symbol as a variable, parameter, or constant.",
@@ -340,8 +337,114 @@ def validate_safe_equation(spec: Mapping[str, Any]) -> dict[str, object]:
         "is_valid": validation.is_valid,
         "validation": validation.to_dict(),
         "normalized_spec": normalized_spec,
-        "safe_equation_schema": safe_equation_schema_snapshot(),
+        "safe_equation_schema": safe_equations.safe_equation_schema_snapshot(),
         "hints": hints,
+    }
+
+
+def preview_safe_equation(
+    spec: Mapping[str, Any],
+    sample_rows: Sequence[Mapping[str, Any]] | Mapping[str, Sequence[Any]] | None = None,
+    *,
+    variable_values: Mapping[str, Any] | None = None,
+    target_column: str | None = None,
+    target_values: Sequence[Any] | None = None,
+    parameter_values: Mapping[str, Any] | None = None,
+    constant_values: Mapping[str, Any] | None = None,
+    max_sample_rows: int = _MAX_SAMPLE_ROWS,
+) -> dict[str, object]:
+    """Preview a safe custom equation on explicitly supplied small samples.
+
+    This MCP helper is intentionally read-only and bounded. It accepts either
+    row records from a data preview or direct variable arrays, validates the
+    equation first, clips inputs to a small row limit, and then delegates the
+    numerical preview to :func:`matgpr.safe_equations.preview_safe_equation_mean`.
+    """
+    safe_equations = _import_matgpr_module_quietly(".safe_equations")
+
+    row_limit, limit_warnings = _bounded_sample_limit(max_sample_rows)
+    validation = safe_equations.validate_safe_equation_spec(spec)
+    warnings = list(limit_warnings)
+    if not validation.is_valid:
+        warnings.append("Fix equation validation errors before previewing mean values.")
+        return {
+            "schema_version": MCP_HELPER_SCHEMA_VERSION,
+            "is_valid_equation": False,
+            "preview_ready": False,
+            "validation": validation.to_dict(),
+            "normalized_spec": None,
+            "input": _safe_equation_preview_input_record(
+                mode="not_evaluated",
+                row_count=0,
+                row_limit=row_limit,
+                variable_names=(),
+                target_column=target_column,
+                target_values_used=False,
+            ),
+            "preview": None,
+            "warnings": warnings,
+            "hints": _safe_equation_preview_hints(preview_ready=False),
+        }
+
+    resolved = safe_equations.SafeEquationSpec.from_dict(spec)
+    prepared = _prepare_safe_equation_preview_inputs(
+        variable_names=resolved.variable_names,
+        sample_rows=sample_rows,
+        variable_values=variable_values,
+        target_column=target_column,
+        target_values=target_values,
+        row_limit=row_limit,
+    )
+    warnings.extend(prepared["warnings"])
+    if prepared["variable_values"] is None:
+        warnings.append("Provide sample_rows or variable_values before previewing the equation.")
+        return {
+            "schema_version": MCP_HELPER_SCHEMA_VERSION,
+            "is_valid_equation": True,
+            "preview_ready": False,
+            "validation": validation.to_dict(),
+            "normalized_spec": resolved.to_dict(),
+            "input": _safe_equation_preview_input_record(
+                mode=prepared["mode"],
+                row_count=prepared["row_count"],
+                row_limit=row_limit,
+                variable_names=resolved.variable_names,
+                target_column=target_column,
+                target_values_used=prepared["target_values"] is not None,
+            ),
+            "preview": None,
+            "warnings": warnings,
+            "hints": _safe_equation_preview_hints(preview_ready=False),
+        }
+
+    preview = safe_equations.preview_safe_equation_mean(
+        resolved,
+        prepared["variable_values"],
+        target_values=prepared["target_values"],
+        parameter_values=parameter_values,
+        constant_values=constant_values,
+    )
+    preview_record = preview.to_dict()
+    warnings.extend(preview_record["warnings"])
+
+    return {
+        "schema_version": MCP_HELPER_SCHEMA_VERSION,
+        "is_valid_equation": True,
+        "preview_ready": preview.preview_ready,
+        "validation": validation.to_dict(),
+        "normalized_spec": resolved.to_dict(),
+        "input": _safe_equation_preview_input_record(
+            mode=prepared["mode"],
+            row_count=prepared["row_count"],
+            row_limit=row_limit,
+            variable_names=resolved.variable_names,
+            target_column=target_column,
+            target_values_used=prepared["target_values"] is not None,
+        ),
+        "preview": preview_record,
+        "physics_mean_values": _preview_mean_values(preview_record),
+        "warnings": list(dict.fromkeys(warnings)),
+        "hints": _safe_equation_preview_hints(preview_ready=preview.preview_ready),
     }
 
 
@@ -493,6 +596,16 @@ def _optional_dependency_groups() -> dict[str, list[dict[str, str]]]:
     }
 
 
+def _import_matgpr_module_quietly(module_name: str) -> ModuleType:
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=_TORCH_JIT_DEPRECATION_PATTERN,
+            category=Warning,
+        )
+        return import_module(module_name, __package__)
+
+
 def _normalize_sample_rows(
     sample_rows: Sequence[Mapping[str, Any]] | Mapping[str, Sequence[Any]] | None,
     *,
@@ -522,6 +635,166 @@ def _normalize_sample_rows(
     if total > max_rows:
         warnings.append(f"sample_rows clipped to the first {max_rows} row(s)")
     return [_json_safe_row(row) for row in records], warnings
+
+
+def _bounded_sample_limit(value: int) -> tuple[int, list[str]]:
+    warnings: list[str] = []
+    try:
+        row_limit = int(value)
+    except (TypeError, ValueError):
+        row_limit = _MAX_SAMPLE_ROWS
+        warnings.append(f"max_sample_rows was invalid; using {_MAX_SAMPLE_ROWS}")
+
+    if row_limit < 1:
+        warnings.append(f"max_sample_rows must be at least 1; using {_MAX_SAMPLE_ROWS}")
+        row_limit = _MAX_SAMPLE_ROWS
+    if row_limit > _MAX_SAMPLE_ROWS:
+        warnings.append(f"max_sample_rows clipped to {_MAX_SAMPLE_ROWS} for MCP safety")
+        row_limit = _MAX_SAMPLE_ROWS
+    return row_limit, warnings
+
+
+def _prepare_safe_equation_preview_inputs(
+    *,
+    variable_names: Sequence[str],
+    sample_rows: Sequence[Mapping[str, Any]] | Mapping[str, Sequence[Any]] | None,
+    variable_values: Mapping[str, Any] | None,
+    target_column: str | None,
+    target_values: Sequence[Any] | None,
+    row_limit: int,
+) -> dict[str, object]:
+    if variable_values is not None and sample_rows is not None:
+        return {
+            "mode": "ambiguous",
+            "variable_values": None,
+            "target_values": None,
+            "row_count": 0,
+            "warnings": ["Provide either sample_rows or variable_values, not both."],
+        }
+    if variable_values is not None:
+        prepared_variables, row_count, warnings = _clip_variable_values(variable_values, row_limit)
+        prepared_targets = (
+            _clip_sequence_values(target_values, row_limit) if target_values is not None else None
+        )
+        if target_values is not None and _sequence_length(target_values) > row_limit:
+            warnings.append(f"target_values clipped to the first {row_limit} value(s)")
+        return {
+            "mode": "variable_values",
+            "variable_values": prepared_variables,
+            "target_values": prepared_targets,
+            "row_count": row_count,
+            "warnings": warnings,
+        }
+    if sample_rows is not None:
+        rows, row_warnings = _normalize_sample_rows(sample_rows, max_rows=row_limit)
+        prepared_variables = _variable_values_from_rows(variable_names, rows)
+        warnings = list(row_warnings)
+        if target_values is not None:
+            prepared_targets = _clip_sequence_values(target_values, row_limit)
+            if _sequence_length(target_values) > row_limit:
+                warnings.append(f"target_values clipped to the first {row_limit} value(s)")
+        elif target_column is not None:
+            prepared_targets = [row.get(target_column) for row in rows]
+        else:
+            prepared_targets = None
+        return {
+            "mode": "sample_rows",
+            "variable_values": prepared_variables,
+            "target_values": prepared_targets,
+            "row_count": len(rows),
+            "warnings": warnings,
+        }
+    return {
+        "mode": "missing",
+        "variable_values": None,
+        "target_values": None,
+        "row_count": 0,
+        "warnings": [],
+    }
+
+
+def _clip_variable_values(
+    variable_values: Mapping[str, Any],
+    row_limit: int,
+) -> tuple[dict[str, list[object]], int, list[str]]:
+    warnings: list[str] = []
+    prepared: dict[str, list[object]] = {}
+    row_count = 0
+    for name, raw_values in variable_values.items():
+        values = _clip_sequence_values(raw_values, row_limit)
+        if _sequence_length(raw_values) > row_limit:
+            warnings.append(f"variable {name!r} clipped to the first {row_limit} value(s)")
+        prepared[str(name)] = values
+        row_count = max(row_count, len(values))
+    return prepared, row_count, warnings
+
+
+def _clip_sequence_values(values: Any, row_limit: int) -> list[object]:
+    if values is None:
+        return []
+    if isinstance(values, str) or not _has_length(values):
+        return [_json_safe_scalar(values)]
+    return [_json_safe_scalar(value) for value in list(values)[:row_limit]]
+
+
+def _sequence_length(values: Any) -> int:
+    if values is None:
+        return 0
+    if isinstance(values, str) or not _has_length(values):
+        return 1
+    return len(values)
+
+
+def _variable_values_from_rows(
+    variable_names: Sequence[str],
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, list[object]]:
+    prepared: dict[str, list[object]] = {}
+    for variable_name in variable_names:
+        if any(variable_name in row for row in rows):
+            prepared[variable_name] = [row.get(variable_name) for row in rows]
+    return prepared
+
+
+def _safe_equation_preview_input_record(
+    *,
+    mode: str,
+    row_count: object,
+    row_limit: int,
+    variable_names: Sequence[str],
+    target_column: str | None,
+    target_values_used: bool,
+) -> dict[str, object]:
+    return {
+        "mode": mode,
+        "sample_row_count_used": int(row_count) if isinstance(row_count, int) else 0,
+        "max_sample_rows": row_limit,
+        "variable_names": list(variable_names),
+        "target_column": _clean_optional_string(target_column),
+        "target_values_used": bool(target_values_used),
+    }
+
+
+def _preview_mean_values(preview_record: Mapping[str, object]) -> list[object]:
+    metadata = preview_record.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return []
+    evaluation = metadata.get("evaluation")
+    if not isinstance(evaluation, Mapping):
+        return []
+    values = evaluation.get("values")
+    return list(values) if isinstance(values, Sequence) and not isinstance(values, str) else []
+
+
+def _safe_equation_preview_hints(*, preview_ready: bool) -> list[str]:
+    hints = [
+        "Use only a few representative rows for MCP previews.",
+        "Confirm units before using the equation as a physics-informed mean.",
+        "Use build_safe_equation_mean_function(...) for model fitting after preview.",
+    ]
+    if not preview_ready:
+        hints.append("Resolve validation, missing-variable, or non-finite-output warnings first.")
+    return hints
 
 
 def _assess_column(

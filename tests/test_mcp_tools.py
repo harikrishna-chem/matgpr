@@ -8,6 +8,7 @@ from matgpr.mcp_tools import (
     get_physics_equation,
     list_capabilities,
     list_physics_equations,
+    preview_safe_equation,
     recommend_featurizers,
     suggest_bo_workflow,
     suggest_validation_workflow,
@@ -126,6 +127,117 @@ class MCPToolsTests(unittest.TestCase):
 
         self.assertFalse(payload["is_valid"])
         self.assertIsNone(payload["normalized_spec"])
+        json.dumps(payload, allow_nan=False)
+
+    def test_preview_safe_equation_uses_sample_rows_and_target_column(self):
+        payload = preview_safe_equation(
+            {
+                "name": "linear_temperature_mean",
+                "expression": "offset + slope * temperature_k",
+                "variables": [{"name": "temperature_k", "units": "K"}],
+                "parameters": [
+                    {"name": "offset", "initial_value": 1.0},
+                    {"name": "slope", "initial_value": 2.0},
+                ],
+            },
+            sample_rows=[
+                {"temperature_k": 300.0, "target": 601.0},
+                {"temperature_k": 310.0, "target": 620.0},
+                {"temperature_k": 320.0, "target": 642.0},
+                {"temperature_k": 330.0, "target": 660.0},
+            ],
+            target_column="target",
+            max_sample_rows=3,
+        )
+
+        self.assertTrue(payload["is_valid_equation"])
+        self.assertTrue(payload["preview_ready"])
+        self.assertEqual(payload["input"]["mode"], "sample_rows")
+        self.assertEqual(payload["input"]["sample_row_count_used"], 3)
+        self.assertEqual(payload["physics_mean_values"], [601.0, 621.0, 641.0])
+        self.assertAlmostEqual(
+            payload["preview"]["target_residual_summary"]["mean_absolute_residual"],
+            2 / 3,
+        )
+        self.assertTrue(any("clipped" in warning for warning in payload["warnings"]))
+        json.dumps(payload, allow_nan=False)
+
+    def test_preview_safe_equation_accepts_variable_values(self):
+        payload = preview_safe_equation(
+            {
+                "name": "sqrt_preview",
+                "expression": "sqrt(x)",
+                "variables": [{"name": "x"}],
+            },
+            variable_values={"x": [4.0, 9.0, 16.0, 25.0]},
+            max_sample_rows=2,
+        )
+
+        self.assertTrue(payload["preview_ready"])
+        self.assertEqual(payload["input"]["mode"], "variable_values")
+        self.assertEqual(payload["input"]["sample_row_count_used"], 2)
+        self.assertEqual(payload["physics_mean_values"], [2.0, 3.0])
+        self.assertTrue(any("clipped" in warning for warning in payload["warnings"]))
+        json.dumps(payload, allow_nan=False)
+
+    def test_preview_safe_equation_reports_invalid_spec_without_evaluating(self):
+        payload = preview_safe_equation(
+            {
+                "name": "bad_mean",
+                "expression": "__import__('os').system('echo bad')",
+                "variables": [{"name": "x"}],
+            },
+            variable_values={"x": [1.0, 2.0]},
+        )
+
+        self.assertFalse(payload["is_valid_equation"])
+        self.assertFalse(payload["preview_ready"])
+        self.assertIsNone(payload["preview"])
+        self.assertTrue(any("validation" in warning for warning in payload["warnings"]))
+        json.dumps(payload, allow_nan=False)
+
+    def test_preview_safe_equation_rejects_ambiguous_input_modes(self):
+        payload = preview_safe_equation(
+            {
+                "name": "linear_mean",
+                "expression": "x",
+                "variables": [{"name": "x"}],
+            },
+            sample_rows=[{"x": 1.0}],
+            variable_values={"x": [1.0]},
+        )
+
+        self.assertTrue(payload["is_valid_equation"])
+        self.assertFalse(payload["preview_ready"])
+        self.assertEqual(payload["input"]["mode"], "ambiguous")
+        self.assertIsNone(payload["preview"])
+        self.assertTrue(
+            any(
+                "either sample_rows or variable_values" in warning
+                for warning in payload["warnings"]
+            )
+        )
+        json.dumps(payload, allow_nan=False)
+
+    def test_preview_safe_equation_reports_missing_input(self):
+        payload = preview_safe_equation(
+            {
+                "name": "linear_mean",
+                "expression": "x",
+                "variables": [{"name": "x"}],
+            }
+        )
+
+        self.assertTrue(payload["is_valid_equation"])
+        self.assertFalse(payload["preview_ready"])
+        self.assertEqual(payload["input"]["mode"], "missing")
+        self.assertIsNone(payload["preview"])
+        self.assertTrue(
+            any(
+                "Provide sample_rows or variable_values" in warning
+                for warning in payload["warnings"]
+            )
+        )
         json.dumps(payload, allow_nan=False)
 
     def test_suggest_validation_workflow_prefers_repeated_splits_for_low_data(self):

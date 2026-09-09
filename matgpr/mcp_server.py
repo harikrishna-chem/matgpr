@@ -10,6 +10,7 @@ from .mcp_tools import (
     get_physics_equation,
     list_capabilities,
     list_physics_equations,
+    preview_safe_equation,
     recommend_featurizers,
     suggest_bo_workflow,
     suggest_validation_workflow,
@@ -33,6 +34,7 @@ MCP_TOOL_FUNCTIONS = (
     list_physics_equations,
     get_physics_equation,
     validate_safe_equation,
+    preview_safe_equation,
     suggest_validation_workflow,
     suggest_bo_workflow,
 )

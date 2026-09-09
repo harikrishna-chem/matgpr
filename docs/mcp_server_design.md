@@ -3,9 +3,9 @@
 Date: 2026-09-08
 
 Status: optional MCP entry-point scaffold, pure-Python read-only helper layer,
-user-facing MCP guide, unit tests, package build check, and real local command
-smoke test are complete. Full host UI configuration is deferred until after the
-first read-only server is reviewed.
+safe-equation preview helper, user-facing MCP guide, unit tests, package build
+check, and real local command smoke test are complete. Full host UI
+configuration is deferred until after the first read-only server is reviewed.
 
 ## Goal
 
@@ -242,15 +242,27 @@ Output:
 
 ### `preview_safe_equation`
 
-Evaluate a safe custom equation on small user-provided sample rows.
+Evaluate a valid safe custom equation on small user-provided sample rows.
 
 Rules:
 
 - accept rows directly in the MCP call,
+- also accept direct variable arrays for agents that already have structured
+  inputs,
 - do not read arbitrary files,
 - cap rows and columns,
 - return JSON-safe finite counts and preview values,
 - report non-finite outputs and missing features.
+
+Output:
+
+- validation diagnostics,
+- normalized equation spec,
+- input mode and row-count metadata,
+- physics-mean summary statistics,
+- clipped physics mean values,
+- optional target-minus-physics residual summary,
+- warnings and implementation hints.
 
 ### `suggest_validation_workflow`
 
@@ -376,8 +388,8 @@ Users can then ask an AI coding agent questions such as:
 1. Keep this design page in the public docs and gather review feedback.
 2. Add an optional `mcp` extra and `matgpr-mcp` console entry point.
 3. Add pure-Python helper functions for package info, capability summaries,
-   featurizer recommendations, physics-template lookup, and safe-equation
-   validation.
+   featurizer recommendations, physics-template lookup, safe-equation
+   validation, and safe-equation preview.
 4. Add unit tests for the helper functions without requiring an MCP runtime.
 5. Add the MCP server wrapper using the official Python MCP SDK.
 6. Add MCP smoke tests that verify the server object exposes the expected
@@ -417,8 +429,6 @@ python -m twine check dist/*
 - Should compact docs resources be bundled as package data, or should the MCP
   server return hosted documentation links only?
 - Should the first server expose prompts, or only tools?
-- Should the first implementation include `preview_safe_equation`, or wait
-  until equation validation is exercised by open-source users?
 - Should any modeling execution tools be added before `v0.3.0`, or should the
   `v0.2.x` line remain read-only/advisory for MCP?
 - Should a hosted MCP server ever be part of the public `matgpr` project, or
@@ -435,6 +445,7 @@ extra with these tools:
 - `list_physics_equations`
 - `get_physics_equation`
 - `validate_safe_equation`
+- `preview_safe_equation`
 - `suggest_validation_workflow`
 - `suggest_bo_workflow`
 

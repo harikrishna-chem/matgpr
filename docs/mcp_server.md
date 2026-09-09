@@ -98,6 +98,7 @@ The initial server exposes read-only helper tools.
 | `list_physics_equations` | Lists built-in physics-equation templates, optionally filtered by query, application, tag, or required features. |
 | `get_physics_equation` | Returns detailed metadata for one physics-equation template. |
 | `validate_safe_equation` | Validates a safe custom equation spec and returns schema-level diagnostics. |
+| `preview_safe_equation` | Evaluates a valid safe custom equation on a few supplied rows and summarizes physics-mean outputs. |
 | `suggest_validation_workflow` | Recommends learning-curve, train/test, cross-validation, and uncertainty-diagnostic protocols. |
 | `suggest_bo_workflow` | Recommends a finite-pool Bayesian-optimization setup without executing BO. |
 
@@ -117,6 +118,11 @@ Ask matgpr to list physics equations related to diffusion.
 ```text
 Ask matgpr to validate this safe custom equation before I use it as a
 physics-informed GPR mean function.
+```
+
+```text
+Ask matgpr to preview this safe equation on these three temperature rows and
+summarize the physics mean values.
 ```
 
 ```text
@@ -178,6 +184,71 @@ The tool returns:
 
 The validator does not use `eval`. It accepts only declared symbols,
 allowlisted operators, and allowlisted mathematical functions.
+
+## Safe Equation Preview
+
+`preview_safe_equation` validates the same safe-equation spec and then evaluates
+the equation on a small set of explicitly supplied rows. It is useful before
+training a PI-GPR model because it can catch:
+
+- missing variable columns,
+- non-numeric variable values,
+- non-finite equation outputs,
+- target-minus-physics residual scale,
+- unit mistakes that are visible in the preview values.
+
+Example using row records:
+
+```json
+{
+  "spec": {
+    "name": "linear_temperature_mean",
+    "expression": "offset + slope * temperature_k",
+    "variables": [
+      {"name": "temperature_k", "units": "K"}
+    ],
+    "parameters": [
+      {"name": "offset", "initial_value": 1.0},
+      {"name": "slope", "initial_value": 2.0}
+    ]
+  },
+  "sample_rows": [
+    {"temperature_k": 300.0, "target": 601.0},
+    {"temperature_k": 310.0, "target": 620.0}
+  ],
+  "target_column": "target"
+}
+```
+
+Example using direct variable arrays:
+
+```json
+{
+  "spec": {
+    "name": "sqrt_preview",
+    "expression": "sqrt(x)",
+    "variables": [
+      {"name": "x"}
+    ]
+  },
+  "variable_values": {
+    "x": [4.0, 9.0, 16.0]
+  }
+}
+```
+
+The preview returns:
+
+- equation validation diagnostics,
+- normalized equation spec,
+- row-count and input-mode metadata,
+- physics mean summary statistics,
+- optional residual summary when target values are supplied,
+- clipped preview values,
+- warnings and implementation hints.
+
+The MCP preview is capped to a few rows. It does not fit a model and does not
+read datasets from disk.
 
 ## What The Server Does Not Do Yet
 

@@ -57,6 +57,7 @@ class MCPServerTests(unittest.TestCase):
         self.assertEqual(server.name, MCP_SERVER_NAME)
         self.assertEqual(server.kwargs["title"], "matgpr")
         self.assertEqual(set(server.tools), {function.__name__ for function in MCP_TOOL_FUNCTIONS})
+        self.assertIn("preview_safe_equation", server.tools)
 
         info = server.tools["get_matgpr_info"]()
         self.assertEqual(info["name"], "matgpr")
