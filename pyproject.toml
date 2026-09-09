@@ -57,6 +57,7 @@ Changelog = "https://github.com/harikrishna-chem/matgpr/blob/main/CHANGELOG.md"
 
 [project.scripts]
 matgpr-mcp = "matgpr.mcp_server:main"
+matgpr-mcp-smoke = "matgpr.mcp_smoke:main"
 
 [project.optional-dependencies]
 bo = [

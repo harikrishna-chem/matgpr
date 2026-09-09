@@ -4,8 +4,9 @@ Date: 2026-09-08
 
 Status: optional MCP entry-point scaffold, pure-Python read-only helper layer,
 safe-equation preview helper, user-facing MCP guide, unit tests, package build
-check, and real local command smoke test are complete. Full host UI
-configuration is deferred until after the first read-only server is reviewed.
+check, packaged MCP smoke command, and real local command smoke test are
+complete. Full host UI configuration is deferred until after the first
+read-only server is reviewed.
 
 ## Goal
 
@@ -97,8 +98,10 @@ Add the MCP implementation as optional code:
 ```text
 matgpr/
   mcp_server.py
+  mcp_smoke.py
   mcp_tools.py
 tests/
+  test_mcp_smoke.py
   test_mcp_tools.py
   test_mcp_server.py
 docs/
@@ -406,7 +409,9 @@ python -m build
 python -m twine check dist/*
 ```
 
-9. Test the installed `matgpr-mcp` command with the real MCP SDK.
+9. Add a packaged `matgpr-mcp-smoke` command that verifies initialize,
+   list-tools, and a lightweight package-info tool call through the real MCP
+   SDK.
 10. Test with at least one local MCP host or MCP Inspector before announcing
     host-specific setup as fully validated.
 11. Release as a future patch version only after the MCP server is stable.
@@ -416,6 +421,8 @@ python -m twine check dist/*
 - `pip install matgpr` remains lightweight and does not require the MCP SDK.
 - `pip install "matgpr[mcp]"` installs the server dependency.
 - `matgpr-mcp` starts successfully as a local STDIO server.
+- `matgpr-mcp-smoke` verifies a real MCP client can initialize the server and
+  list the expected tools.
 - The server exposes a small set of documented read-only tools.
 - Tool outputs are deterministic and JSON-safe.
 - Invalid equations, invalid sample rows, missing features, and missing

@@ -53,6 +53,19 @@ matgpr-mcp
 The command starts a local STDIO MCP server. Most users will not run it
 directly; their MCP host will start it when needed.
 
+Verify that a real MCP client can initialize the server and list the expected
+tools:
+
+```bash
+matgpr-mcp-smoke
+```
+
+For a machine-readable result:
+
+```bash
+matgpr-mcp-smoke --json
+```
+
 ## Configure Codex
 
 Codex can run local STDIO MCP servers from its `config.toml` file. Add this to
@@ -294,6 +307,12 @@ which matgpr-mcp
 
 and place that absolute command path in the host configuration.
 
+You can also smoke-test the absolute path directly:
+
+```bash
+matgpr-mcp-smoke --command /absolute/path/to/matgpr-mcp
+```
+
 If an MCP host starts but does not show tools, restart the host after changing
 its MCP configuration.
 
@@ -306,6 +325,8 @@ python -m ruff check matgpr tests scripts
 python -m pytest
 python -m mkdocs build --strict
 python -m build
+python -m pip install -e ".[mcp]"
+matgpr-mcp-smoke
 ```
 
 For package-upload readiness, also run `twine check` on the generated

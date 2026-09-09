@@ -10,7 +10,9 @@ phase.
 
 ### Added
 
-- Nothing yet.
+- `matgpr-mcp-smoke` command for verifying that the optional local MCP server
+  can initialize over stdio, expose all expected tools, and return package
+  metadata from a real MCP client session.
 
 ### Fixed
 

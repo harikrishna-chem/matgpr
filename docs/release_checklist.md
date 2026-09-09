@@ -115,8 +115,9 @@ For every public release, also run a fresh-clone smoke test before tagging:
 ```bash
 python -m venv /tmp/matgpr-release-smoke
 /tmp/matgpr-release-smoke/bin/python -m pip install --upgrade pip
-/tmp/matgpr-release-smoke/bin/python -m pip install "matgpr[examples,bo] @ git+https://github.com/harikrishna-chem/matgpr.git@main"
+/tmp/matgpr-release-smoke/bin/python -m pip install "matgpr[examples,bo,mcp] @ git+https://github.com/harikrishna-chem/matgpr.git@main"
 /tmp/matgpr-release-smoke/bin/python -m pip check
+/tmp/matgpr-release-smoke/bin/matgpr-mcp-smoke --command /tmp/matgpr-release-smoke/bin/matgpr-mcp
 ```
 
 Then verify:
@@ -125,6 +126,7 @@ Then verify:
 - `matgpr.__version__` matches the release version,
 - OPV and solvent diffusivity raw `dataset.pkl` URLs are reachable,
 - notebook smoke execution works from the fresh clone,
+- the MCP smoke command initializes the local server and lists expected tools,
 - package build artifacts pass `twine check`.
 
 ## CI And GitHub Checks
