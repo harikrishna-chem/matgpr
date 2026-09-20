@@ -7,10 +7,12 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
+import gpytorch
 import numpy as np
 import torch
 
 from matgpr.gpytorch_gpr import (
+    ExactGPRModel,
     GPyTorchGPRResult,
     PhysicsInformedMean,
     fit_gpytorch_gpr,
@@ -125,3 +127,72 @@ class GPyTorchTrainingTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             fit_gpytorch_gpr(x, y, training_iter=1, verbose=False)
+
+
+class TargetStandardizationBufferTests(unittest.TestCase):
+    """Target standardization must travel with the model, in original units."""
+
+    @staticmethod
+    def _training_data():
+        rng = np.random.default_rng(0)
+        x = rng.normal(size=(30, 2))
+        # Target far from zero and widely scaled, so standardized predictions
+        # are obviously different from predictions in original units.
+        y = 500.0 + 50.0 * x[:, 0]
+        return x, y
+
+    def test_target_standardization_is_registered_in_state_dict(self):
+        x, y = self._training_data()
+        result = fit_gpytorch_gpr(x, y, training_iter=5, verbose=False)
+
+        state_dict = result.model.state_dict()
+
+        self.assertIn("target_mean", state_dict)
+        self.assertIn("target_std", state_dict)
+
+    def test_predictions_stay_in_original_units_after_state_dict_roundtrip(self):
+        x, y = self._training_data()
+        result = fit_gpytorch_gpr(x, y, training_iter=5, verbose=False)
+        expected, _ = predict_gpytorch_gpr(result.model, result.likelihood, x[:3])
+
+        likelihood = gpytorch.likelihoods.GaussianLikelihood().double()
+        reloaded = ExactGPRModel(
+            torch.tensor(x).double(),
+            torch.tensor((y - y.mean()) / y.std()).double(),
+            likelihood,
+            ard_num_dims=2,
+        ).double()
+        reloaded.load_state_dict(result.model.state_dict())
+        actual, _ = predict_gpytorch_gpr(reloaded, likelihood, x[:3])
+
+        np.testing.assert_allclose(actual, expected)
+
+    def test_predict_rejects_model_without_target_standardization(self):
+        x, y = self._training_data()
+        likelihood = gpytorch.likelihoods.GaussianLikelihood().double()
+        foreign = _PlainExactGP(
+            torch.tensor(x).double(),
+            torch.tensor(y).double(),
+            likelihood,
+        ).double()
+
+        with self.assertRaisesRegex(ValueError, "target_mean"):
+            predict_gpytorch_gpr(foreign, likelihood, x[:3])
+
+
+class _PlainExactGP(gpytorch.models.ExactGP):
+    """A GPyTorch model built outside matgpr, without standardization buffers."""
+
+    def __init__(self, train_x, train_y, likelihood):
+        super().__init__(train_x, train_y, likelihood)
+        self.mean_module = gpytorch.means.ConstantMean()
+        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
+
+    def forward(self, x):
+        return gpytorch.distributions.MultivariateNormal(
+            self.mean_module(x), self.covar_module(x)
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -109,5 +109,26 @@ class MultitaskGPyTorchTests(unittest.TestCase):
             )
 
 
+class MultitaskTargetStandardizationBufferTests(unittest.TestCase):
+    def test_per_task_target_standardization_is_registered_in_state_dict(self):
+        x = np.linspace(0.0, 1.0, 10).reshape(-1, 1)
+        y = np.column_stack([500.0 + 50.0 * x.ravel(), -20.0 + 3.0 * x.ravel()])
+
+        result = fit_multitask_gpytorch_gpr(
+            x,
+            y,
+            task_names=("strength", "ductility"),
+            training_iter=2,
+            verbose=False,
+        )
+        state_dict = result.model.state_dict()
+
+        self.assertIn("target_mean", state_dict)
+        self.assertIn("target_std", state_dict)
+        np.testing.assert_allclose(
+            state_dict["target_mean"].numpy(), y.mean(axis=0), rtol=1e-10
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

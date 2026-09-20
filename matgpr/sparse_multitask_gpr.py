@@ -10,6 +10,7 @@ import torch
 
 from .gpytorch_gpr import (
     _make_gpytorch_base_kernel,
+    _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
     _validate_confidence_level,
@@ -156,6 +157,15 @@ class ExactSparseMultitaskGPRModel(gpytorch.models.ExactGP):
         self.task_covar_module = gpytorch.kernels.IndexKernel(
             num_tasks=self.num_tasks,
             rank=self.task_covar_rank,
+        )
+        # Buffers so per-task target standardization survives ``state_dict()``.
+        self.register_buffer(
+            "target_mean",
+            torch.zeros(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
+        )
+        self.register_buffer(
+            "target_std",
+            torch.ones(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
         )
 
     def forward(
@@ -522,12 +532,16 @@ def _predict_sparse_multitask_gpytorch_gpr(
     if std is not None:
         std = std.reshape(n_samples, num_tasks)
 
-    if hasattr(model, "target_mean") and hasattr(model, "target_std"):
-        target_mean = model.target_mean.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        target_std = model.target_std.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        mean = mean * target_std + target_mean
-        if std is not None:
-            std = std * target_std
+    target_mean, target_std = _require_target_standardization(
+        model,
+        dtype=mean.dtype,
+        device=mean.device,
+    )
+    target_mean = target_mean.reshape(1, -1)
+    target_std = target_std.reshape(1, -1)
+    mean = mean * target_std + target_mean
+    if std is not None:
+        std = std * target_std
 
     mean_array = mean.detach().cpu().numpy()
     std_array = None if std is None else std.detach().cpu().numpy()

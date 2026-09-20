@@ -276,6 +276,13 @@ class ExactTwoLevelCoKrigingGPRModel(gpytorch.models.ExactGP):
         self.discrepancy_covar_module = gpytorch.kernels.ScaleKernel(
             _make_gpytorch_base_kernel(discrepancy_kernel, ard_num_dims=ard_num_dims)
         )
+        # Buffers so target standardization survives ``state_dict()``.
+        self.register_buffer(
+            "target_mean", torch.zeros((), dtype=train_x.dtype, device=train_x.device)
+        )
+        self.register_buffer(
+            "target_std", torch.ones((), dtype=train_x.dtype, device=train_x.device)
+        )
 
     def forward(
         self,
