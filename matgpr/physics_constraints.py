@@ -5,6 +5,18 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from ._validation import (
+    feature_bounds_mask,
+    finite_scalar,
+    label_array,
+    noise_std_array,
+    nonnegative_scalar,
+    normalized_direction,
+    response_sign,
+    to_1d_finite,
+    to_2d_finite,
+    validate_same_row_count,
+)
 
 __all__ = [
     "AugmentedTrainingData",
@@ -35,15 +47,15 @@ class VirtualObservationSet:
     labels: Sequence[str] | np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        x_values = _to_2d_finite(self.X, "X")
-        y_values = _to_1d_finite(self.y, "y")
-        _validate_same_length(x_values, y_values, "X", "y")
+        x_values = to_2d_finite(self.X, "X")
+        y_values = to_1d_finite(self.y, "y")
+        validate_same_row_count(x_values, y_values, "X", "y")
 
         noise = None
         if self.noise_std is not None:
-            noise = _noise_std_array(self.noise_std, y_values.shape[0])
+            noise = noise_std_array(self.noise_std, y_values.shape[0])
 
-        labels = _label_array(self.labels, y_values.shape[0], default="virtual")
+        labels = label_array(self.labels, y_values.shape[0], default="virtual")
 
         object.__setattr__(self, "X", x_values)
         object.__setattr__(self, "y", y_values)
@@ -89,12 +101,12 @@ class KnownLimitConstraint:
         """Generate virtual observations from reference feature rows."""
         x_values, columns = _as_numeric_matrix(X_reference, "X_reference")
         feature_index = _resolve_feature_index(self.feature, columns, x_values.shape[1])
-        limit_value = _finite_scalar(self.limit_value, "limit_value")
+        limit_value = finite_scalar(self.limit_value, "limit_value")
 
         x_virtual = x_values.copy()
         x_virtual[:, feature_index] = limit_value
         y_virtual = _evaluate_target_value(self.target_value, x_virtual)
-        noise = _noise_std_array(self.noise_std, x_virtual.shape[0])
+        noise = noise_std_array(self.noise_std, x_virtual.shape[0])
         labels = np.full(x_virtual.shape[0], self.label, dtype=object)
 
         return VirtualObservationSet(
@@ -132,20 +144,20 @@ class MonotonicTrendConstraint:
     def generate(self, X_reference, y_reference) -> VirtualObservationSet:
         """Generate monotonic virtual observations from reference rows."""
         x_values, columns = _as_numeric_matrix(X_reference, "X_reference")
-        y_values = _to_1d_finite(y_reference, "y_reference")
-        _validate_same_length(x_values, y_values, "X_reference", "y_reference")
+        y_values = to_1d_finite(y_reference, "y_reference")
+        validate_same_row_count(x_values, y_values, "X_reference", "y_reference")
 
         feature_index = _resolve_feature_index(self.feature, columns, x_values.shape[1])
-        response_sign = _response_sign(self.direction)
+        direction_sign = response_sign(self.direction)
         step = _resolve_step(self.step, x_values[:, feature_index])
-        minimum_slope = _nonnegative_scalar(self.minimum_slope, "minimum_slope")
+        minimum_slope = nonnegative_scalar(self.minimum_slope, "minimum_slope")
 
         x_virtual = x_values.copy()
         x_virtual[:, feature_index] = x_virtual[:, feature_index] + step
-        y_virtual = y_values + response_sign * minimum_slope * step
-        noise = _noise_std_array(self.noise_std, x_virtual.shape[0])
+        y_virtual = y_values + direction_sign * minimum_slope * step
+        noise = noise_std_array(self.noise_std, x_virtual.shape[0])
 
-        keep_mask = _feature_bounds_mask(
+        keep_mask = feature_bounds_mask(
             x_virtual[:, feature_index],
             feature_min=self.feature_min,
             feature_max=self.feature_max,
@@ -156,7 +168,7 @@ class MonotonicTrendConstraint:
         x_virtual = x_virtual[keep_mask]
         y_virtual = y_virtual[keep_mask]
         noise = noise[keep_mask]
-        label = self.label or f"monotonic_{_normalized_direction(self.direction)}"
+        label = self.label or f"monotonic_{normalized_direction(self.direction)}"
         labels = np.full(x_virtual.shape[0], label, dtype=object)
 
         return VirtualObservationSet(
@@ -230,8 +242,8 @@ def append_virtual_observations(
         Label assigned to real training rows in the returned metadata.
     """
     x_values, columns = _as_numeric_matrix(X, "X")
-    y_values = _to_1d_finite(y, "y")
-    _validate_same_length(x_values, y_values, "X", "y")
+    y_values = to_1d_finite(y, "y")
+    validate_same_row_count(x_values, y_values, "X", "y")
 
     sets = _flatten_virtual_observation_sets(virtual_observations)
     for observation_set in sets:
@@ -271,32 +283,7 @@ def _as_numeric_matrix(values, name: str) -> tuple[np.ndarray, list[str] | None]
         array = values.to_numpy(dtype=float)
     else:
         array = np.asarray(values, dtype=float)
-    return _to_2d_finite(array, name), columns
-
-
-def _to_2d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float)
-    if array.ndim != 2:
-        raise ValueError(f"{name} must be a 2D feature matrix")
-    if array.shape[0] == 0 or array.shape[1] == 0:
-        raise ValueError(f"{name} must contain at least one row and one feature")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
-def _to_1d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
-def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
-    if first.shape[0] != second.shape[0]:
-        raise ValueError(f"{first_name} and {second_name} must have the same number of rows")
+    return to_2d_finite(array, name), columns
 
 
 def _resolve_feature_index(feature: int | str, columns: list[str] | None, n_features: int) -> int:
@@ -312,41 +299,6 @@ def _resolve_feature_index(feature: int | str, columns: list[str] | None, n_feat
     if feature < 0 or feature >= n_features:
         raise ValueError(f"feature index {feature} is out of bounds for {n_features} features")
     return int(feature)
-
-
-def _finite_scalar(value: float, name: str) -> float:
-    result = float(value)
-    if not np.isfinite(result):
-        raise ValueError(f"{name} must be finite")
-    return result
-
-
-def _nonnegative_scalar(value: float, name: str) -> float:
-    result = _finite_scalar(value, name)
-    if result < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return result
-
-
-def _noise_std_array(values, n_observations: int) -> np.ndarray:
-    if np.isscalar(values):
-        noise = np.full(n_observations, _nonnegative_scalar(values, "noise_std"), dtype=float)
-    else:
-        noise = _to_1d_finite(values, "noise_std")
-        if noise.shape[0] != n_observations:
-            raise ValueError("noise_std must be a scalar or have one value per observation")
-        if np.any(noise < 0):
-            raise ValueError("noise_std must be non-negative")
-    return noise
-
-
-def _label_array(labels, n_observations: int, *, default: str) -> np.ndarray:
-    if labels is None:
-        return np.full(n_observations, default, dtype=object)
-    label_array = np.asarray(labels, dtype=object).ravel()
-    if label_array.shape[0] != n_observations:
-        raise ValueError("labels must have one value per observation")
-    return label_array
 
 
 def _evaluate_target_value(
@@ -365,33 +317,12 @@ def _evaluate_target_value(
             raise ValueError("Callable target_value must return only finite values")
         return array
 
-    return np.full(x_virtual.shape[0], _finite_scalar(target_value, "target_value"), dtype=float)
-
-
-def _normalized_direction(direction: str) -> str:
-    normalized = str(direction).lower().replace("-", "_")
-    aliases = {
-        "increase": "increasing",
-        "increasing": "increasing",
-        "nondecreasing": "increasing",
-        "non_decreasing": "increasing",
-        "decrease": "decreasing",
-        "decreasing": "decreasing",
-        "nonincreasing": "decreasing",
-        "non_increasing": "decreasing",
-    }
-    if normalized not in aliases:
-        raise ValueError("direction must be increasing or decreasing")
-    return aliases[normalized]
-
-
-def _response_sign(direction: str) -> float:
-    return 1.0 if _normalized_direction(direction) == "increasing" else -1.0
+    return np.full(x_virtual.shape[0], finite_scalar(target_value, "target_value"), dtype=float)
 
 
 def _resolve_step(step: float | None, feature_values: np.ndarray) -> float:
     if step is not None:
-        result = _finite_scalar(step, "step")
+        result = finite_scalar(step, "step")
         if result == 0:
             raise ValueError("step must be non-zero")
         return result
@@ -400,29 +331,6 @@ def _resolve_step(step: float | None, feature_values: np.ndarray) -> float:
     if feature_range <= 0:
         raise ValueError("step must be provided when the selected feature has zero range")
     return 0.05 * feature_range
-
-
-def _feature_bounds_mask(
-    feature_values: np.ndarray,
-    *,
-    feature_min: float | None,
-    feature_max: float | None,
-) -> np.ndarray:
-    if feature_min is not None and feature_max is not None:
-        lower = _finite_scalar(feature_min, "feature_min")
-        upper = _finite_scalar(feature_max, "feature_max")
-        if upper < lower:
-            raise ValueError("feature_max must be greater than or equal to feature_min")
-    elif feature_min is not None:
-        lower = _finite_scalar(feature_min, "feature_min")
-        upper = np.inf
-    elif feature_max is not None:
-        lower = -np.inf
-        upper = _finite_scalar(feature_max, "feature_max")
-    else:
-        lower = -np.inf
-        upper = np.inf
-    return (feature_values >= lower) & (feature_values <= upper)
 
 
 def _flatten_virtual_observation_sets(
@@ -460,9 +368,9 @@ def _augmented_alpha(
 
 def _alpha_array(values, n_observations: int, name: str) -> np.ndarray:
     if np.isscalar(values):
-        alpha = np.full(n_observations, _nonnegative_scalar(values, name), dtype=float)
+        alpha = np.full(n_observations, nonnegative_scalar(values, name), dtype=float)
     else:
-        alpha = _to_1d_finite(values, name)
+        alpha = to_1d_finite(values, name)
         if alpha.shape[0] != n_observations:
             raise ValueError(f"{name} must be a scalar or have one value per observed row")
         if np.any(alpha < 0):

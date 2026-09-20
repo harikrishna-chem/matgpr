@@ -19,6 +19,10 @@ from .gpytorch_gpr import (
     _validate_training_options,
     fit_gpytorch_gpr,
 )
+from ._validation import (
+    normalize_fidelity_label,
+    validate_confidence_level,
+)
 
 __all__ = [
     "CoKrigingGPRPrediction",
@@ -1002,7 +1006,7 @@ def _predict_delta_multifidelity_gpr(
     include_observation_noise: bool,
     include_low_fidelity_uncertainty: bool | None,
 ) -> MultiFidelityGPRPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     X_array = _to_2d_numpy(X, "X")
     low_mean, low_std = _resolve_prediction_low_fidelity(
         result,
@@ -1064,7 +1068,7 @@ def _predict_cokriging_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> CoKrigingGPRPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     result.model.eval()
     result.likelihood.eval()
     test_x = _to_tensor(X, device=result.device, dtype=result.dtype)
@@ -1325,7 +1329,7 @@ def _resolve_two_level_fidelities(
     target_name = (
         observation_data.target_fidelity
         if target_fidelity is None
-        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+        else normalize_fidelity_label(target_fidelity, "target_fidelity")
     )
     if target_name not in observation_data.fidelity_names:
         raise ValueError(
@@ -1335,7 +1339,7 @@ def _resolve_two_level_fidelities(
     if low_fidelity is None:
         low_name = low_candidates[0]
     else:
-        low_name = _normalize_fidelity_label(low_fidelity, "low_fidelity")
+        low_name = normalize_fidelity_label(low_fidelity, "low_fidelity")
         if low_name not in observation_data.fidelity_names:
             raise ValueError(
                 f"low_fidelity must be one of {observation_data.fidelity_names}; got {low_name!r}"
@@ -1485,7 +1489,7 @@ def _to_1d_fidelity_labels(values, name: str) -> np.ndarray:
 
     labels: list[str] = []
     for raw_value in array:
-        labels.append(_normalize_fidelity_label(raw_value, name))
+        labels.append(normalize_fidelity_label(raw_value, name))
     return np.asarray(labels, dtype=object)
 
 
@@ -1498,7 +1502,7 @@ def _resolve_fidelity_names(
         fidelity_names = tuple(dict.fromkeys(labels.tolist()))
     else:
         fidelity_names = tuple(
-            _normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
+            normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
         )
 
     if not fidelity_names:
@@ -1536,20 +1540,11 @@ def _resolve_target_fidelity(
     target = (
         fidelity_names[-1]
         if target_fidelity is None
-        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+        else normalize_fidelity_label(target_fidelity, "target_fidelity")
     )
     if target not in fidelity_names:
         raise ValueError(f"target_fidelity must be one of {fidelity_names}; got {target!r}")
     return target
-
-
-def _normalize_fidelity_label(value, name: str) -> str:
-    if value is None:
-        raise ValueError(f"{name} must not contain missing labels")
-    label = str(value).strip()
-    if label == "" or label.lower() == "nan":
-        raise ValueError(f"{name} must not contain missing labels")
-    return label
 
 
 def _resolve_sample_id(sample_id, n_samples: int) -> np.ndarray | None:
@@ -1628,13 +1623,6 @@ def _validate_feature_width_match(X_high: np.ndarray, X_low, high_name: str, low
             f"{high_name} has {X_high.shape[1]} features, but {low_name} has "
             f"{X_low_array.shape[1]} features"
         )
-
-
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
 
 
 def _resolve_torch_dtype(dtype: str | torch.dtype) -> torch.dtype:

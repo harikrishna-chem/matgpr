@@ -31,6 +31,7 @@ _HISTORY_COLUMNS = (
     "matgpr_simple_regret",
     "matgpr_is_optimum",
 )
+from ._validation import validate_positive_int
 
 
 @dataclass(frozen=True)
@@ -136,7 +137,7 @@ def simulate_bo_strategy(
     )
     if not isinstance(strategy, BOBenchmarkStrategy):
         raise TypeError("strategy must be a BOBenchmarkStrategy")
-    batch_size = _validate_positive_int(batch_size, name="batch_size")
+    batch_size = validate_positive_int(batch_size, name="batch_size")
 
     candidate_ids = _candidate_ids(frame, candidate_id_column)
     target_values = _numeric_column(frame, target_column)
@@ -149,7 +150,7 @@ def simulate_bo_strategy(
     )
     initial_mask = observed_mask.copy()
     remaining_count = int((~observed_mask).sum())
-    budget = remaining_count if budget is None else _validate_positive_int(budget, name="budget")
+    budget = remaining_count if budget is None else validate_positive_int(budget, name="budget")
     budget = min(budget, remaining_count)
 
     optimum_position = _best_position(target_values, maximize=maximize)
@@ -259,7 +260,7 @@ def compare_bo_strategies(
 ) -> BOBenchmarkComparison:
     """Compare several finite-pool BO strategies over repeated replays."""
     strategy_tuple = _as_strategy_tuple(strategies)
-    n_repeats = _validate_positive_int(n_repeats, name="n_repeats")
+    n_repeats = validate_positive_int(n_repeats, name="n_repeats")
     root_rng = np.random.default_rng(random_state)
     history_tables = []
     summary_tables = []
@@ -543,15 +544,6 @@ def _as_strategy_tuple(
     if len(set(names)) != len(names):
         raise ValueError("strategy names must be unique")
     return strategy_tuple
-
-
-def _validate_positive_int(value: int, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise TypeError(f"{name} must be an integer")
-    value = int(value)
-    if value < 1:
-        raise ValueError(f"{name} must be at least 1")
-    return value
 
 
 def _normalize_direction(direction: str) -> str:

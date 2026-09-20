@@ -4,11 +4,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import product
 from math import gcd
-from numbers import Integral
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from ._validation import validate_positive_int
 
 __all__ = [
     "CandidatePoolDiagnostics",
@@ -397,7 +397,7 @@ def summarize_candidate_category_coverage(
     missing_reference = [column for column in columns if column not in reference_frame.columns]
     if missing_reference:
         raise ValueError(f"reference_data is missing categorical columns: {missing_reference}")
-    max_levels = _validate_positive_int(max_levels, name="max_levels")
+    max_levels = validate_positive_int(max_levels, name="max_levels")
 
     rows = []
     for column in columns:
@@ -784,15 +784,6 @@ def _validate_nonnegative_finite(value: float, *, name: str) -> None:
         is_valid = False
     if not is_valid:
         raise ValueError(f"{name} must be a non-negative finite value")
-
-
-def _validate_positive_int(value: int, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise TypeError(f"{name} must be an integer")
-    value = int(value)
-    if value < 1:
-        raise ValueError(f"{name} must be at least 1")
-    return value
 
 
 def _validate_parameter_space(

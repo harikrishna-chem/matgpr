@@ -7,6 +7,19 @@ from statistics import NormalDist
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+from ._validation import (
+    feature_bounds_mask,
+    finite_scalar,
+    label_array,
+    noise_std_array,
+    nonnegative_scalar,
+    normalized_direction,
+    response_sign,
+    to_1d_finite,
+    to_2d_finite,
+    validate_confidence_level,
+    validate_same_row_count,
+)
 
 __all__ = [
     "DerivativeConstrainedGPRPrediction",
@@ -38,17 +51,17 @@ class DerivativeObservationSet:
     labels: Sequence[str] | np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        x_values = _to_2d_finite(self.X, "X")
-        derivative_values = _to_1d_finite(self.derivative_values, "derivative_values")
-        _validate_same_length(x_values, derivative_values, "X", "derivative_values")
+        x_values = to_2d_finite(self.X, "X")
+        derivative_values = to_1d_finite(self.derivative_values, "derivative_values")
+        validate_same_row_count(x_values, derivative_values, "X", "derivative_values")
 
         feature_indices = _feature_index_array(
             self.feature_indices,
             n_observations=derivative_values.shape[0],
             n_features=x_values.shape[1],
         )
-        noise = _noise_std_array(self.noise_std, derivative_values.shape[0])
-        labels = _label_array(self.labels, derivative_values.shape[0], default="derivative")
+        noise = noise_std_array(self.noise_std, derivative_values.shape[0])
+        labels = label_array(self.labels, derivative_values.shape[0], default="derivative")
 
         object.__setattr__(self, "X", x_values)
         object.__setattr__(self, "feature_indices", feature_indices)
@@ -97,11 +110,11 @@ class MonotonicDerivativeConstraint:
         """Generate derivative observations from reference feature rows."""
         x_values, columns = _as_numeric_matrix(X_reference, "X_reference")
         feature_index = _resolve_feature_index(self.feature, columns, x_values.shape[1])
-        response_sign = _response_sign(self.direction)
-        minimum_slope = _nonnegative_scalar(self.minimum_slope, "minimum_slope")
-        derivative_value = response_sign * minimum_slope
+        direction_sign = response_sign(self.direction)
+        minimum_slope = nonnegative_scalar(self.minimum_slope, "minimum_slope")
+        derivative_value = direction_sign * minimum_slope
 
-        keep_mask = _feature_bounds_mask(
+        keep_mask = feature_bounds_mask(
             x_values[:, feature_index],
             feature_min=self.feature_min,
             feature_max=self.feature_max,
@@ -112,8 +125,8 @@ class MonotonicDerivativeConstraint:
         x_virtual = x_values[keep_mask]
         derivative_values = np.full(x_virtual.shape[0], derivative_value, dtype=float)
         feature_indices = np.full(x_virtual.shape[0], feature_index, dtype=int)
-        noise = _noise_std_array(self.noise_std, x_values.shape[0])[keep_mask]
-        label = self.label or f"derivative_{_normalized_direction(self.direction)}"
+        noise = noise_std_array(self.noise_std, x_values.shape[0])[keep_mask]
+        label = self.label or f"derivative_{normalized_direction(self.direction)}"
         labels = np.full(x_virtual.shape[0], label, dtype=object)
 
         return DerivativeObservationSet(
@@ -163,7 +176,7 @@ class DerivativeConstrainedGPRResult:
         include_observation_noise: bool = False,
     ) -> DerivativeConstrainedGPRPrediction:
         """Predict function values at new feature rows."""
-        _validate_confidence_level(confidence_level)
+        validate_confidence_level(confidence_level)
         x_test, _ = _as_numeric_matrix(X, "X")
         if x_test.shape[1] != self.X_train.shape[1]:
             raise ValueError(
@@ -248,11 +261,11 @@ def fit_derivative_constrained_gpr(
     region.
     """
     x_train, _ = _as_numeric_matrix(X_train, "X_train")
-    y_values = _to_1d_finite(y_train, "y_train")
-    _validate_same_length(x_train, y_values, "X_train", "y_train")
+    y_values = to_1d_finite(y_train, "y_train")
+    validate_same_row_count(x_train, y_values, "X_train", "y_train")
 
     derivative_set = _prepare_derivative_observations(derivative_observations, x_train.shape[1])
-    value_noise = _noise_std_array(value_noise_std, y_values.shape[0])
+    value_noise = noise_std_array(value_noise_std, y_values.shape[0])
 
     if standardize_y:
         target_mean = float(np.mean(y_values))
@@ -536,32 +549,7 @@ def _as_numeric_matrix(values, name: str) -> tuple[np.ndarray, list[str] | None]
         array = values.to_numpy(dtype=float)
     else:
         array = np.asarray(values, dtype=float)
-    return _to_2d_finite(array, name), columns
-
-
-def _to_2d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float)
-    if array.ndim != 2:
-        raise ValueError(f"{name} must be a 2D feature matrix")
-    if array.shape[0] == 0 or array.shape[1] == 0:
-        raise ValueError(f"{name} must contain at least one row and one feature")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
-def _to_1d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
-def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
-    if first.shape[0] != second.shape[0]:
-        raise ValueError(f"{first_name} and {second_name} must have the same number of rows")
+    return to_2d_finite(array, name), columns
 
 
 def _feature_index_array(
@@ -597,90 +585,11 @@ def _resolve_feature_index(feature: int | str, columns: list[str] | None, n_feat
     return int(feature)
 
 
-def _finite_scalar(value: float, name: str) -> float:
-    result = float(value)
-    if not np.isfinite(result):
-        raise ValueError(f"{name} must be finite")
-    return result
-
-
 def _positive_scalar(value: float, name: str) -> float:
-    result = _finite_scalar(value, name)
+    result = finite_scalar(value, name)
     if result <= 0:
         raise ValueError(f"{name} must be positive")
     return result
-
-
-def _nonnegative_scalar(value: float, name: str) -> float:
-    result = _finite_scalar(value, name)
-    if result < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return result
-
-
-def _noise_std_array(values, n_observations: int) -> np.ndarray:
-    if np.isscalar(values):
-        noise = np.full(n_observations, _nonnegative_scalar(values, "noise_std"), dtype=float)
-    else:
-        noise = _to_1d_finite(values, "noise_std")
-        if noise.shape[0] != n_observations:
-            raise ValueError("noise_std must be a scalar or have one value per observation")
-        if np.any(noise < 0):
-            raise ValueError("noise_std must be non-negative")
-    return noise
-
-
-def _label_array(labels, n_observations: int, *, default: str) -> np.ndarray:
-    if labels is None:
-        return np.full(n_observations, default, dtype=object)
-    label_array = np.asarray(labels, dtype=object).ravel()
-    if label_array.shape[0] != n_observations:
-        raise ValueError("labels must have one value per observation")
-    return label_array
-
-
-def _normalized_direction(direction: str) -> str:
-    normalized = str(direction).lower().replace("-", "_")
-    aliases = {
-        "increase": "increasing",
-        "increasing": "increasing",
-        "nondecreasing": "increasing",
-        "non_decreasing": "increasing",
-        "decrease": "decreasing",
-        "decreasing": "decreasing",
-        "nonincreasing": "decreasing",
-        "non_increasing": "decreasing",
-    }
-    if normalized not in aliases:
-        raise ValueError("direction must be increasing or decreasing")
-    return aliases[normalized]
-
-
-def _response_sign(direction: str) -> float:
-    return 1.0 if _normalized_direction(direction) == "increasing" else -1.0
-
-
-def _feature_bounds_mask(
-    feature_values: np.ndarray,
-    *,
-    feature_min: float | None,
-    feature_max: float | None,
-) -> np.ndarray:
-    if feature_min is not None and feature_max is not None:
-        lower = _finite_scalar(feature_min, "feature_min")
-        upper = _finite_scalar(feature_max, "feature_max")
-        if upper < lower:
-            raise ValueError("feature_max must be greater than or equal to feature_min")
-    elif feature_min is not None:
-        lower = _finite_scalar(feature_min, "feature_min")
-        upper = np.inf
-    elif feature_max is not None:
-        lower = -np.inf
-        upper = _finite_scalar(feature_max, "feature_max")
-    else:
-        lower = -np.inf
-        upper = np.inf
-    return (feature_values >= lower) & (feature_values <= upper)
 
 
 def _flatten_derivative_observation_sets(
@@ -723,7 +632,7 @@ def _initial_length_scale(
     if np.isscalar(length_scale):
         value = _positive_scalar(length_scale, "length_scale")
         return np.full(x_train.shape[1], value, dtype=float)
-    values = _to_1d_finite(length_scale, "length_scale")
+    values = to_1d_finite(length_scale, "length_scale")
     if values.shape[0] != x_train.shape[1]:
         raise ValueError("length_scale must be a scalar or have one value per feature")
     if np.any(values <= 0):
@@ -748,7 +657,7 @@ def _combined_training_target(
 
 
 def _stable_cholesky(covariance: np.ndarray, *, jitter: float) -> np.ndarray:
-    jitter_value = _nonnegative_scalar(jitter, "jitter")
+    jitter_value = nonnegative_scalar(jitter, "jitter")
     identity = np.eye(covariance.shape[0])
     for scale in (0.0, 1.0, 10.0, 100.0, 1000.0):
         try:
@@ -776,13 +685,6 @@ def _log_marginal_likelihood(
     log_determinant = -float(np.sum(np.log(np.diag(lower_cholesky))))
     normalization = -0.5 * n_observations * np.log(2.0 * np.pi)
     return data_fit + log_determinant + normalization
-
-
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
 
 
 def _validate_positive_bounds(bounds: tuple[float, float], name: str) -> None:

@@ -49,6 +49,7 @@ DEFAULT_COMPOSITION_STATISTICS: tuple[str, ...] = (
     "ad",
     "std",
 )
+from ._validation import cached_float
 
 _ORBITAL_PATTERN = re.compile(r"(\d+)([spdf])(\d+)")
 
@@ -392,7 +393,7 @@ def _read_cached_feature_row(
         return None
     if any(name not in features for name in feature_names):
         return None
-    return {name: _cached_float(features[name]) for name in feature_names}
+    return {name: cached_float(features[name]) for name in feature_names}
 
 
 def _write_cached_feature_row(
@@ -414,12 +415,6 @@ def _write_cached_feature_row(
             "metadata": dict(metadata),
         },
     )
-
-
-def _cached_float(value: object) -> float:
-    if value is None:
-        return np.nan
-    return float(value)
 
 
 def _parse_composition(formula: object):

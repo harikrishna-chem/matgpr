@@ -5,6 +5,13 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from ._validation import (
+    label_array,
+    nonnegative_scalar,
+    to_1d_finite,
+    to_2d_finite,
+    validate_same_row_count,
+)
 
 __all__ = [
     "FeatureNoiseModel",
@@ -31,11 +38,11 @@ class ObservationNoiseProfile:
     component_names: Sequence[str] | np.ndarray | None = None
 
     def __post_init__(self) -> None:
-        noise = _to_1d_finite(self.noise_std, "noise_std")
+        noise = to_1d_finite(self.noise_std, "noise_std")
         if np.any(noise < 0):
             raise ValueError("noise_std must be non-negative")
-        labels = _label_array(self.labels, noise.shape[0], default="observation_noise")
-        components = _label_array(
+        labels = label_array(self.labels, noise.shape[0], default="observation_noise")
+        components = label_array(
             self.component_names,
             noise.shape[0],
             default="noise",
@@ -105,12 +112,12 @@ class SourceNoiseModel:
             raise ValueError("default_noise_std is required when unknown='default'")
 
         source_noise = {
-            key: _nonnegative_scalar(value, f"source_noise_std[{key!r}]")
+            key: nonnegative_scalar(value, f"source_noise_std[{key!r}]")
             for key, value in self.source_noise_std.items()
         }
         default_noise = None
         if self.default_noise_std is not None:
-            default_noise = _nonnegative_scalar(self.default_noise_std, "default_noise_std")
+            default_noise = nonnegative_scalar(self.default_noise_std, "default_noise_std")
 
         noise_values = []
         labels = []
@@ -148,9 +155,9 @@ class ReplicateNoiseModel:
     label_prefix: str = "replicate"
 
     def __post_init__(self) -> None:
-        self.min_noise_std = _nonnegative_scalar(self.min_noise_std, "min_noise_std")
+        self.min_noise_std = nonnegative_scalar(self.min_noise_std, "min_noise_std")
         if self.fallback_noise_std is not None:
-            self.fallback_noise_std = _nonnegative_scalar(
+            self.fallback_noise_std = nonnegative_scalar(
                 self.fallback_noise_std,
                 "fallback_noise_std",
             )
@@ -159,9 +166,9 @@ class ReplicateNoiseModel:
 
     def fit(self, y, groups):
         """Estimate group-level noise from targets and replicate labels."""
-        y_values = _to_1d_finite(y, "y")
+        y_values = to_1d_finite(y, "y")
         group_values = _to_1d_object(groups, "groups")
-        _validate_same_length(y_values, group_values, "y", "groups")
+        validate_same_row_count(y_values, group_values, "y", "groups")
 
         frame = pd.DataFrame({"y": y_values, "group": group_values})
         group_noise: dict[object, float] = {}
@@ -230,8 +237,8 @@ class FeatureNoiseModel:
 
     def profile(self, X) -> ObservationNoiseProfile:
         """Return per-row noise from a feature-dependent equation."""
-        x_values = _to_2d_finite(_as_numeric_matrix(X), "X")
-        noise = _to_1d_finite(self.noise_std_function(x_values), "noise_std_function(X)")
+        x_values = to_2d_finite(_as_numeric_matrix(X), "X")
+        noise = to_1d_finite(self.noise_std_function(x_values), "noise_std_function(X)")
         if noise.shape[0] != x_values.shape[0]:
             raise ValueError("noise_std_function must return one value per feature row")
         if np.any(noise < 0):
@@ -252,7 +259,7 @@ def constant_noise_profile(
     """Return a constant noise profile."""
     if n_observations <= 0:
         raise ValueError("n_observations must be positive")
-    noise = np.full(int(n_observations), _nonnegative_scalar(noise_std, "noise_std"), dtype=float)
+    noise = np.full(int(n_observations), nonnegative_scalar(noise_std, "noise_std"), dtype=float)
     labels = np.full(int(n_observations), label, dtype=object)
     return ObservationNoiseProfile(
         noise_std=noise,
@@ -312,56 +319,9 @@ def _as_numeric_matrix(values) -> np.ndarray:
     return np.asarray(values, dtype=float)
 
 
-def _to_2d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float)
-    if array.ndim != 2:
-        raise ValueError(f"{name} must be a 2D feature matrix")
-    if array.shape[0] == 0 or array.shape[1] == 0:
-        raise ValueError(f"{name} must contain at least one row and one feature")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
-def _to_1d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
 def _to_1d_object(values, name: str) -> np.ndarray:
     array = np.asarray(values, dtype=object).ravel()
     if array.size == 0:
         raise ValueError(f"{name} must contain at least one value")
     return array
 
-
-def _label_array(labels, n_observations: int, *, default: str) -> np.ndarray:
-    if labels is None:
-        return np.full(n_observations, default, dtype=object)
-    label_array = np.asarray(labels, dtype=object).ravel()
-    if label_array.shape[0] != n_observations:
-        raise ValueError("labels must have one value per observation")
-    return label_array
-
-
-def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
-    if first.shape[0] != second.shape[0]:
-        raise ValueError(f"{first_name} and {second_name} must have the same number of rows")
-
-
-def _finite_scalar(value: float, name: str) -> float:
-    result = float(value)
-    if not np.isfinite(result):
-        raise ValueError(f"{name} must be finite")
-    return result
-
-
-def _nonnegative_scalar(value: float, name: str) -> float:
-    result = _finite_scalar(value, name)
-    if result < 0:
-        raise ValueError(f"{name} must be non-negative")
-    return result

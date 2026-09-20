@@ -12,6 +12,7 @@ from sklearn.model_selection import KFold, ShuffleSplit, train_test_split
 from .metrics import regression_metrics, train_test_regression_metrics
 from .reporting import decompose_multifidelity_prediction
 from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
+from ._validation import normalize_fidelity_label
 
 __all__ = [
     "CoKrigingTrainTestValidationResult",
@@ -2815,7 +2816,7 @@ def _to_fidelity_label_array(values, *, n_samples: int) -> np.ndarray:
         raise ValueError(
             f"fidelity must contain {n_samples} value(s); got {array.shape[0]}"
         )
-    labels = [_normalize_fidelity_label(value, "fidelity") for value in array]
+    labels = [normalize_fidelity_label(value, "fidelity") for value in array]
     return np.asarray(labels, dtype=object)
 
 
@@ -2850,7 +2851,7 @@ def _resolve_cokriging_validation_levels(
     target_name = (
         fidelity_names[-1]
         if target_value is None
-        else _normalize_fidelity_label(target_value, "target_fidelity")
+        else normalize_fidelity_label(target_value, "target_fidelity")
     )
     if target_name not in fidelity_names:
         raise ValueError(f"target_fidelity must be one of {fidelity_names}; got {target_name!r}")
@@ -2861,7 +2862,7 @@ def _resolve_cokriging_validation_levels(
     low_name = (
         low_candidates[0]
         if low_value is None
-        else _normalize_fidelity_label(low_value, "low_fidelity")
+        else normalize_fidelity_label(low_value, "low_fidelity")
     )
     if low_name not in fidelity_names:
         raise ValueError(f"low_fidelity must be one of {fidelity_names}; got {low_name!r}")
@@ -2878,7 +2879,7 @@ def _resolve_validation_fidelity_names(
         fidelity_names = tuple(dict.fromkeys(fidelity_labels.tolist()))
     else:
         fidelity_names = tuple(
-            _normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
+            normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
         )
     if not fidelity_names:
         raise ValueError("fidelity_order must contain at least one fidelity level")
@@ -2897,15 +2898,6 @@ def _resolve_validation_fidelity_names(
     if missing:
         raise ValueError(f"fidelity_order contains unobserved fidelity level(s): {missing}")
     return fidelity_names
-
-
-def _normalize_fidelity_label(value, name: str) -> str:
-    if value is None:
-        raise ValueError(f"{name} must not contain missing labels")
-    label = str(value).strip()
-    if label == "" or label.lower() == "nan":
-        raise ValueError(f"{name} must not contain missing labels")
-    return label
 
 
 def _validate_target_fidelity_indices(

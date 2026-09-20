@@ -13,10 +13,13 @@ from .gpytorch_gpr import (
     _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
-    _validate_confidence_level,
     _validate_training_options,
 )
 from .multitask_gpr import MultitaskGPyTorchPrediction
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
+)
 
 __all__ = [
     "ExactSparseMultitaskGPRModel",
@@ -278,7 +281,7 @@ def fit_sparse_multitask_gpytorch_gpr(
     )
     train_y = _to_tensor(observation_data.y_observed, device=device, dtype=dtype)
     num_tasks = len(observation_data.task_names)
-    task_covar_rank = _validate_task_covar_rank(task_covar_rank, num_tasks)
+    task_covar_rank = validate_task_covar_rank(task_covar_rank, num_tasks)
 
     target_mean, target_std = _sparse_target_statistics(
         train_y,
@@ -491,7 +494,7 @@ def _predict_sparse_multitask_gpytorch_gpr(
     include_observation_noise: bool,
     prediction_noise_variance,
 ) -> MultitaskGPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=device, dtype=dtype)
@@ -634,16 +637,6 @@ def _resolve_sparse_task_names(
     if len(set(resolved)) != len(resolved):
         raise ValueError("task_names must be unique")
     return resolved
-
-
-def _validate_task_covar_rank(task_covar_rank: int, num_tasks: int) -> int:
-    if not isinstance(task_covar_rank, int):
-        raise ValueError("task_covar_rank must be an integer")
-    if task_covar_rank < 1:
-        raise ValueError("task_covar_rank must be at least 1")
-    if task_covar_rank > num_tasks:
-        raise ValueError("task_covar_rank cannot be larger than the number of tasks")
-    return task_covar_rank
 
 
 def _validate_min_observations_per_task(value: int) -> int:

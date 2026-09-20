@@ -7,6 +7,11 @@ import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
 from .metrics import json_safe_metrics
+from ._validation import (
+    to_1d_finite,
+    validate_confidence_level,
+    validate_same_length,
+)
 
 __all__ = [
     "calibration_curve",
@@ -38,10 +43,10 @@ def prediction_interval_bounds(
     confidence_level
         Central interval probability, for example ``0.95``.
     """
-    y_pred = _to_1d_array(y_pred, "y_pred")
+    y_pred = to_1d_finite(y_pred, "y_pred")
     y_std = _to_positive_std(y_std)
-    _validate_same_length(y_pred, y_std, "y_pred", "y_std")
-    confidence_level = _validate_confidence_level(confidence_level)
+    validate_same_length(y_pred, y_std, "y_pred", "y_std")
+    confidence_level = validate_confidence_level(confidence_level)
 
     z_value = NormalDist().inv_cdf(0.5 + confidence_level / 2.0)
     return y_pred - z_value * y_std, y_pred + z_value * y_std
@@ -56,7 +61,7 @@ def interval_coverage(
 ) -> dict[str, float]:
     """Calculate observed coverage for a Gaussian prediction interval."""
     y_true, y_pred, y_std = _validate_prediction_arrays(y_true, y_pred, y_std)
-    confidence_level = _validate_confidence_level(confidence_level)
+    confidence_level = validate_confidence_level(confidence_level)
     lower, upper = prediction_interval_bounds(
         y_pred,
         y_std,
@@ -237,33 +242,19 @@ def json_safe_uncertainty_diagnostics(
 
 
 def _validate_prediction_arrays(y_true, y_pred, y_std) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    y_true = _to_1d_array(y_true, "y_true")
-    y_pred = _to_1d_array(y_pred, "y_pred")
+    y_true = to_1d_finite(y_true, "y_true")
+    y_pred = to_1d_finite(y_pred, "y_pred")
     y_std = _to_positive_std(y_std)
-    _validate_same_length(y_true, y_pred, "y_true", "y_pred")
-    _validate_same_length(y_true, y_std, "y_true", "y_std")
+    validate_same_length(y_true, y_pred, "y_true", "y_pred")
+    validate_same_length(y_true, y_std, "y_true", "y_std")
     return y_true, y_pred, y_std
 
 
-def _to_1d_array(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
 def _to_positive_std(values) -> np.ndarray:
-    array = _to_1d_array(values, "y_std")
+    array = to_1d_finite(values, "y_std")
     if np.any(array <= 0):
         raise ValueError("y_std must contain only positive values")
     return array
-
-
-def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
-    if first.shape[0] != second.shape[0]:
-        raise ValueError(f"{first_name} and {second_name} must have the same length")
 
 
 def _to_confidence_levels(confidence_levels) -> np.ndarray:
@@ -271,12 +262,6 @@ def _to_confidence_levels(confidence_levels) -> np.ndarray:
     if levels.size == 0:
         raise ValueError("confidence_levels must contain at least one value")
     for level in levels:
-        _validate_confidence_level(level)
+        validate_confidence_level(level)
     return levels
 
-
-def _validate_confidence_level(confidence_level: float) -> float:
-    confidence_level = float(confidence_level)
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
-    return confidence_level

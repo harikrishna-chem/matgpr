@@ -32,12 +32,12 @@ class IdentityTargetTransform:
 
     def fit(self, y, **kwargs):
         """Validate target values and return the transform."""
-        _to_1d_finite(y, "y")
+        to_1d_finite(y, "y")
         return self
 
     def transform(self, y, **kwargs) -> np.ndarray:
         """Return target values unchanged."""
-        return _to_1d_finite(y, "y")
+        return to_1d_finite(y, "y")
 
     def fit_transform(self, y, **kwargs) -> np.ndarray:
         """Fit the transform and return transformed target values."""
@@ -46,11 +46,11 @@ class IdentityTargetTransform:
 
     def inverse_transform(self, y_transformed, **kwargs) -> np.ndarray:
         """Return transformed target values unchanged."""
-        return _to_1d_finite(y_transformed, "y_transformed")
+        return to_1d_finite(y_transformed, "y_transformed")
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return predictive standard deviations unchanged."""
-        _to_1d_finite(mean_transformed, "mean_transformed")
+        to_1d_finite(mean_transformed, "mean_transformed")
         return _to_nonnegative_std(std_transformed)
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
@@ -67,7 +67,7 @@ class StandardizedTargetTransform:
 
     def fit(self, y, **kwargs):
         """Estimate the mean and standard deviation from training targets."""
-        values = _to_1d_finite(y, "y")
+        values = to_1d_finite(y, "y")
         scale = float(np.std(values, ddof=0))
         if scale <= 0:
             raise ValueError("Cannot standardize a constant target")
@@ -78,7 +78,7 @@ class StandardizedTargetTransform:
     def transform(self, y, **kwargs) -> np.ndarray:
         """Return standardized target values."""
         self._require_fitted()
-        values = _to_1d_finite(y, "y")
+        values = to_1d_finite(y, "y")
         return (values - self.mean_) / self.scale_
 
     def fit_transform(self, y, **kwargs) -> np.ndarray:
@@ -89,13 +89,13 @@ class StandardizedTargetTransform:
     def inverse_transform(self, y_transformed, **kwargs) -> np.ndarray:
         """Return standardized values in the original target scale."""
         self._require_fitted()
-        values = _to_1d_finite(y_transformed, "y_transformed")
+        values = to_1d_finite(y_transformed, "y_transformed")
         return values * self.scale_ + self.mean_
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return predictive standard deviations in the original target scale."""
         self._require_fitted()
-        _to_1d_finite(mean_transformed, "mean_transformed")
+        to_1d_finite(mean_transformed, "mean_transformed")
         return _to_nonnegative_std(std_transformed) * self.scale_
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
@@ -135,20 +135,20 @@ class LogTargetTransform:
 
     def inverse_transform(self, y_transformed, **kwargs) -> np.ndarray:
         """Return log-scale values in the original target scale."""
-        values = _to_1d_finite(y_transformed, "y_transformed")
+        values = to_1d_finite(y_transformed, "y_transformed")
         return np.exp(values) - self.offset
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return original-scale standard deviations from log-normal moments."""
-        mean = _to_1d_finite(mean_transformed, "mean_transformed")
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
         std = _to_nonnegative_std(std_transformed)
-        _validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
         variance = std**2
         return np.sqrt(np.expm1(variance) * np.exp(2.0 * mean + variance))
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
         """Return a log-space prediction object in the original target scale."""
-        mean = _to_1d_finite(prediction.mean, "prediction.mean")
+        mean = to_1d_finite(prediction.mean, "prediction.mean")
         std = None
         if prediction.std is not None:
             std = self.inverse_std(mean, prediction.std)
@@ -169,7 +169,7 @@ class LogTargetTransform:
         return GPyTorchPrediction(mean=original_mean, std=std, lower=lower, upper=upper)
 
     def _validate_shifted_target(self, y, name: str) -> np.ndarray:
-        values = _to_1d_finite(y, name)
+        values = to_1d_finite(y, name)
         if np.any(values + self.offset <= 0):
             raise ValueError(f"{name} + offset must contain only positive values")
         return values
@@ -221,20 +221,20 @@ class BoundedTargetTransform:
 
     def inverse_transform(self, y_transformed, **kwargs) -> np.ndarray:
         """Return logit-space values in the original bounded target scale."""
-        values = _to_1d_finite(y_transformed, "y_transformed")
+        values = to_1d_finite(y_transformed, "y_transformed")
         return self.lower_bound + self._width * _sigmoid(values)
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return original-scale standard deviations from logistic-normal moments."""
-        mean = _to_1d_finite(mean_transformed, "mean_transformed")
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
         std = _to_nonnegative_std(std_transformed)
-        _validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
         _, original_std = self._logistic_normal_moments(mean, std)
         return original_std
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
         """Return a bounded prediction object in the original target scale."""
-        mean = _to_1d_finite(prediction.mean, "prediction.mean")
+        mean = to_1d_finite(prediction.mean, "prediction.mean")
 
         std = None
         if prediction.std is not None:
@@ -257,7 +257,7 @@ class BoundedTargetTransform:
         return self.upper_bound - self.lower_bound
 
     def _validate_bounded_target(self, y, name: str) -> np.ndarray:
-        values = _to_1d_finite(y, name)
+        values = to_1d_finite(y, name)
         if np.any(values <= self.lower_bound) or np.any(values >= self.upper_bound):
             raise ValueError(f"{name} must be strictly between lower_bound and upper_bound")
         return values
@@ -267,9 +267,9 @@ class BoundedTargetTransform:
         mean_transformed: np.ndarray,
         std_transformed,
     ) -> tuple[np.ndarray, np.ndarray]:
-        mean = _to_1d_finite(mean_transformed, "mean_transformed")
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
         std = _to_nonnegative_std(std_transformed)
-        _validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
 
         nodes, weights = np.polynomial.hermite.hermgauss(self.n_quadrature_points)
         samples = mean[:, None] + np.sqrt(2.0) * std[:, None] * nodes[None, :]
@@ -294,16 +294,16 @@ class PhysicsResidualTransform:
 
     def fit(self, y, *, baseline):
         """Validate target and baseline arrays."""
-        values = _to_1d_finite(y, "y")
-        baseline = _to_1d_finite(baseline, self.baseline_name)
-        _validate_same_length(values, baseline, "y", self.baseline_name)
+        values = to_1d_finite(y, "y")
+        baseline = to_1d_finite(baseline, self.baseline_name)
+        validate_same_length(values, baseline, "y", self.baseline_name)
         return self
 
     def transform(self, y, *, baseline) -> np.ndarray:
         """Return residual target values."""
-        values = _to_1d_finite(y, "y")
-        baseline = _to_1d_finite(baseline, self.baseline_name)
-        _validate_same_length(values, baseline, "y", self.baseline_name)
+        values = to_1d_finite(y, "y")
+        baseline = to_1d_finite(baseline, self.baseline_name)
+        validate_same_length(values, baseline, "y", self.baseline_name)
         return values - baseline
 
     def fit_transform(self, y, *, baseline) -> np.ndarray:
@@ -313,14 +313,14 @@ class PhysicsResidualTransform:
 
     def inverse_transform(self, y_transformed, *, baseline) -> np.ndarray:
         """Return residual predictions in the original target scale."""
-        residual = _to_1d_finite(y_transformed, "y_transformed")
-        baseline = _to_1d_finite(baseline, self.baseline_name)
-        _validate_same_length(residual, baseline, "y_transformed", self.baseline_name)
+        residual = to_1d_finite(y_transformed, "y_transformed")
+        baseline = to_1d_finite(baseline, self.baseline_name)
+        validate_same_length(residual, baseline, "y_transformed", self.baseline_name)
         return residual + baseline
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return residual predictive standard deviations unchanged."""
-        _to_1d_finite(mean_transformed, "mean_transformed")
+        to_1d_finite(mean_transformed, "mean_transformed")
         return _to_nonnegative_std(std_transformed)
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, *, baseline) -> GPyTorchPrediction:
@@ -701,6 +701,10 @@ _TARGET_TRANSFORM_SPECS = (
         tags=("signed", "standard", "energy", "adsorption"),
     ),
 )
+from ._validation import (
+    to_1d_finite,
+    validate_same_length,
+)
 
 
 def _inverse_prediction_with_arrays(transform, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
@@ -721,25 +725,11 @@ def _inverse_prediction_with_arrays(transform, prediction: GPyTorchPrediction, *
     return GPyTorchPrediction(mean=mean, std=std, lower=lower, upper=upper)
 
 
-def _to_1d_finite(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
-
-
 def _to_nonnegative_std(values) -> np.ndarray:
-    array = _to_1d_finite(values, "std_transformed")
+    array = to_1d_finite(values, "std_transformed")
     if np.any(array < 0):
         raise ValueError("std_transformed must contain only non-negative values")
     return array
-
-
-def _validate_same_length(first: np.ndarray, second: np.ndarray, first_name: str, second_name: str) -> None:
-    if first.shape[0] != second.shape[0]:
-        raise ValueError(f"{first_name} and {second_name} must have the same length")
 
 
 def _sigmoid(values: np.ndarray) -> np.ndarray:

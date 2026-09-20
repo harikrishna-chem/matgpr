@@ -35,6 +35,7 @@ DEFAULT_RDKIT_DESCRIPTORS: tuple[str, ...] = (
     "HeavyAtomCount",
     "MolMR",
 )
+from ._validation import cached_float
 
 
 @dataclass(frozen=True)
@@ -503,7 +504,7 @@ def _read_cached_smiles_row(
     if len(features) != n_features:
         return None
     return {
-        "array": np.asarray([_cached_float(value) for value in features], dtype=float),
+        "array": np.asarray([cached_float(value) for value in features], dtype=float),
         "canonical_smiles": canonical_smiles,
     }
 
@@ -529,12 +530,6 @@ def _write_cached_smiles_row(
             "metadata": dict(metadata),
         },
     )
-
-
-def _cached_float(value: object) -> float:
-    if value is None:
-        return np.nan
-    return float(value)
 
 
 def _bit_vector_to_array(bit_vector) -> np.ndarray:

@@ -8,6 +8,7 @@ import gpytorch
 import numpy as np
 import torch
 import torch.nn.functional as F
+from ._validation import validate_confidence_level
 
 TensorMap = dict[str, torch.Tensor]
 PhysicsEquation = Callable[[Mapping[str, torch.Tensor], Mapping[str, torch.Tensor]], torch.Tensor]
@@ -546,7 +547,7 @@ def _predict_gpytorch_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> GPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=torch.device(device), dtype=dtype)
@@ -761,13 +762,6 @@ def _require_target_standardization(
         target_mean.to(dtype=dtype, device=device),
         target_std.to(dtype=dtype, device=device),
     )
-
-
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
 
 
 def _should_log_iteration(iteration: int, training_iter: int, log_every: int) -> bool:

@@ -13,8 +13,11 @@ from .gpytorch_gpr import (
     _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
-    _validate_confidence_level,
     _validate_training_options,
+)
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
 )
 
 __all__ = [
@@ -230,7 +233,7 @@ def fit_multitask_gpytorch_gpr(
 
     num_tasks = train_y.shape[1]
     task_names_resolved = _resolve_task_names(task_names, num_tasks)
-    task_covar_rank = _validate_task_covar_rank(task_covar_rank, num_tasks)
+    task_covar_rank = validate_task_covar_rank(task_covar_rank, num_tasks)
 
     if standardize_y:
         target_mean = train_y.mean(dim=0)
@@ -413,7 +416,7 @@ def _predict_multitask_gpytorch_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> MultitaskGPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=device, dtype=dtype)
@@ -508,16 +511,6 @@ def _resolve_task_names(task_names: Sequence[str] | None, num_tasks: int) -> tup
     if len(set(resolved)) != len(resolved):
         raise ValueError("task_names must be unique")
     return resolved
-
-
-def _validate_task_covar_rank(task_covar_rank: int, num_tasks: int) -> int:
-    if not isinstance(task_covar_rank, int):
-        raise ValueError("task_covar_rank must be an integer")
-    if task_covar_rank < 1:
-        raise ValueError("task_covar_rank must be at least 1")
-    if task_covar_rank > num_tasks:
-        raise ValueError("task_covar_rank cannot be larger than the number of tasks")
-    return task_covar_rank
 
 
 def _initialize_multitask_likelihood(
