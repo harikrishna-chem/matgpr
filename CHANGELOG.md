@@ -21,6 +21,13 @@ phase.
 
 ### Changed
 
+- Runtime dependencies now declare lower bounds instead of being unconstrained.
+  The floors are the oldest versions the test suite actually passes on, and a
+  new CI job installs exactly those versions so the bounds stay verified.
+  `gpytorch>=1.15` is required for `HadamardGaussianLikelihood`,
+  `scikit-learn>=1.6` for the `ensure_all_finite` validation argument, and the
+  `bo` extra requires `botorch>=0.16` because earlier botorch releases pin
+  `gpytorch==1.14` exactly, which conflicts with the gpytorch floor.
 - The functional `fit_*` and `train_*` entry points now default to
   `verbose=False` instead of `verbose=True`, so importing and calling `matgpr`
   no longer prints training-loss lines to stdout unless asked. The estimator

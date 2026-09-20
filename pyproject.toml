@@ -35,17 +35,21 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Chemistry",
 ]
+# Lower bounds are the oldest versions the test suite is known to pass on;
+# see the "Minimum supported dependencies" CI job, which installs exactly
+# these versions. gpytorch 1.15 is required for HadamardGaussianLikelihood
+# and scikit-learn 1.6 for the ensure_all_finite validation argument.
 dependencies = [
-    "gpytorch",
-    "joblib",
-    "matplotlib",
-    "numpy",
-    "pandas",
-    "pymatgen",
-    "rdkit",
-    "scikit-learn",
-    "scipy",
-    "torch",
+    "gpytorch>=1.15",
+    "joblib>=1.2",
+    "matplotlib>=3.7",
+    "numpy>=1.23",
+    "pandas>=2.0",
+    "pymatgen>=2023.9.10",
+    "rdkit>=2023.3.1",
+    "scikit-learn>=1.6",
+    "scipy>=1.9",
+    "torch>=2.1",
 ]
 
 [project.urls]
@@ -61,7 +65,7 @@ matgpr-mcp-smoke = "matgpr.mcp_smoke:main"
 
 [project.optional-dependencies]
 bo = [
-    "botorch",
+    "botorch>=0.16",
 ]
 dev = [
     "build",

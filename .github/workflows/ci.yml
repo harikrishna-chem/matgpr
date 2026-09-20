@@ -42,6 +42,45 @@ jobs:
       - name: Build package
         run: python -m build
 
+  minimum-dependencies:
+    name: Minimum supported dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      # Installs the exact lower bounds declared in pyproject.toml, so those
+      # bounds stay a tested claim rather than an assumption. Raise a pin here
+      # and in pyproject.toml together.
+      - name: Install package at the declared lower bounds
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,bo]" \
+            "botorch==0.16.*" \
+            "gpytorch==1.15.*" \
+            "joblib==1.2.*" \
+            "matplotlib==3.7.*" \
+            "numpy==1.23.*" \
+            "pandas==2.0.*" \
+            "pymatgen==2023.9.*" \
+            "rdkit==2023.3.*" \
+            "scikit-learn==1.6.*" \
+            "scipy==1.9.*" \
+            "torch==2.1.*"
+
+      - name: Report resolved versions
+        run: python -m pip list
+
+      - name: Test
+        run: python -m pytest
+
   notebook-smoke:
     name: Notebook smoke checks
     runs-on: ubuntu-latest
