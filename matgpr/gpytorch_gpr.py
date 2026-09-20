@@ -343,7 +343,7 @@ def fit_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> GPyTorchGPRResult:
     """Fit an exact GPyTorch Gaussian Process Regressor.
@@ -370,6 +370,12 @@ def fit_gpytorch_gpr(
     standardize_y
         Whether to standardize target values during optimization. Predictions
         are always returned in original target units.
+    verbose
+        If ``True``, print a training-loss line every ``log_every``
+        iterations. Off by default so library calls stay quiet.
+    log_every
+        Iteration interval between printed training-loss lines when
+        ``verbose`` is ``True``.
     """
     _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
     device_object = torch.device(device)
@@ -463,7 +469,7 @@ def train_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):

@@ -181,7 +181,7 @@ def fit_multitask_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> MultitaskGPyTorchResult:
     """Fit an exact multitask GPyTorch Gaussian Process Regressor.
@@ -333,7 +333,7 @@ def train_multitask_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):

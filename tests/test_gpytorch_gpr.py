@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import unittest
 
@@ -192,6 +194,23 @@ class _PlainExactGP(gpytorch.models.ExactGP):
         return gpytorch.distributions.MultivariateNormal(
             self.mean_module(x), self.covar_module(x)
         )
+
+
+class TrainingVerbosityTests(unittest.TestCase):
+    def test_fit_is_quiet_by_default_and_logs_when_verbose(self):
+        x = np.linspace(0.0, 1.0, 12).reshape(-1, 1)
+        y = 2.0 * x[:, 0]
+
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet):
+            fit_gpytorch_gpr(x, y, training_iter=10)
+
+        loud = io.StringIO()
+        with contextlib.redirect_stdout(loud):
+            fit_gpytorch_gpr(x, y, training_iter=10, verbose=True, log_every=5)
+
+        self.assertEqual(quiet.getvalue(), "")
+        self.assertIn("Loss", loud.getvalue())
 
 
 if __name__ == "__main__":

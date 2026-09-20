@@ -176,7 +176,7 @@ def fit_heteroscedastic_gpr(
     noise_variance_floor: float | None = None,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> HeteroscedasticGPRResult:
     """Fit a two-stage heteroscedastic Gaussian Process Regressor.

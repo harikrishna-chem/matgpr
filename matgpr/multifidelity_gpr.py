@@ -445,7 +445,7 @@ def fit_cokriging_gpr(
     min_observations_per_fidelity: int = 2,
     device: str = "cpu",
     dtype: torch.dtype | str = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> CoKrigingGPRResult:
     """Fit a two-level autoregressive co-kriging GPR model.
@@ -585,7 +585,7 @@ def fit_delta_multifidelity_gpr(
     include_low_fidelity_uncertainty: bool = True,
     device: str = "cpu",
     dtype: torch.dtype | str = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> DeltaMultiFidelityGPRResult:
     """Fit a delta multi-fidelity GPR model.

@@ -252,7 +252,7 @@ def fit_sparse_multitask_gpytorch_gpr(
     min_observations_per_task: int = 2,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> SparseMultitaskGPyTorchResult:
     """Fit exact sparse multitask GPR from a target matrix with ``NaN`` gaps.
@@ -415,7 +415,7 @@ def train_sparse_multitask_gpytorch_gpr(
     min_observations_per_task: int = 2,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):
