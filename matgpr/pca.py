@@ -24,7 +24,7 @@ def fit_pca(
     fit a ``StandardScaler`` before PCA; the fitted scaler is returned so new
     data can be transformed consistently.
     """
-    X_values = _numeric_values(X, context="PCA")
+    X_values, feature_names = _numeric_values(X, context="PCA")
     scaler = StandardScaler() if scale else None
 
     if scaler is not None:
@@ -32,6 +32,12 @@ def fit_pca(
 
     pca = PCA(n_components=n_components)
     scores = pca.fit_transform(X_values)
+    if feature_names is not None:
+        # Recorded so ``transform_pca`` can reject new data whose numeric
+        # columns differ from training, including a different column order.
+        # Deliberately not scikit-learn's ``feature_names_in_``: that would make
+        # ``pca.transform`` warn for the plain-array inputs this module accepts.
+        pca.matgpr_feature_names_in_ = tuple(feature_names)
     return _scores_dataframe(scores), pca, scaler
 
 
@@ -58,9 +64,14 @@ def transform_pca(
 
     Pass the same scaler and imputer used for training data so new data follows
     the identical preprocessing path.
+
+    When ``pca`` was fitted on a dataframe, the numeric columns of ``X`` must
+    match the training columns exactly, including their order. A mismatch
+    raises rather than silently producing scores from misaligned features.
     """
     original_index = X.index if isinstance(X, pd.DataFrame) else None
-    X_values = _numeric_values(X, context="PCA transform")
+    X_values, feature_names = _numeric_values(X, context="PCA transform")
+    _validate_transform_features(pca, feature_names, X_values.shape[1])
 
     if imputer is not None:
         X_values = imputer.transform(X_values)
@@ -71,13 +82,37 @@ def transform_pca(
     return _scores_dataframe(scores, index=original_index)
 
 
-def _numeric_values(X, *, context: str) -> np.ndarray:
+def _numeric_values(X, *, context: str) -> tuple[np.ndarray, list[str] | None]:
+    """Return numeric values and, for dataframes, the selected column names."""
     if isinstance(X, pd.DataFrame):
-        X = X.select_dtypes(include=np.number)
-        if X.empty:
+        numeric = X.select_dtypes(include=np.number)
+        if numeric.empty:
             raise ValueError(f"{context} requires at least one numeric column")
-        return X.to_numpy()
-    return np.asarray(X)
+        return numeric.to_numpy(), [str(column) for column in numeric.columns]
+    return np.asarray(X), None
+
+
+def _validate_transform_features(
+    pca: PCA,
+    feature_names: list[str] | None,
+    n_features: int,
+) -> None:
+    expected_names = getattr(pca, "matgpr_feature_names_in_", None)
+    if expected_names is not None and feature_names is not None:
+        expected = [str(name) for name in expected_names]
+        if feature_names != expected:
+            raise ValueError(
+                "The numeric columns of X do not match the columns seen during fit_pca.\n"
+                f"Expected (in order): {expected}\n"
+                f"Received (in order): {feature_names}"
+            )
+        return
+
+    expected_count = getattr(pca, "n_features_in_", None)
+    if expected_count is not None and n_features != expected_count:
+        raise ValueError(
+            f"X has {n_features} numeric features, but the fitted PCA expects {expected_count}"
+        )
 
 
 def _scores_dataframe(scores, index=None) -> pd.DataFrame:
