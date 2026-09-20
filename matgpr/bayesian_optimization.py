@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from .multi_objective import ObjectiveSpec, pareto_front_mask
-from .optional_dependencies import require_optional_dependency
 
 _OUTPUT_COLUMNS = (
     "matgpr_candidate_index",
@@ -819,12 +818,9 @@ def fit_botorch_surrogate(
 ) -> BoTorchSurrogate:
     """Fit a BoTorch `SingleTaskGP` surrogate for Bayesian optimization.
 
-    This helper keeps BoTorch optional. Install the Bayesian-optimization extra
-    before using it:
-
-    ```bash
-    python -m pip install "matgpr[bo]"
-    ```
+    BoTorch is a required dependency, so this helper is available in any
+    `matgpr` installation. BoTorch itself is imported lazily, so it is only
+    loaded when a Bayesian-optimization helper is called.
 
     Parameters
     ----------
@@ -850,7 +846,6 @@ def fit_botorch_surrogate(
     device
         Optional torch device string such as `"cpu"` or `"cuda"`.
     """
-    require_optional_dependency("botorch")
     import torch
     from botorch.fit import fit_gpytorch_mll
     from botorch.models import SingleTaskGP
@@ -951,7 +946,6 @@ def fit_multi_objective_botorch_surrogate(
     device
         Optional torch device string such as `"cpu"` or `"cuda"`.
     """
-    require_optional_dependency("botorch")
     import torch
     from botorch.fit import fit_gpytorch_mll
     from botorch.models import SingleTaskGP

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import importlib.util
 import types
 import unittest
-from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -479,43 +477,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
                 identifier_columns=("missing",),
             )
 
-    def test_botorch_missing_dependency_has_clear_install_message(self):
-        with patch(
-            "matgpr.optional_dependencies.importlib.import_module",
-            side_effect=ImportError("missing botorch"),
-        ):
-            with self.assertRaises(ImportError) as context:
-                fit_botorch_surrogate(
-                    pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
-                    pd.Series([0.0, 1.0, 0.5]),
-                )
-
-        message = str(context.exception)
-        self.assertIn("BoTorch Bayesian optimization", message)
-        self.assertIn("optional dependency `botorch`", message)
-        self.assertIn("matgpr[bo]", message)
-
-    def test_multi_objective_botorch_missing_dependency_has_clear_install_message(self):
-        with patch(
-            "matgpr.optional_dependencies.importlib.import_module",
-            side_effect=ImportError("missing botorch"),
-        ):
-            with self.assertRaises(ImportError) as context:
-                fit_multi_objective_botorch_surrogate(
-                    pd.DataFrame({"x": [0.0, 1.0, 2.0]}),
-                    pd.DataFrame(
-                        {
-                            "performance": [0.0, 1.0, 0.5],
-                            "cost": [4.0, 3.0, 2.0],
-                        }
-                    ),
-                )
-
-        message = str(context.exception)
-        self.assertIn("BoTorch Bayesian optimization", message)
-        self.assertIn("optional dependency `botorch`", message)
-        self.assertIn("matgpr[bo]", message)
-
     def test_rank_discrete_candidates_validates_feature_count_before_botorch_use(self):
         fake_train_X = types.SimpleNamespace(shape=(3, 2))
         surrogate = BoTorchSurrogate(
@@ -652,10 +613,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertIn("batch_selection", str(context.exception))
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_suggest_next_experiments_ranks_candidate_pool_when_botorch_is_available(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.Series([0.0, 0.4, 1.0])
@@ -684,10 +641,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("matgpr_predicted_std", result.recommendations.columns)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_suggest_next_experiments_applies_duplicate_policy(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.Series([0.0, 0.4, 1.0])
@@ -717,10 +670,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertEqual(result.recommendations.shape[0], 2)
         self.assertIn("matgpr_is_duplicate", result.ranked_candidates.columns)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_fit_botorch_surrogate_stores_known_noise_variance(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.Series([0.0, 0.4, 1.0])
@@ -742,10 +691,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             [0.01, 0.04, 0.09],
         )
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_suggest_next_experiments_supports_noisy_expected_improvement(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.Series([0.0, 0.4, 1.0])
@@ -768,10 +713,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertEqual(result.recommendations.shape[0], 1)
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_suggest_multi_objective_next_experiments_ranks_candidate_pool(self):
         X_train = pd.DataFrame({"x": [0.0, 0.3, 0.7, 1.0]})
         y_train = pd.DataFrame(
@@ -807,10 +748,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("matgpr_acquisition", result.recommendations.columns)
         self.assertIn("material_id", result.recommendations.columns)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_suggest_multi_objective_next_experiments_supports_sequential_batch(self):
         X_train = pd.DataFrame({"x": [0.0, 0.3, 0.7, 1.0]})
         y_train = pd.DataFrame(
@@ -843,10 +780,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertEqual(result.recommendations["material_id"].nunique(), 3)
         self.assertIn("matgpr_rank", result.recommendations.columns)
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_select_sequential_multi_objective_batch_can_return_annotated_pool(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.DataFrame(
@@ -882,10 +815,6 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("matgpr_predicted_std_toxicity", annotated.columns)
         self.assertTrue(np.isfinite(selected["matgpr_batch_score"]).all())
 
-    @unittest.skipUnless(
-        importlib.util.find_spec("botorch") is not None,
-        "BoTorch is optional and not installed",
-    )
     def test_multi_objective_surrogate_stores_noise_and_reference_point(self):
         X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
         y_train = pd.DataFrame(

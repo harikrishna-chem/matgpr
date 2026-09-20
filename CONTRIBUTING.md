@@ -20,7 +20,7 @@ From a local checkout:
 
 ```bash
 python -m pip install -U pip
-python -m pip install -e ".[dev,examples,bo]"
+python -m pip install -e ".[dev,examples]"
 ```
 
 For optional fingerprinting backends:

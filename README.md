@@ -26,12 +26,15 @@ Python 3.10 or newer is required.
 python3 -m pip install matgpr
 ```
 
-Optional extras, installed as `"matgpr[bo,examples]"` or from a local checkout
-as `-e ".[bo,examples]"`:
+That installs everything needed for the core workflows: featurization with
+RDKit and pymatgen, GPR with PyTorch and GPyTorch, Bayesian optimization with
+BoTorch, and plotting with matplotlib.
+
+Further optional extras, installed as `"matgpr[examples]"` or from a local
+checkout as `-e ".[examples]"`:
 
 | Extra | Adds |
 | --- | --- |
-| `bo` | BoTorch, for Bayesian-optimization acquisition functions |
 | `examples` | SHAP, used by the example notebooks |
 | `materials-extra` | matminer and mendeleev, for Magpie composition descriptors |
 | `structures` | ASE and DScribe, for crystal-structure descriptors |
@@ -48,7 +51,7 @@ naming the package and the extra to install rather than failing at import.
 For development:
 
 ```bash
-python3 -m pip install -e ".[dev,examples,bo]"
+python3 -m pip install -e ".[dev,examples]"
 python3 -m ruff check matgpr tests scripts
 python3 -m ruff format --check matgpr tests scripts
 python3 -m pytest

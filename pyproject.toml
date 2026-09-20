@@ -39,7 +39,9 @@ classifiers = [
 # see the "Minimum supported dependencies" CI job, which installs exactly
 # these versions. gpytorch 1.15 is required for HadamardGaussianLikelihood
 # and scikit-learn 1.6 for the ensure_all_finite validation argument.
+# botorch below 0.16 pins gpytorch==1.14 exactly, which conflicts with that.
 dependencies = [
+    "botorch>=0.16",
     "gpytorch>=1.15",
     "joblib>=1.2",
     "matplotlib>=3.7",
@@ -64,9 +66,9 @@ matgpr-mcp = "matgpr.mcp_server:main"
 matgpr-mcp-smoke = "matgpr.mcp_smoke:main"
 
 [project.optional-dependencies]
-bo = [
-    "botorch>=0.16",
-]
+# Retained so existing "matgpr[bo]" pins keep resolving; BoTorch is now a
+# required dependency and this extra adds nothing.
+bo = []
 dev = [
     "build",
     "ipykernel",

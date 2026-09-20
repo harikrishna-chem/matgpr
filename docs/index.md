@@ -86,7 +86,7 @@ python -m pip install matgpr
 For optional example and Bayesian-optimization dependencies:
 
 ```bash
-python -m pip install "matgpr[examples,bo]"
+python -m pip install "matgpr[examples]"
 ```
 
 From a local checkout:
@@ -98,7 +98,7 @@ python -m pip install -e .
 For development:
 
 ```bash
-python -m pip install -e ".[dev,examples,bo]"
+python -m pip install -e ".[dev,examples]"
 python -m ruff check matgpr tests scripts
 python -m ruff format --check matgpr tests scripts
 python -m pytest

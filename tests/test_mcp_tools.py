@@ -257,7 +257,7 @@ class MCPToolsTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["recommended_workflow"]["batch_size"], 3)
-        self.assertEqual(payload["optional_extra"], "bo")
+        self.assertIsNone(payload["optional_extra"])
         json.dumps(payload, allow_nan=False)
 
 
