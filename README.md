@@ -18,6 +18,82 @@ The importable package is `matgpr`. Python 3.10 or newer is required.
 commit hashes for reproducible research workflows, and see
 `docs/versioning.md` for the API-stability and versioning policy.
 
+## Installation
+
+Python 3.10 or newer is required.
+
+```bash
+python3 -m pip install matgpr
+```
+
+Optional extras, installed as `"matgpr[bo,examples]"` or from a local checkout
+as `-e ".[bo,examples]"`:
+
+| Extra | Adds |
+| --- | --- |
+| `bo` | BoTorch, for Bayesian-optimization acquisition functions |
+| `examples` | SHAP, used by the example notebooks |
+| `materials-extra` | matminer and mendeleev, for Magpie composition descriptors |
+| `structures` | ASE and DScribe, for crystal-structure descriptors |
+| `molecular-extra` | Mordred molecular descriptors |
+| `jarvis`, `deep` | JARVIS-Tools and DeepChem fingerprint backends |
+| `all-fingerprints` | every optional fingerprint backend above |
+| `mcp` | the optional local MCP server |
+| `docs` | MkDocs and the documentation theme |
+| `dev` | build, test, lint, and packaging tools |
+
+Fingerprint backends are imported lazily, so missing extras raise a message
+naming the package and the extra to install rather than failing at import.
+
+For development:
+
+```bash
+python3 -m pip install -e ".[dev,examples,bo]"
+python3 -m ruff check matgpr tests scripts
+python3 -m ruff format --check matgpr tests scripts
+python3 -m pytest
+python3 -m build
+```
+
+For documentation:
+
+```bash
+python3 -m pip install -e ".[docs,examples]"
+python3 -m mkdocs serve
+```
+
+## Quickstart
+
+```python
+import numpy as np
+
+from matgpr import MatGPRRegressor, regression_metrics, uncertainty_diagnostics
+
+rng = np.random.default_rng(0)
+X = rng.uniform(0.0, 1.0, size=(60, 3))
+y = 120.0 + 45.0 * X[:, 0] - 20.0 * X[:, 1] ** 2 + rng.normal(0.0, 2.0, size=60)
+
+X_train, X_test = X[:45], X[45:]
+y_train, y_test = y[:45], y[45:]
+
+model = MatGPRRegressor(kernel="matern", training_iter=300, random_state=0)
+model.fit(X_train, y_train)
+
+y_pred, y_std = model.predict(X_test, return_std=True)
+
+print(regression_metrics(y_test, y_pred, prefix="test"))
+# approximately {'test_R2': 0.982, 'test_RMSE': 2.19, 'test_MAE': 1.95, 'test_r': 0.991}
+
+print(uncertainty_diagnostics(y_test, y_pred, y_std)["observed_coverage"])
+# 1.0, meaning every test point fell inside its 95 percent interval
+```
+
+`predict(..., return_std=True)` returns the predictive standard deviation in
+the original target units, and `uncertainty_diagnostics` reports whether those
+uncertainties are calibrated. To put a mechanistic equation in the GP prior
+mean instead of fitting a purely data-driven model, see
+[Physics-Informed GPR](#physics-informed-gpr) below.
+
 ## Repository Description
 
 Gaussian Process Regression toolkit for materials informatics, including
@@ -297,53 +373,6 @@ y_pred, y_std = model.predict(X_test, return_std=True)
 learned_parameters = model.learned_physics_parameters_
 ```
 
-## Installation
-
-From PyPI:
-
-```bash
-python3 -m pip install matgpr
-```
-
-For optional example and Bayesian-optimization dependencies:
-
-```bash
-python3 -m pip install "matgpr[examples,bo]"
-```
-
-From a local checkout:
-
-```bash
-python3 -m pip install -e .
-```
-
-For development:
-
-```bash
-python3 -m pip install -e ".[dev,examples,bo]"
-python3 -m ruff check matgpr tests scripts
-python3 -m pytest
-python3 -m build
-```
-
-For documentation:
-
-```bash
-python3 -m pip install -e ".[docs,examples]"
-python3 -m mkdocs serve
-```
-
-For Bayesian optimization:
-
-```bash
-python3 -m pip install -e ".[bo]"
-```
-
-For optional matminer Magpie descriptors:
-
-```bash
-python3 -m pip install -e ".[materials-extra]"
-```
 
 ## Citation
 
