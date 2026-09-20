@@ -655,15 +655,6 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         )
 
 
-def _feature_names_from_input(X) -> np.ndarray | None:
-    if not hasattr(X, "columns"):
-        return None
-    names = np.asarray(X.columns, dtype=object)
-    if not all(isinstance(name, str) for name in names):
-        return None
-    return names
-
-
 def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     _clear_missing_state(estimator)
     if y is None:
@@ -817,27 +808,6 @@ def _validate_prediction_features(estimator, X, *, allow_nan: bool) -> np.ndarra
         ensure_all_finite="allow-nan" if allow_nan else True,
         ensure_min_samples=1,
     )
-    if hasattr(estimator, "feature_names_in_"):
-        input_feature_names = _feature_names_from_input(X)
-        if input_feature_names is not None and not np.array_equal(
-            input_feature_names,
-            estimator.feature_names_in_,
-        ):
-            raise ValueError("Prediction features must match the fitted feature names and order")
-
-    X_checked = check_array(
-        X,
-        ensure_2d=True,
-        dtype="numeric",
-        ensure_min_samples=1,
-        ensure_all_finite="allow-nan" if allow_nan else True,
-    )
-    if X_checked.shape[1] != estimator.n_features_in_:
-        raise ValueError(
-            f"X has {X_checked.shape[1]} features, but this estimator was fitted with "
-            f"{estimator.n_features_in_} features"
-        )
-    return X_checked
 
 
 def _clear_missing_state(estimator) -> None:
