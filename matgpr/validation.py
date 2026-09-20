@@ -9,10 +9,10 @@ import pandas as pd
 from sklearn.base import clone
 from sklearn.model_selection import KFold, ShuffleSplit, train_test_split
 
+from ._validation import normalize_fidelity_label
 from .metrics import regression_metrics, train_test_regression_metrics
 from .reporting import decompose_multifidelity_prediction
 from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
-from ._validation import normalize_fidelity_label
 
 __all__ = [
     "CoKrigingTrainTestValidationResult",
@@ -134,7 +134,9 @@ class CrossValidationResult:
 
     def summary(self, metric_columns: Sequence[str] | None = None) -> pd.DataFrame:
         """Summarize fold metrics with mean, standard deviation, min, and max."""
-        return _summarize_metrics(self.fold_metrics, group_by=("model",), metric_columns=metric_columns)
+        return _summarize_metrics(
+            self.fold_metrics, group_by=("model",), metric_columns=metric_columns
+        )
 
 
 @dataclass(frozen=True)
@@ -1042,7 +1044,9 @@ def learning_curve(
     metric_rows = []
     prediction_tables = []
 
-    for repeat, (train_pool_indices, test_indices) in enumerate(splitter.split(np.arange(n_samples)), start=1):
+    for repeat, (train_pool_indices, test_indices) in enumerate(
+        splitter.split(np.arange(n_samples)), start=1
+    ):
         train_pool_indices = np.asarray(train_pool_indices, dtype=int)
         test_indices = np.asarray(test_indices, dtype=int)
         rng = np.random.default_rng(_derive_seed(random_state, repeat))
@@ -1174,7 +1178,9 @@ def multifidelity_learning_curve(
     metric_rows = []
     prediction_tables = []
 
-    for repeat, (train_pool_indices, test_indices) in enumerate(splitter.split(np.arange(n_samples)), start=1):
+    for repeat, (train_pool_indices, test_indices) in enumerate(
+        splitter.split(np.arange(n_samples)), start=1
+    ):
         train_pool_indices = np.asarray(train_pool_indices, dtype=int)
         test_indices = np.asarray(test_indices, dtype=int)
         rng = np.random.default_rng(_derive_seed(random_state, repeat))
@@ -1427,8 +1433,12 @@ def _fit_evaluate_multifidelity_indices(
     X_test = _safe_index(X_high, test_indices)
     y_train = _safe_index_y(y_high, train_indices)
     y_test = _safe_index_y(y_high, test_indices)
-    train_low = _safe_index_y(low_fidelity_high, train_indices) if low_fidelity_high is not None else None
-    test_low = _safe_index_y(low_fidelity_high, test_indices) if low_fidelity_high is not None else None
+    train_low = (
+        _safe_index_y(low_fidelity_high, train_indices) if low_fidelity_high is not None else None
+    )
+    test_low = (
+        _safe_index_y(low_fidelity_high, test_indices) if low_fidelity_high is not None else None
+    )
 
     estimator_fit_params = dict(fit_params or {})
     if train_low is not None:
@@ -1478,7 +1488,9 @@ def _fit_evaluate_multifidelity_indices(
     )
 
     rho = _component_or_attribute(test_components, fitted_estimator, "rho", "rho_")
-    intercept = _component_or_attribute(test_components, fitted_estimator, "intercept", "intercept_")
+    intercept = _component_or_attribute(
+        test_components, fitted_estimator, "intercept", "intercept_"
+    )
     predictions = pd.concat(
         [
             _multifidelity_prediction_frame(
@@ -2098,9 +2110,7 @@ def _call_cokriging_predict_distribution(
     for keywords in keyword_options:
         if keywords.get("include_observation_noise") is None:
             keywords = {
-                key: value
-                for key, value in keywords.items()
-                if key != "include_observation_noise"
+                key: value for key, value in keywords.items() if key != "include_observation_noise"
             }
         try:
             return estimator.predict_distribution(X, **keywords)
@@ -2128,9 +2138,7 @@ def _predict_cokriging_with_std(
     for keywords in keyword_options:
         if keywords.get("include_observation_noise") is None:
             keywords = {
-                key: value
-                for key, value in keywords.items()
-                if key != "include_observation_noise"
+                key: value for key, value in keywords.items() if key != "include_observation_noise"
             }
         try:
             return estimator.predict(X, **keywords)
@@ -2190,7 +2198,9 @@ def _cokriging_prediction_frame(
     return frame
 
 
-def _prediction_or_attribute(prediction, estimator, prediction_attribute: str, fitted_attribute: str):
+def _prediction_or_attribute(
+    prediction, estimator, prediction_attribute: str, fitted_attribute: str
+):
     if prediction is not None and hasattr(prediction, prediction_attribute):
         value = getattr(prediction, prediction_attribute)
     else:
@@ -2259,9 +2269,7 @@ def _call_multitask_predict_distribution(
     for keywords in keyword_options:
         if keywords.get("include_observation_noise") is None:
             keywords = {
-                key: value
-                for key, value in keywords.items()
-                if key != "include_observation_noise"
+                key: value for key, value in keywords.items() if key != "include_observation_noise"
             }
         try:
             return estimator.predict_distribution(X, **keywords)
@@ -2291,9 +2299,8 @@ def _coerce_multitask_prediction_output(
 
 
 def _is_prediction_container(value) -> bool:
-    return (
-        hasattr(value, "mean")
-        and not isinstance(value, (np.ndarray, pd.DataFrame, pd.Series, list, tuple))
+    return hasattr(value, "mean") and not isinstance(
+        value, (np.ndarray, pd.DataFrame, pd.Series, list, tuple)
     )
 
 
@@ -2406,7 +2413,9 @@ def _summarize_metrics(
     if missing:
         raise KeyError(f"Missing group_by columns: {missing}")
     if metric_columns is None:
-        excluded = set(group_by).union({"fold", "repeat", "n_train", "n_test", "requested_train_size"})
+        excluded = set(group_by).union(
+            {"fold", "repeat", "n_train", "n_test", "requested_train_size"}
+        )
         metric_columns = [
             column
             for column in frame.select_dtypes(include=np.number).columns
@@ -2422,9 +2431,7 @@ def _summarize_metrics(
         .reset_index()
     )
     summary.columns = [
-        "_".join(str(part) for part in column if part)
-        if isinstance(column, tuple)
-        else str(column)
+        "_".join(str(part) for part in column if part) if isinstance(column, tuple) else str(column)
         for column in summary.columns
     ]
     return summary
@@ -2519,16 +2526,8 @@ def _validate_estimator_specs(items: Sequence[tuple[str, object]]) -> None:
     names = [name for name, _ in items]
     if len(set(names)) != len(names):
         raise ValueError("Model names must be unique")
-    missing_fit = [
-        name
-        for name, estimator in items
-        if not hasattr(estimator, "fit")
-    ]
-    missing_predict = [
-        name
-        for name, estimator in items
-        if not hasattr(estimator, "predict")
-    ]
+    missing_fit = [name for name, estimator in items if not hasattr(estimator, "fit")]
+    missing_predict = [name for name, estimator in items if not hasattr(estimator, "predict")]
     if missing_fit or missing_predict:
         raise ValueError("Each estimator must provide fit and predict methods")
 
@@ -2805,17 +2804,13 @@ def _validate_multifidelity_low_inputs(
     high_width = _feature_count(X_high, "X_high")
     low_width = _feature_count(X_low, "X_low")
     if high_width != low_width:
-        raise ValueError(
-            f"X_high has {high_width} features, but X_low has {low_width} features"
-        )
+        raise ValueError(f"X_high has {high_width} features, but X_low has {low_width} features")
 
 
 def _to_fidelity_label_array(values, *, n_samples: int) -> np.ndarray:
     array = np.asarray(values, dtype=object).reshape(-1)
     if array.shape[0] != n_samples:
-        raise ValueError(
-            f"fidelity must contain {n_samples} value(s); got {array.shape[0]}"
-        )
+        raise ValueError(f"fidelity must contain {n_samples} value(s); got {array.shape[0]}")
     labels = [normalize_fidelity_label(value, "fidelity") for value in array]
     return np.asarray(labels, dtype=object)
 

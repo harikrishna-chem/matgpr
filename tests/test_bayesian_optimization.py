@@ -229,9 +229,7 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             }
         )
         duplicate_policy = CandidateDuplicatePolicy(
-            existing_candidates=pd.DataFrame(
-                {"descriptor_x": [0.0], "descriptor_y": [0.0]}
-            ),
+            existing_candidates=pd.DataFrame({"descriptor_x": [0.0], "descriptor_y": [0.0]}),
             feature_columns=("descriptor_x", "descriptor_y"),
             feature_tolerance=0.2,
         )
@@ -412,9 +410,7 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertIn("temperature_window", constraint_row["details"])
 
         score_summary = audit.score_summary_frame()
-        acquisition_row = score_summary.loc[
-            score_summary["column"] == "matgpr_acquisition"
-        ].iloc[0]
+        acquisition_row = score_summary.loc[score_summary["column"] == "matgpr_acquisition"].iloc[0]
         self.assertAlmostEqual(acquisition_row["recommended_mean"], 0.5)
         self.assertAlmostEqual(acquisition_row["ranked_max"], 0.9)
 
@@ -638,7 +634,9 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertIn("'top' or 'diverse'", str(context.exception))
 
-    def test_suggest_multi_objective_next_experiments_rejects_invalid_batch_selection_before_botorch_use(self):
+    def test_suggest_multi_objective_next_experiments_rejects_invalid_batch_selection_before_botorch_use(
+        self,
+    ):
         with self.assertRaises(ValueError) as context:
             suggest_multi_objective_next_experiments(
                 pd.DataFrame({"x": [0.0, 1.0, 2.0]}),

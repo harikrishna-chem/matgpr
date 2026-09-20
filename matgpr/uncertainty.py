@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
-from .metrics import json_safe_metrics
 from ._validation import (
     to_1d_finite,
     validate_confidence_level,
     validate_same_length,
 )
+from .metrics import json_safe_metrics
 
 __all__ = [
     "calibration_curve",
@@ -160,7 +160,11 @@ def uncertainty_error_correlation(
     if normalized not in {"spearman", "pearson"}:
         raise ValueError("method must be either 'spearman' or 'pearson'")
 
-    if len(y_true) < 2 or np.allclose(absolute_error, absolute_error[0]) or np.allclose(y_std, y_std[0]):
+    if (
+        len(y_true) < 2
+        or np.allclose(absolute_error, absolute_error[0])
+        or np.allclose(y_std, y_std[0])
+    ):
         return np.nan
 
     if normalized == "spearman":
@@ -264,4 +268,3 @@ def _to_confidence_levels(confidence_levels) -> np.ndarray:
     for level in levels:
         validate_confidence_level(level)
     return levels
-

@@ -10,8 +10,8 @@ import pandas as pd
 
 from matgpr import (
     BOCampaignState,
-    apply_candidate_duplicate_policy,
     append_closed_loop_records,
+    apply_candidate_duplicate_policy,
     infer_next_bo_iteration,
     load_closed_loop_log,
     log_bo_recommendations,
@@ -45,7 +45,9 @@ class ExperimentLoggingTests(unittest.TestCase):
                 timestamp=timestamp,
             )
 
-            self.assertEqual(appended["matgpr_record_type"].tolist(), ["recommendation", "recommendation"])
+            self.assertEqual(
+                appended["matgpr_record_type"].tolist(), ["recommendation", "recommendation"]
+            )
             self.assertIn("matgpr_metadata_model_name", appended.columns)
             self.assertIn("matgpr_metadata_acquisition_function", appended.columns)
 

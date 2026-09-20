@@ -11,9 +11,9 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 
 from .inorganic_fingerprints import (
-    CompositionFingerprintResult,
     DEFAULT_COMPOSITION_STATISTICS,
     DEFAULT_ELEMENTAL_PROPERTIES,
+    CompositionFingerprintResult,
     clean_formula,
     featurize_compositions,
 )

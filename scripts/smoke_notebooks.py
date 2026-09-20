@@ -17,10 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 NOTEBOOKS = [
     PROJECT_ROOT / "examples" / "opv" / "opv_gpr_modeling.ipynb",
-    PROJECT_ROOT
-    / "examples"
-    / "solvent_diffusivity"
-    / "solvent_diffusivity_gpr_modeling.ipynb",
+    PROJECT_ROOT / "examples" / "solvent_diffusivity" / "solvent_diffusivity_gpr_modeling.ipynb",
 ]
 
 REPLACEMENTS = {
@@ -84,8 +81,7 @@ def execute_reduced_notebook(path: Path) -> None:
                 if line in source and "sample(n=min(120, len(model_data))" not in source:
                     source = source.replace(
                         line,
-                        line
-                        + "\nmodel_data = model_data.sample(n=min(120, len(model_data)), "
+                        line + "\nmodel_data = model_data.sample(n=min(120, len(model_data)), "
                         "random_state=RANDOM_STATE).reset_index(drop=True)",
                         1,
                     )

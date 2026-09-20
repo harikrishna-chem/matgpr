@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
 from ._validation import (
     label_array,
     nonnegative_scalar,
@@ -303,7 +304,10 @@ def combine_noise_profiles(
         raise ValueError("mode must be one of: quadrature, max, sum")
 
     component_labels = np.asarray(
-        ["+".join(str(profile.component_names[row]) for profile in profiles) for row in range(n_observations)],
+        [
+            "+".join(str(profile.component_names[row]) for profile in profiles)
+            for row in range(n_observations)
+        ],
         dtype=object,
     )
     return ObservationNoiseProfile(
@@ -324,4 +328,3 @@ def _to_1d_object(values, name: str) -> np.ndarray:
     if array.size == 0:
         raise ValueError(f"{name} must contain at least one value")
     return array
-

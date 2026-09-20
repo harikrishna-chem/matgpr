@@ -7,6 +7,7 @@ from statistics import NormalDist
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+
 from ._validation import (
     feature_bounds_mask,
     finite_scalar,
@@ -199,7 +200,9 @@ class DerivativeConstrainedGPRResult:
             solved = _solve_lower_triangular(self.lower_cholesky, cross_covariance.T)
             variance_model = self.signal_variance - np.sum(solved * solved, axis=0)
             if include_observation_noise:
-                variance_model = variance_model + float(np.mean((self.value_noise_std / self.target_scale) ** 2))
+                variance_model = variance_model + float(
+                    np.mean((self.value_noise_std / self.target_scale) ** 2)
+                )
             variance_model = np.maximum(variance_model, 0.0)
             std = np.sqrt(variance_model) * self.target_scale
 
@@ -226,12 +229,18 @@ def combine_derivative_observations(
     n_features = sets[0].n_features
     for observation_set in sets:
         if observation_set.n_features != n_features:
-            raise ValueError("All derivative observation sets must have the same number of features")
+            raise ValueError(
+                "All derivative observation sets must have the same number of features"
+            )
 
     return DerivativeObservationSet(
         X=np.vstack([observation_set.X for observation_set in sets]),
-        feature_indices=np.concatenate([observation_set.feature_indices for observation_set in sets]),
-        derivative_values=np.concatenate([observation_set.derivative_values for observation_set in sets]),
+        feature_indices=np.concatenate(
+            [observation_set.feature_indices for observation_set in sets]
+        ),
+        derivative_values=np.concatenate(
+            [observation_set.derivative_values for observation_set in sets]
+        ),
         noise_std=np.concatenate([observation_set.noise_std for observation_set in sets]),
         labels=np.concatenate([observation_set.labels for observation_set in sets]),
     )
@@ -240,7 +249,9 @@ def combine_derivative_observations(
 def fit_derivative_constrained_gpr(
     X_train,
     y_train,
-    derivative_observations: DerivativeObservationSet | Sequence[DerivativeObservationSet] | None = None,
+    derivative_observations: DerivativeObservationSet
+    | Sequence[DerivativeObservationSet]
+    | None = None,
     *,
     length_scale: float | Sequence[float] | np.ndarray | None = None,
     signal_variance: float | None = 1.0,
@@ -290,19 +301,21 @@ def fit_derivative_constrained_gpr(
     optimizer_success = None
     optimizer_message = None
     if optimize_hyperparameters:
-        length_scale_array, signal_variance_value, optimizer_success, optimizer_message = _optimize_hyperparameters(
-            x_train,
-            y_model,
-            derivative_set,
-            derivative_values_model,
-            derivative_noise_model,
-            value_noise_model,
-            initial_length_scale=length_scale_array,
-            initial_signal_variance=signal_variance_value,
-            length_scale_bounds=length_scale_bounds,
-            signal_variance_bounds=signal_variance_bounds,
-            maxiter=maxiter,
-            jitter=jitter,
+        length_scale_array, signal_variance_value, optimizer_success, optimizer_message = (
+            _optimize_hyperparameters(
+                x_train,
+                y_model,
+                derivative_set,
+                derivative_values_model,
+                derivative_noise_model,
+                value_noise_model,
+                initial_length_scale=length_scale_array,
+                initial_signal_variance=signal_variance_value,
+                length_scale_bounds=length_scale_bounds,
+                signal_variance_bounds=signal_variance_bounds,
+                maxiter=maxiter,
+                jitter=jitter,
+            )
         )
 
     training_target = _combined_training_target(y_model, derivative_values_model)
@@ -361,7 +374,9 @@ def _training_covariance(
         return k_ff
 
     if derivative_noise_std is None:
-        raise ValueError("derivative_noise_std is required when derivative observations are provided")
+        raise ValueError(
+            "derivative_noise_std is required when derivative observations are provided"
+        )
 
     k_fd = _function_derivative_covariance(
         x_train,
@@ -479,8 +494,8 @@ def _derivative_derivative_covariance(
 
     same_feature = left_feature_indices[:, None] == right_feature_indices[None, :]
     same_feature_term = np.where(same_feature, 1.0 / (left_length_scale**2), 0.0)
-    curvature_term = left_difference * right_difference / (
-        left_length_scale**2 * right_length_scale**2
+    curvature_term = (
+        left_difference * right_difference / (left_length_scale**2 * right_length_scale**2)
     )
     return base * (same_feature_term - curvature_term)
 
@@ -599,7 +614,9 @@ def _flatten_derivative_observation_sets(
         derivative_observations = tuple(derivative_observations[0])
     sets = list(derivative_observations)
     if not all(isinstance(observation_set, DerivativeObservationSet) for observation_set in sets):
-        raise TypeError("derivative_observations must contain only DerivativeObservationSet objects")
+        raise TypeError(
+            "derivative_observations must contain only DerivativeObservationSet objects"
+        )
     return sets
 
 

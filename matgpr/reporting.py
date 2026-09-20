@@ -226,9 +226,9 @@ def _with_multifidelity_derived_columns(frame: pd.DataFrame) -> pd.DataFrame:
         )
 
     if "scaled_low_fidelity_std" in frame:
-        frame["low_fidelity_variance_contribution"] = _numeric_series(
-            frame["scaled_low_fidelity_std"]
-        ) ** 2
+        frame["low_fidelity_variance_contribution"] = (
+            _numeric_series(frame["scaled_low_fidelity_std"]) ** 2
+        )
     if "correction_std" in frame:
         frame["correction_variance_contribution"] = _numeric_series(frame["correction_std"]) ** 2
     if "discrepancy_std" in frame:
@@ -274,7 +274,9 @@ def _add_variance_fraction(
     frame[fraction_column] = np.where(total_variance > 0.0, contribution / total_variance, np.nan)
 
 
-def _resolve_group_columns(frame: pd.DataFrame, group_by: Sequence[str] | str | None) -> tuple[str, ...]:
+def _resolve_group_columns(
+    frame: pd.DataFrame, group_by: Sequence[str] | str | None
+) -> tuple[str, ...]:
     if group_by is None:
         return tuple(column for column in ("model", "split") if column in frame.columns)
     elif isinstance(group_by, str):

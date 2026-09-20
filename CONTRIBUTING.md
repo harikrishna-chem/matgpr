@@ -37,6 +37,7 @@ Run these before proposing changes:
 
 ```bash
 python -m ruff check matgpr tests scripts
+python -m ruff format --check matgpr tests scripts
 python -m pytest
 python -m build
 ```

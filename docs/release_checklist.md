@@ -96,6 +96,7 @@ Use the project development environment and run:
 
 ```bash
 python -m ruff check matgpr tests scripts
+python -m ruff format --check matgpr tests scripts
 python -m pytest
 python -m mkdocs build --strict
 rm -rf dist build matgpr.egg-info

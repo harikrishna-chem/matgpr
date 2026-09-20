@@ -244,7 +244,9 @@ def featurize_smiles(
             )
         except Exception as exc:
             if errors == "raise":
-                raise ValueError(f"Could not featurize SMILES at position {index}: {smiles!r}") from exc
+                raise ValueError(
+                    f"Could not featurize SMILES at position {index}: {smiles!r}"
+                ) from exc
             if feature_names is None:
                 feature_names = _feature_names(
                     fingerprint_type=fingerprint_type,
@@ -338,8 +340,7 @@ def _polymer_endpoint_info(molecule) -> dict[str, tuple[int, int, object]]:
     )
     if len(dummy_atoms) != 2:
         raise ValueError(
-            "Polymer SMILES must contain exactly two [*] dummy atoms; "
-            f"found {len(dummy_atoms)}"
+            f"Polymer SMILES must contain exactly two [*] dummy atoms; found {len(dummy_atoms)}"
         )
 
     endpoints = []

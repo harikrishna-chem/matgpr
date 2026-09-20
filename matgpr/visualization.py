@@ -123,7 +123,9 @@ def plot_parity(
     min_val -= padding
     max_val += padding
 
-    ax.plot([min_val, max_val], [min_val, max_val], "--", linewidth=1.5, color="black", label="Ideal")
+    ax.plot(
+        [min_val, max_val], [min_val, max_val], "--", linewidth=1.5, color="black", label="Ideal"
+    )
     ax.set_xlim(min_val, max_val)
     ax.set_ylim(min_val, max_val)
     ax.set_xlabel(xlabel)
@@ -160,14 +162,30 @@ def plot_distribution(
         raise ValueError("No valid numeric values provided")
 
     fig, ax = _resolve_axes(ax, figsize)
-    ax.hist(values, bins=bins, density=density, color=color, alpha=alpha, edgecolor="black", linewidth=0.8)
+    ax.hist(
+        values,
+        bins=bins,
+        density=density,
+        color=color,
+        alpha=alpha,
+        edgecolor="black",
+        linewidth=0.8,
+    )
 
     if show_mean:
         mean_value = np.mean(values)
-        ax.axvline(mean_value, color="red", linestyle="--", linewidth=2, label=f"Mean = {mean_value:.3f}")
+        ax.axvline(
+            mean_value, color="red", linestyle="--", linewidth=2, label=f"Mean = {mean_value:.3f}"
+        )
     if show_median:
         median_value = np.median(values)
-        ax.axvline(median_value, color="darkorange", linestyle="-.", linewidth=2, label=f"Median = {median_value:.3f}")
+        ax.axvline(
+            median_value,
+            color="darkorange",
+            linestyle="-.",
+            linewidth=2,
+            label=f"Median = {median_value:.3f}",
+        )
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
@@ -291,9 +309,7 @@ def plot_learning_curve(
     metric_frames = []
     for column in metric_columns:
         split_name, metric_name = _metric_column_parts(column)
-        metric_frame = plot_df[[model_col, x_col, column]].rename(
-            columns={column: "metric_value"}
-        )
+        metric_frame = plot_df[[model_col, x_col, column]].rename(columns={column: "metric_value"})
         metric_frame["metric_col"] = column
         metric_frame["split"] = split_name
         metric_frame["metric"] = metric_name
@@ -317,14 +333,11 @@ def plot_learning_curve(
     linestyles = ["-", "--", "-.", ":"]
 
     curve_keys = (
-        summary[[model_col, "metric_col"]]
-        .drop_duplicates()
-        .itertuples(index=False, name=None)
+        summary[[model_col, "metric_col"]].drop_duplicates().itertuples(index=False, name=None)
     )
     for i, (model_name, metric_column) in enumerate(curve_keys):
         model_data = summary[
-            (summary[model_col] == model_name)
-            & (summary["metric_col"] == metric_column)
+            (summary[model_col] == model_name) & (summary["metric_col"] == metric_column)
         ]
         label = _learning_curve_label(
             model_name,
@@ -368,10 +381,7 @@ def _resolve_learning_curve_metric_columns(
 ) -> tuple[str, ...]:
     if metric is not None:
         metric_name = _normalize_plot_metric(metric)
-        return tuple(
-            f"{split_name}_{metric_name}"
-            for split_name in _normalize_plot_splits(split)
-        )
+        return tuple(f"{split_name}_{metric_name}" for split_name in _normalize_plot_splits(split))
     if metric_col is None:
         raise ValueError("metric_col is required when metric is not supplied")
     if isinstance(metric_col, str):
@@ -949,7 +959,9 @@ def _coerce_finite_numeric_columns(
             invalid_columns.append(column)
         df[column] = numeric.astype(float)
     if invalid_columns:
-        raise ValueError(f"{name} has missing, non-numeric, or infinite values in {invalid_columns}")
+        raise ValueError(
+            f"{name} has missing, non-numeric, or infinite values in {invalid_columns}"
+        )
 
 
 def _ordered_record_types(record_types: pd.Series) -> list[str]:

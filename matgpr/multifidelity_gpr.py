@@ -9,8 +9,17 @@ import numpy as np
 import torch
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.metrics import r2_score
-from sklearn.utils.validation import check_array, check_consistent_length, check_is_fitted, column_or_1d
+from sklearn.utils.validation import (
+    check_array,
+    check_consistent_length,
+    check_is_fitted,
+    column_or_1d,
+)
 
+from ._validation import (
+    normalize_fidelity_label,
+    validate_confidence_level,
+)
 from .gpytorch_gpr import (
     GPyTorchGPRResult,
     _make_gpytorch_base_kernel,
@@ -18,10 +27,6 @@ from .gpytorch_gpr import (
     _to_tensor,
     _validate_training_options,
     fit_gpytorch_gpr,
-)
-from ._validation import (
-    normalize_fidelity_label,
-    validate_confidence_level,
 )
 
 __all__ = [
@@ -331,9 +336,9 @@ class ExactTwoLevelCoKrigingGPRModel(gpytorch.models.ExactGP):
             torch.zeros_like(x[:, 0]),
         )
         low_weight_matrix = low_weights.unsqueeze(-1) * low_weights.unsqueeze(-2)
-        discrepancy_weight_matrix = (
-            discrepancy_weights.unsqueeze(-1) * discrepancy_weights.unsqueeze(-2)
-        )
+        discrepancy_weight_matrix = discrepancy_weights.unsqueeze(
+            -1
+        ) * discrepancy_weights.unsqueeze(-2)
 
         low_covar = self.low_covar_module(x).mul(low_weight_matrix)
         discrepancy_covar = self.discrepancy_covar_module(x).mul(discrepancy_weight_matrix)
@@ -1087,7 +1092,9 @@ def _predict_cokriging_gpr(
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         latent_distribution = result.model(test_x, pred_fidelity_indices)
         prediction_distribution = (
-            result.likelihood(latent_distribution) if include_observation_noise else latent_distribution
+            result.likelihood(latent_distribution)
+            if include_observation_noise
+            else latent_distribution
         )
         mean = prediction_distribution.mean
         std = prediction_distribution.stddev if return_std or confidence_level is not None else None
@@ -1274,8 +1281,7 @@ def _resolve_prediction_low_fidelity(
         return values, None
     if result.low_fidelity_model is None:
         raise ValueError(
-            "low_fidelity is required for prediction because no low-fidelity "
-            "surrogate was fitted"
+            "low_fidelity is required for prediction because no low-fidelity surrogate was fitted"
         )
     prediction = result.low_fidelity_model.predict(
         X,

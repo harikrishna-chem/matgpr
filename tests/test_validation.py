@@ -117,7 +117,11 @@ class SimpleMultiFidelityRegressor(RegressorMixin, BaseEstimator):
         std = None
         if return_std:
             std = correction_std.copy()
-            include_low = True if include_low_fidelity_uncertainty is None else include_low_fidelity_uncertainty
+            include_low = (
+                True
+                if include_low_fidelity_uncertainty is None
+                else include_low_fidelity_uncertainty
+            )
             if include_low and low_std is not None:
                 std = np.sqrt(std**2 + (self.rho_ * low_std) ** 2)
 
@@ -179,7 +183,9 @@ class SimpleRowWiseCoKrigingRegressor(RegressorMixin, BaseEstimator):
         target_mask = fidelity == self.target_fidelity_
         self.low_coefficients_ = self._fit_linear(X[low_mask], y[low_mask])
         low_at_target = self._predict_low(X[target_mask])
-        target_design = np.column_stack([low_at_target, np.ones_like(low_at_target), X[target_mask]])
+        target_design = np.column_stack(
+            [low_at_target, np.ones_like(low_at_target), X[target_mask]]
+        )
         coefficients = np.linalg.lstsq(target_design, y[target_mask], rcond=None)[0]
         self.rho_ = float(coefficients[0])
         self.intercept_ = float(coefficients[1])
@@ -300,7 +306,9 @@ class SparseMultiOutputMeanStdRegressor(RegressorMixin, BaseEstimator):
             observed = np.isfinite(y_array[:, task_index])
             if not observed.any():
                 raise ValueError("Each task needs at least one observed target")
-            coefficients.append(np.linalg.lstsq(design[observed], y_array[observed, task_index], rcond=None)[0])
+            coefficients.append(
+                np.linalg.lstsq(design[observed], y_array[observed, task_index], rcond=None)[0]
+            )
         self.coefficients_ = np.column_stack(coefficients)
         if hasattr(y, "columns"):
             self.task_names_ = tuple(str(column) for column in y.columns)
@@ -430,7 +438,9 @@ class ValidationApiTests(unittest.TestCase):
         x = np.linspace(0.0, 1.0, 18)
         X = pd.DataFrame({"x": x, "x2": x**2})
         low_fidelity = 0.8 + 0.6 * x - 0.2 * x**2
-        y = pd.Series(1.35 * low_fidelity + 0.15 + 0.05 * x, index=[f"sample_{i}" for i in range(len(x))])
+        y = pd.Series(
+            1.35 * low_fidelity + 0.15 + 0.05 * x, index=[f"sample_{i}" for i in range(len(x))]
+        )
 
         result = multifidelity_learning_curve(
             SimpleMultiFidelityRegressor(constant_std=0.12),

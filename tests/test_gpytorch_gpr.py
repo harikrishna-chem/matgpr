@@ -191,9 +191,7 @@ class _PlainExactGP(gpytorch.models.ExactGP):
         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())
 
     def forward(self, x):
-        return gpytorch.distributions.MultivariateNormal(
-            self.mean_module(x), self.covar_module(x)
-        )
+        return gpytorch.distributions.MultivariateNormal(self.mean_module(x), self.covar_module(x))
 
 
 class TrainingVerbosityTests(unittest.TestCase):

@@ -116,11 +116,15 @@ def composition_fingerprint(
         raise ValueError(f"Composition '{formula}' has no positive element amounts")
 
     elements = [_element(symbol) for symbol in element_amounts]
-    fractions = np.array([element_amounts[element.symbol] / total_amount for element in elements], dtype=float)
+    fractions = np.array(
+        [element_amounts[element.symbol] / total_amount for element in elements], dtype=float
+    )
 
     features: dict[str, float] = {}
     for property_name in properties:
-        values = np.array([_element_property(element, property_name) for element in elements], dtype=float)
+        values = np.array(
+            [_element_property(element, property_name) for element in elements], dtype=float
+        )
         for statistic in statistics:
             features[f"{property_name}_{statistic}"] = _weighted_statistic(
                 values,
@@ -268,7 +272,9 @@ def featurize_compositions(
     failures: list[dict[str, object]] = []
     cache_keys: list[str] = []
     cache_hits: list[bool] = []
-    feature_names = [f"{property_name}_{statistic}" for property_name in properties for statistic in statistics]
+    feature_names = [
+        f"{property_name}_{statistic}" for property_name in properties for statistic in statistics
+    ]
     cache_parameters = {
         "properties": list(properties),
         "statistics": list(statistics),
@@ -312,7 +318,9 @@ def featurize_compositions(
             )
         except Exception as exc:
             if errors == "raise":
-                raise ValueError(f"Could not featurize formula at position {index}: {formula!r}") from exc
+                raise ValueError(
+                    f"Could not featurize formula at position {index}: {formula!r}"
+                ) from exc
             failures.append(
                 {
                     "index": index,

@@ -106,7 +106,9 @@ class BOCampaignState:
         """Build a duplicate policy for the next BO recommendation step."""
         from .bayesian_optimization import CandidateDuplicatePolicy
 
-        resolved_keys = self.key_columns if key_columns is None else _validate_key_columns(key_columns)
+        resolved_keys = (
+            self.key_columns if key_columns is None else _validate_key_columns(key_columns)
+        )
         return CandidateDuplicatePolicy(
             existing_candidates=self.unavailable_candidates,
             key_columns=resolved_keys,
@@ -168,10 +170,7 @@ def append_closed_loop_records(
         if column in raw_records.columns
     ]
     if collisions:
-        raise ValueError(
-            "records contain columns reserved for closed-loop logging: "
-            f"{collisions}"
-        )
+        raise ValueError(f"records contain columns reserved for closed-loop logging: {collisions}")
 
     prefix = pd.DataFrame(
         {
@@ -310,9 +309,7 @@ def infer_next_bo_iteration(
         return 0
 
     recommendation_record_type = _validate_record_type(recommendation_record_type)
-    recommendations = log.loc[
-        log["matgpr_record_type"] == recommendation_record_type
-    ].copy()
+    recommendations = log.loc[log["matgpr_record_type"] == recommendation_record_type].copy()
     if recommendations.empty:
         return 0
     iterations = _numeric_iteration_series(recommendations, label="recommendation log")
@@ -449,9 +446,7 @@ def summarize_closed_loop_log(
         if target_column not in log.columns:
             raise ValueError(f"target_column {target_column!r} is missing from the log")
 
-        target_log = log.assign(
-            _matgpr_target=pd.to_numeric(log[target_column], errors="coerce")
-        )
+        target_log = log.assign(_matgpr_target=pd.to_numeric(log[target_column], errors="coerce"))
         target_summary = (
             target_log.groupby(list(_SUMMARY_GROUP_COLUMNS), dropna=False)["_matgpr_target"]
             .agg(
@@ -703,6 +698,4 @@ def _numeric_iteration_series(log: pd.DataFrame, *, label: str) -> pd.Series:
 
 
 def _slugify(value: str) -> str:
-    return re.sub(r"_+", "_", re.sub(r"[^0-9a-zA-Z]+", "_", value.strip().lower())).strip(
-        "_"
-    )
+    return re.sub(r"_+", "_", re.sub(r"[^0-9a-zA-Z]+", "_", value.strip().lower())).strip("_")

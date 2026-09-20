@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from ._validation import validate_positive_int
 
 __all__ = [
@@ -199,10 +200,7 @@ def build_composition_candidate_grid(
         row.update({column: fraction for column, fraction in zip(fraction_columns, fractions)})
         rows.append(row)
         if max_candidates is not None and len(rows) > max_candidates:
-            raise ValueError(
-                "Composition candidate grid exceeded "
-                f"max_candidates={max_candidates}"
-            )
+            raise ValueError(f"Composition candidate grid exceeded max_candidates={max_candidates}")
 
     candidates = pd.DataFrame(rows, columns=[formula_column, "n_components", *fraction_columns])
     _insert_candidate_ids(candidates, candidate_id_column, prefix=candidate_id_prefix)
@@ -274,9 +272,7 @@ def split_candidate_features(
         raise TypeError("candidates must be a pandas DataFrame")
     features = _validate_columns(feature_columns, candidates, name="feature_columns")
     non_numeric = [
-        column
-        for column in features
-        if not pd.api.types.is_numeric_dtype(candidates[column])
+        column for column in features if not pd.api.types.is_numeric_dtype(candidates[column])
     ]
     if non_numeric:
         raise ValueError(f"feature_columns must be numeric: {non_numeric}")
@@ -444,9 +440,7 @@ def summarize_candidate_duplicates(
     if duplicates.empty:
         return _empty_duplicate_summary(keys)
 
-    duplicates["matgpr_duplicate_fraction"] = (
-        duplicates["matgpr_duplicate_count"] / frame.shape[0]
-    )
+    duplicates["matgpr_duplicate_fraction"] = duplicates["matgpr_duplicate_count"] / frame.shape[0]
     return duplicates.sort_values(
         "matgpr_duplicate_count",
         ascending=False,
@@ -465,15 +459,11 @@ def _resolve_numeric_feature_columns(
 ) -> tuple[str, ...]:
     if feature_columns is None:
         return tuple(
-            column
-            for column in frame.columns
-            if pd.api.types.is_numeric_dtype(frame[column])
+            column for column in frame.columns if pd.api.types.is_numeric_dtype(frame[column])
         )
     features = _validate_columns(feature_columns, frame, name="feature_columns")
     non_numeric = [
-        column
-        for column in features
-        if not pd.api.types.is_numeric_dtype(frame[column])
+        column for column in features if not pd.api.types.is_numeric_dtype(frame[column])
     ]
     if non_numeric:
         raise ValueError(f"feature_columns must be numeric: {non_numeric}")
@@ -638,9 +628,7 @@ def _summarize_candidate_pool_overview(
                 "matgpr_n_categorical_columns": len(categorical_columns),
                 "matgpr_feature_missing_rows": feature_missing_rows,
                 "matgpr_feature_complete_fraction": (
-                    np.nan
-                    if n_candidates == 0
-                    else 1.0 - (feature_missing_rows / n_candidates)
+                    np.nan if n_candidates == 0 else 1.0 - (feature_missing_rows / n_candidates)
                 ),
                 "matgpr_duplicate_key_groups": duplicate_key_groups,
                 "matgpr_duplicate_candidate_rows": duplicate_candidate_rows,
@@ -664,9 +652,7 @@ def _count_rows_with_invalid_features(
 
 def _empty_duplicate_summary(key_columns: Sequence[str] | None = None) -> pd.DataFrame:
     keys = [] if key_columns is None else list(key_columns)
-    return pd.DataFrame(
-        columns=[*keys, "matgpr_duplicate_count", "matgpr_duplicate_fraction"]
-    )
+    return pd.DataFrame(columns=[*keys, "matgpr_duplicate_count", "matgpr_duplicate_fraction"])
 
 
 def _finite_numeric_values(series: pd.Series, *, label: str) -> tuple[np.ndarray, int]:
@@ -720,22 +706,12 @@ def _feature_coverage_row(
             cover_max=candidate_upper,
         ),
         "candidate_outside_reference_fraction": float(
-            np.mean(
-                (candidate_values < reference_lower)
-                | (candidate_values > reference_upper)
-            )
+            np.mean((candidate_values < reference_lower) | (candidate_values > reference_upper))
         ),
-        "candidate_below_reference_fraction": float(
-            np.mean(candidate_values < reference_lower)
-        ),
-        "candidate_above_reference_fraction": float(
-            np.mean(candidate_values > reference_upper)
-        ),
+        "candidate_below_reference_fraction": float(np.mean(candidate_values < reference_lower)),
+        "candidate_above_reference_fraction": float(np.mean(candidate_values > reference_upper)),
         "reference_outside_candidate_fraction": float(
-            np.mean(
-                (reference_values < candidate_lower)
-                | (reference_values > candidate_upper)
-            )
+            np.mean((reference_values < candidate_lower) | (reference_values > candidate_upper))
         ),
     }
 

@@ -107,8 +107,7 @@ class LearningCurvePlotTests(unittest.TestCase):
         self.assertEqual(ax.get_ylabel(), "Best value found")
         self.assertEqual(set(summary["matgpr_strategy"]), {"physics_prior", "random"})
         physics_eval_1 = summary.loc[
-            (summary["matgpr_strategy"] == "physics_prior")
-            & (summary["matgpr_evaluation"] == 1.0)
+            (summary["matgpr_strategy"] == "physics_prior") & (summary["matgpr_evaluation"] == 1.0)
         ].iloc[0]
         self.assertAlmostEqual(physics_eval_1["value_mean"], 1.1)
         self.assertEqual(physics_eval_1["n_runs"], 2)

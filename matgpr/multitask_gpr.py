@@ -8,16 +8,16 @@ import gpytorch
 import numpy as np
 import torch
 
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
+)
 from .gpytorch_gpr import (
     _make_gpytorch_base_kernel,
     _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
     _validate_training_options,
-)
-from ._validation import (
-    validate_confidence_level,
-    validate_task_covar_rank,
 )
 
 __all__ = [
@@ -242,7 +242,9 @@ def fit_multitask_gpytorch_gpr(
         if torch.any(zero_std_mask):
             zero_std_tasks = [
                 name
-                for name, is_zero in zip(task_names_resolved, zero_std_mask.detach().cpu(), strict=True)
+                for name, is_zero in zip(
+                    task_names_resolved, zero_std_mask.detach().cpu(), strict=True
+                )
                 if bool(is_zero)
             ]
             raise ValueError(f"y_train has zero standard deviation for task(s): {zero_std_tasks}")
@@ -475,8 +477,7 @@ def _validate_multitask_training_arrays(train_x: torch.Tensor, train_y: torch.Te
         )
     if train_y.shape[1] < 2:
         raise ValueError(
-            "Multitask GPR requires at least two target tasks; "
-            f"got n_tasks = {train_y.shape[1]}"
+            f"Multitask GPR requires at least two target tasks; got n_tasks = {train_y.shape[1]}"
         )
     if not torch.isfinite(train_x).all():
         raise ValueError("X_train must contain only finite values")

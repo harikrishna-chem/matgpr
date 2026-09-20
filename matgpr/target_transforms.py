@@ -162,7 +162,9 @@ class LogTargetTransform:
             upper = self.inverse_transform(prediction.upper)
 
         if prediction.std is not None:
-            original_mean = np.exp(mean + 0.5 * _to_nonnegative_std(prediction.std) ** 2) - self.offset
+            original_mean = (
+                np.exp(mean + 0.5 * _to_nonnegative_std(prediction.std) ** 2) - self.offset
+            )
         else:
             original_mean = self.inverse_transform(mean)
 
@@ -457,7 +459,9 @@ def get_target_transform_spec(name: str) -> TargetTransformSpec:
     lookup = _target_transform_spec_lookup()
     if key not in lookup:
         available = ", ".join(available_target_transform_specs(include_aliases=True))
-        raise ValueError(f"Unknown target-transform preset '{name}'. Available presets: {available}")
+        raise ValueError(
+            f"Unknown target-transform preset '{name}'. Available presets: {available}"
+        )
     return lookup[key]
 
 
@@ -667,7 +671,11 @@ _TARGET_TRANSFORM_SPECS = (
     ),
     TargetTransformSpec(
         name="transition_temperature_k",
-        aliases=("transition_temperature", "melting_temperature_k", "glass_transition_temperature_k"),
+        aliases=(
+            "transition_temperature",
+            "melting_temperature_k",
+            "glass_transition_temperature_k",
+        ),
         transform_name="log",
         transform_kwargs={"offset": 0.0},
         category="positive_temperature",
@@ -707,7 +715,9 @@ from ._validation import (
 )
 
 
-def _inverse_prediction_with_arrays(transform, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
+def _inverse_prediction_with_arrays(
+    transform, prediction: GPyTorchPrediction, **kwargs
+) -> GPyTorchPrediction:
     mean = transform.inverse_transform(prediction.mean, **kwargs)
 
     std = None

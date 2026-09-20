@@ -8,6 +8,7 @@ import gpytorch
 import numpy as np
 import torch
 import torch.nn.functional as F
+
 from ._validation import validate_confidence_level
 
 TensorMap = dict[str, torch.Tensor]

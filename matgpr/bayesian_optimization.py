@@ -236,7 +236,9 @@ class BORecommendationAudit:
 
 
 def summarize_bo_recommendation_audit(
-    recommendations: BayesianOptimizationResult | MultiObjectiveBayesianOptimizationResult | pd.DataFrame,
+    recommendations: BayesianOptimizationResult
+    | MultiObjectiveBayesianOptimizationResult
+    | pd.DataFrame,
     *,
     ranked_candidates: pd.DataFrame | None = None,
     candidate_count: int | None = None,
@@ -374,9 +376,7 @@ class CandidateDuplicatePolicy:
 
     def __post_init__(self) -> None:
         if self.key_columns is None and self.feature_tolerance is None:
-            raise ValueError(
-                "CandidateDuplicatePolicy requires key_columns or feature_tolerance"
-            )
+            raise ValueError("CandidateDuplicatePolicy requires key_columns or feature_tolerance")
         if self.key_columns is not None:
             columns = tuple(str(column).strip() for column in self.key_columns)
             if not columns or any(not column for column in columns):
@@ -395,8 +395,7 @@ class CandidateDuplicatePolicy:
             tolerance = float(self.feature_tolerance)
             if not np.isfinite(tolerance) or tolerance < 0.0:
                 raise ValueError(
-                    "CandidateDuplicatePolicy.feature_tolerance must be finite "
-                    "and non-negative"
+                    "CandidateDuplicatePolicy.feature_tolerance must be finite and non-negative"
                 )
             object.__setattr__(self, "feature_tolerance", tolerance)
         object.__setattr__(self, "metric", _normalize_distance_metric(self.metric))
@@ -444,11 +443,7 @@ class CandidateConstraint:
             raise ValueError("CandidateConstraint.column must be non-empty")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "column", column)
-        if (
-            self.lower_bound is None
-            and self.upper_bound is None
-            and self.allowed_values is None
-        ):
+        if self.lower_bound is None and self.upper_bound is None and self.allowed_values is None:
             raise ValueError(
                 "CandidateConstraint requires at least one of lower_bound, "
                 "upper_bound, or allowed_values"
@@ -537,8 +532,7 @@ def apply_candidate_constraints(
     result = candidates.copy()
     result[feasible_column] = feasible.to_numpy(dtype=bool)
     result[violations_column] = [
-        "; ".join(mask_frame.columns[~row.to_numpy(dtype=bool)])
-        for _, row in mask_frame.iterrows()
+        "; ".join(mask_frame.columns[~row.to_numpy(dtype=bool)]) for _, row in mask_frame.iterrows()
     ]
     return result
 
@@ -784,9 +778,7 @@ def observation_noise_variance(
             "std_column, sem_column, or replicate_group_column with target_column"
         )
     if replicate_requested and (replicate_group_column is None or target_column is None):
-        raise ValueError(
-            "replicate_group_column and target_column must be provided together"
-        )
+        raise ValueError("replicate_group_column and target_column must be provided together")
 
     if variance_column is not None:
         variance = _nonnegative_numeric_column(
@@ -860,12 +852,11 @@ def fit_botorch_surrogate(
     """
     require_optional_dependency("botorch")
     import torch
-    from gpytorch.mlls import ExactMarginalLogLikelihood
-
     from botorch.fit import fit_gpytorch_mll
     from botorch.models import SingleTaskGP
     from botorch.models.transforms.input import Normalize
     from botorch.models.transforms.outcome import Standardize
+    from gpytorch.mlls import ExactMarginalLogLikelihood
 
     train_array, feature_names, _ = _as_numeric_matrix(X_train, name="X_train")
     target_array = _as_target_vector(y_train, expected_length=train_array.shape[0], name="y_train")
@@ -962,13 +953,12 @@ def fit_multi_objective_botorch_surrogate(
     """
     require_optional_dependency("botorch")
     import torch
-    from gpytorch.mlls import SumMarginalLogLikelihood
-
     from botorch.fit import fit_gpytorch_mll
     from botorch.models import SingleTaskGP
     from botorch.models.model_list_gp_regression import ModelListGP
     from botorch.models.transforms.input import Normalize
     from botorch.models.transforms.outcome import Standardize
+    from gpytorch.mlls import SumMarginalLogLikelihood
 
     train_array, feature_names, _ = _as_numeric_matrix(X_train, name="X_train")
     target_array, inferred_names = _as_target_matrix(
@@ -1062,7 +1052,10 @@ def rank_discrete_candidates(
     top_k: int | None = None,
     beta: float = 0.2,
     candidate_data: pd.DataFrame | None = None,
-    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraints: CandidateConstraint
+    | list[CandidateConstraint]
+    | tuple[CandidateConstraint, ...]
+    | None = None,
     constraint_policy: str = "filter",
     trust_region: CandidateTrustRegion | None = None,
     trust_region_policy: str = "filter",
@@ -1184,7 +1177,10 @@ def rank_multi_objective_discrete_candidates(
     acquisition_function: str = "q_log_expected_hypervolume_improvement",
     top_k: int | None = None,
     candidate_data: pd.DataFrame | None = None,
-    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraints: CandidateConstraint
+    | list[CandidateConstraint]
+    | tuple[CandidateConstraint, ...]
+    | None = None,
     constraint_policy: str = "filter",
     trust_region: CandidateTrustRegion | None = None,
     trust_region_policy: str = "filter",
@@ -1294,7 +1290,10 @@ def select_sequential_multi_objective_batch(
     top_k: int,
     acquisition_function: str = "q_log_expected_hypervolume_improvement",
     candidate_data: pd.DataFrame | None = None,
-    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraints: CandidateConstraint
+    | list[CandidateConstraint]
+    | tuple[CandidateConstraint, ...]
+    | None = None,
     constraint_policy: str = "filter",
     trust_region: CandidateTrustRegion | None = None,
     trust_region_policy: str = "filter",
@@ -1465,7 +1464,10 @@ def suggest_next_experiments(
     beta: float = 0.2,
     fit_model: bool = True,
     device: str | None = None,
-    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraints: CandidateConstraint
+    | list[CandidateConstraint]
+    | tuple[CandidateConstraint, ...]
+    | None = None,
     constraint_policy: str = "filter",
     trust_region: CandidateTrustRegion | None = None,
     trust_region_policy: str = "filter",
@@ -1608,7 +1610,10 @@ def suggest_multi_objective_next_experiments(
     standardize_targets: bool = True,
     fit_model: bool = True,
     device: str | None = None,
-    constraints: CandidateConstraint | list[CandidateConstraint] | tuple[CandidateConstraint, ...] | None = None,
+    constraints: CandidateConstraint
+    | list[CandidateConstraint]
+    | tuple[CandidateConstraint, ...]
+    | None = None,
     constraint_policy: str = "filter",
     trust_region: CandidateTrustRegion | None = None,
     trust_region_policy: str = "filter",
@@ -1700,7 +1705,9 @@ def suggest_multi_objective_next_experiments(
 
 
 def _coerce_bo_audit_inputs(
-    recommendations: BayesianOptimizationResult | MultiObjectiveBayesianOptimizationResult | pd.DataFrame,
+    recommendations: BayesianOptimizationResult
+    | MultiObjectiveBayesianOptimizationResult
+    | pd.DataFrame,
     *,
     ranked_candidates: pd.DataFrame | None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
@@ -1808,8 +1815,7 @@ def _bo_audit_score_columns(
     dynamic = [
         column
         for column in all_columns
-        if column.startswith("matgpr_predicted_mean_")
-        or column.startswith("matgpr_predicted_std_")
+        if column.startswith("matgpr_predicted_mean_") or column.startswith("matgpr_predicted_std_")
     ]
     ordered = []
     for column in (*preferred, *dynamic):
@@ -1860,10 +1866,17 @@ def _bo_recommendation_audit_frame(
         if column in recommendations.columns
     ]
     selected_columns = list(dict.fromkeys([*identifier_columns, *base_columns, *score_columns]))
-    audit = recommendations.loc[:, selected_columns].copy() if selected_columns else pd.DataFrame(index=recommendations.index)
+    audit = (
+        recommendations.loc[:, selected_columns].copy()
+        if selected_columns
+        else pd.DataFrame(index=recommendations.index)
+    )
     audit.insert(0, "matgpr_recommendation_order", np.arange(1, recommendations.shape[0] + 1))
 
-    if "matgpr_acquisition" in recommendations.columns and "matgpr_acquisition" in ranked_frame.columns:
+    if (
+        "matgpr_acquisition" in recommendations.columns
+        and "matgpr_acquisition" in ranked_frame.columns
+    ):
         audit["matgpr_acquisition_percentile"] = _percentile_against_reference(
             recommendations["matgpr_acquisition"],
             ranked_frame["matgpr_acquisition"],
@@ -1881,8 +1894,7 @@ def _bo_recommendation_audit_frame(
         )
 
     audit["matgpr_audit_note"] = [
-        _bo_recommendation_note(row)
-        for _, row in recommendations.iterrows()
+        _bo_recommendation_note(row) for _, row in recommendations.iterrows()
     ]
     return audit.reset_index(drop=True)
 
@@ -1927,9 +1939,13 @@ def _bo_recommendation_note(row: pd.Series) -> str:
     mean_columns = [column for column in row.index if column.startswith("matgpr_predicted_mean")]
     std_columns = [column for column in row.index if column.startswith("matgpr_predicted_std")]
     if mean_columns:
-        parts.append("mean " + _format_prediction_columns(row, mean_columns, "matgpr_predicted_mean"))
+        parts.append(
+            "mean " + _format_prediction_columns(row, mean_columns, "matgpr_predicted_mean")
+        )
     if std_columns:
-        parts.append("uncertainty " + _format_prediction_columns(row, std_columns, "matgpr_predicted_std"))
+        parts.append(
+            "uncertainty " + _format_prediction_columns(row, std_columns, "matgpr_predicted_std")
+        )
 
     if "matgpr_feasible" in row:
         if _is_true(row["matgpr_feasible"]):
@@ -1944,7 +1960,9 @@ def _bo_recommendation_note(row: pd.Series) -> str:
             text = "inside trust region"
         else:
             text = "outside trust region"
-        if "matgpr_trust_region_distance" in row and not pd.isna(row["matgpr_trust_region_distance"]):
+        if "matgpr_trust_region_distance" in row and not pd.isna(
+            row["matgpr_trust_region_distance"]
+        ):
             text += f" (distance {_format_audit_number(row['matgpr_trust_region_distance'])})"
         parts.append(text)
 
@@ -2111,7 +2129,9 @@ def _bo_policy_summary(
             )
         )
 
-    batch_frame = ranked_frame if "matgpr_batch_selected" in ranked_frame.columns else recommendations
+    batch_frame = (
+        ranked_frame if "matgpr_batch_selected" in ranked_frame.columns else recommendations
+    )
     if "matgpr_batch_selected" in batch_frame.columns:
         selected = _boolean_array(batch_frame["matgpr_batch_selected"])
         recommended_selected = (
@@ -2574,22 +2594,14 @@ def _normalize_multi_objective_acquisition_name(name: str) -> str:
         "nehvi": "q_noisy_expected_hypervolume_improvement",
         "qnehvi": "q_noisy_expected_hypervolume_improvement",
         "q_nehvi": "q_noisy_expected_hypervolume_improvement",
-        "noisy_expected_hypervolume_improvement": (
-            "q_noisy_expected_hypervolume_improvement"
-        ),
-        "q_noisy_expected_hypervolume_improvement": (
-            "q_noisy_expected_hypervolume_improvement"
-        ),
+        "noisy_expected_hypervolume_improvement": ("q_noisy_expected_hypervolume_improvement"),
+        "q_noisy_expected_hypervolume_improvement": ("q_noisy_expected_hypervolume_improvement"),
         "log_ehvi": "q_log_expected_hypervolume_improvement",
         "logehvi": "q_log_expected_hypervolume_improvement",
         "qlogehvi": "q_log_expected_hypervolume_improvement",
         "q_log_ehvi": "q_log_expected_hypervolume_improvement",
-        "log_expected_hypervolume_improvement": (
-            "q_log_expected_hypervolume_improvement"
-        ),
-        "q_log_expected_hypervolume_improvement": (
-            "q_log_expected_hypervolume_improvement"
-        ),
+        "log_expected_hypervolume_improvement": ("q_log_expected_hypervolume_improvement"),
+        "q_log_expected_hypervolume_improvement": ("q_log_expected_hypervolume_improvement"),
         "log_nehvi": "q_log_noisy_expected_hypervolume_improvement",
         "lognehvi": "q_log_noisy_expected_hypervolume_improvement",
         "qlognehvi": "q_log_noisy_expected_hypervolume_improvement",
@@ -2842,7 +2854,11 @@ def _policy_feature_matrix(
         matrix = np.asarray(values, dtype=float)
         if matrix.ndim == 1:
             matrix = matrix.reshape(1, -1)
-        if feature_columns is not None and matrix.ndim == 2 and len(feature_columns) != matrix.shape[1]:
+        if (
+            feature_columns is not None
+            and matrix.ndim == 2
+            and len(feature_columns) != matrix.shape[1]
+        ):
             raise ValueError(
                 f"{name} feature_columns length must match feature count "
                 f"({len(feature_columns)} != {matrix.shape[1]})"
@@ -2861,8 +2877,7 @@ def _policy_feature_matrix(
         )
     if expected_rows is not None and matrix.shape[0] != expected_rows:
         raise ValueError(
-            f"{name} rows must match candidate rows "
-            f"({matrix.shape[0]} != {expected_rows})"
+            f"{name} rows must match candidate rows ({matrix.shape[0]} != {expected_rows})"
         )
     if not np.all(np.isfinite(matrix)):
         raise ValueError(f"{name} contains NaN or infinite values")
@@ -2882,28 +2897,20 @@ def _resolve_policy_feature_columns(
             for column in feature_columns
         )
         missing = [
-            requested
-            for requested, resolved in zip(feature_columns, columns)
-            if resolved is None
+            requested for requested, resolved in zip(feature_columns, columns) if resolved is None
         ]
         if missing:
             raise ValueError(f"{name} feature columns are missing: {missing}")
     else:
         columns = tuple(
-            column
-            for column in data.columns
-            if pd.api.types.is_numeric_dtype(data[column])
+            column for column in data.columns if pd.api.types.is_numeric_dtype(data[column])
         )
         if not columns:
             raise ValueError(
                 f"No numeric columns could be inferred from {name}; provide feature_columns"
             )
 
-    non_numeric = [
-        column
-        for column in columns
-        if not pd.api.types.is_numeric_dtype(data[column])
-    ]
+    non_numeric = [column for column in columns if not pd.api.types.is_numeric_dtype(data[column])]
     if non_numeric:
         raise ValueError(f"{name} feature columns must be numeric: {non_numeric}")
     return columns
@@ -2935,8 +2942,7 @@ def _resolve_policy_feature_scales(
         scales = np.asarray(feature_scales, dtype=float).reshape(-1)
         if scales.shape[0] != n_features:
             raise ValueError(
-                f"{name} length must match feature count "
-                f"({scales.shape[0]} != {n_features})"
+                f"{name} length must match feature count ({scales.shape[0]} != {n_features})"
             )
         if not np.all(np.isfinite(scales)) or np.any(scales <= 0.0):
             raise ValueError(f"{name} must contain finite positive values")
@@ -3039,10 +3045,7 @@ def _as_constraint_tuple(
         if not isinstance(constraint, CandidateConstraint)
     ]
     if invalid:
-        raise TypeError(
-            "constraints must contain only CandidateConstraint objects; "
-            f"got {invalid}"
-        )
+        raise TypeError(f"constraints must contain only CandidateConstraint objects; got {invalid}")
     return constraint_tuple
 
 
@@ -3096,9 +3099,7 @@ def _replicate_group_variance(
             group_variance = np.nan
         variance_values[group_frame.index.to_numpy(dtype=int)] = group_variance
 
-    fallback_variance = (
-        float(np.mean(replicate_variances)) if replicate_variances else min_variance
-    )
+    fallback_variance = float(np.mean(replicate_variances)) if replicate_variances else min_variance
     return pd.Series(variance_values, index=data.index, dtype=float).fillna(fallback_variance)
 
 
@@ -3285,8 +3286,7 @@ def _as_numeric_matrix(
         ]
         if non_numeric:
             raise ValueError(
-                f"{name} must contain only numeric columns; non-numeric columns: "
-                f"{non_numeric}"
+                f"{name} must contain only numeric columns; non-numeric columns: {non_numeric}"
             )
         array = values.to_numpy(dtype=float)
         feature_names = tuple(str(column) for column in values.columns)
@@ -3319,8 +3319,7 @@ def _as_target_vector(
     array = np.asarray(values, dtype=float).reshape(-1)
     if array.shape[0] != expected_length:
         raise ValueError(
-            f"{name} length must match X_train rows "
-            f"({array.shape[0]} != {expected_length})"
+            f"{name} length must match X_train rows ({array.shape[0]} != {expected_length})"
         )
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} contains NaN or infinite values")
@@ -3341,8 +3340,7 @@ def _as_target_matrix(
         ]
         if non_numeric:
             raise ValueError(
-                f"{name} must contain only numeric columns; non-numeric columns: "
-                f"{non_numeric}"
+                f"{name} must contain only numeric columns; non-numeric columns: {non_numeric}"
             )
         array = values.to_numpy(dtype=float)
         objective_names = tuple(str(column) for column in values.columns)
@@ -3354,8 +3352,7 @@ def _as_target_matrix(
         raise ValueError(f"{name} must be a 2D numeric array or dataframe")
     if array.shape[0] != expected_length:
         raise ValueError(
-            f"{name} rows must match X_train rows "
-            f"({array.shape[0]} != {expected_length})"
+            f"{name} rows must match X_train rows ({array.shape[0]} != {expected_length})"
         )
     if array.shape[1] < 2:
         raise ValueError(f"{name} must contain at least two objectives")
@@ -3401,7 +3398,9 @@ def _resolve_objective_directions(
     if isinstance(objective_directions, str):
         directions = tuple([_normalize_objective_direction(objective_directions)] * n_objectives)
     else:
-        directions = tuple(_normalize_objective_direction(direction) for direction in objective_directions)
+        directions = tuple(
+            _normalize_objective_direction(direction) for direction in objective_directions
+        )
 
     if len(directions) != n_objectives:
         raise ValueError(
@@ -3455,8 +3454,7 @@ def _resolve_reference_point(
 
     if np.any(reference_objective >= np.max(objective_array, axis=0)):
         raise ValueError(
-            "reference_point must be worse than at least one observed value for "
-            "every objective"
+            "reference_point must be worse than at least one observed value for every objective"
         )
     return reference_objective.astype(float), reference_original.astype(float)
 
@@ -3473,8 +3471,7 @@ def _as_noise_variance(
         array = array.reshape(-1)
     if array.shape[0] != expected_length:
         raise ValueError(
-            "noise_variance length must match X_train rows "
-            f"({array.shape[0]} != {expected_length})"
+            f"noise_variance length must match X_train rows ({array.shape[0]} != {expected_length})"
         )
     if not np.all(np.isfinite(array)):
         raise ValueError("noise_variance contains NaN or infinite values")

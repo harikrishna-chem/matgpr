@@ -33,6 +33,9 @@ jobs:
       - name: Lint
         run: python -m ruff check matgpr tests scripts
 
+      - name: Check formatting
+        run: python -m ruff format --check matgpr tests scripts
+
       - name: Test
         run: python -m pytest --cov=matgpr --cov-report=term-missing
 

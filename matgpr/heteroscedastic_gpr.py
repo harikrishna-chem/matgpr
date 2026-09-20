@@ -7,8 +7,8 @@ import gpytorch
 import numpy as np
 import torch
 
-from .gpytorch_gpr import GPyTorchGPRResult, fit_gpytorch_gpr
 from ._validation import validate_confidence_level
+from .gpytorch_gpr import GPyTorchGPRResult, fit_gpytorch_gpr
 
 __all__ = [
     "HeteroscedasticGPRPrediction",
@@ -305,4 +305,3 @@ def _as_1d_numpy_array(values, *, name: str) -> np.ndarray:
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values")
     return array
-

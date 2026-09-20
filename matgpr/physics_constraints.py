@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+
 from ._validation import (
     feature_bounds_mask,
     finite_scalar,
@@ -163,7 +164,9 @@ class MonotonicTrendConstraint:
             feature_max=self.feature_max,
         )
         if not np.any(keep_mask):
-            raise ValueError("No monotonic virtual observations remain after applying feature bounds")
+            raise ValueError(
+                "No monotonic virtual observations remain after applying feature bounds"
+            )
 
         x_virtual = x_virtual[keep_mask]
         y_virtual = y_virtual[keep_mask]
@@ -189,7 +192,9 @@ class AugmentedTrainingData:
     labels: np.ndarray
 
 
-def combine_virtual_observations(*virtual_observations: VirtualObservationSet) -> VirtualObservationSet:
+def combine_virtual_observations(
+    *virtual_observations: VirtualObservationSet,
+) -> VirtualObservationSet:
     """Combine compatible virtual-observation sets into one set."""
     sets = _flatten_virtual_observation_sets(virtual_observations)
     if not sets:
@@ -349,7 +354,9 @@ def _augmented_alpha(
     n_observed: int,
     virtual_observations: Sequence[VirtualObservationSet],
 ) -> np.ndarray | None:
-    if base_alpha is None and not any(observation_set.noise_std is not None for observation_set in virtual_observations):
+    if base_alpha is None and not any(
+        observation_set.noise_std is not None for observation_set in virtual_observations
+    ):
         return None
 
     observed_alpha = (

@@ -125,9 +125,7 @@ class MultitaskTargetStandardizationBufferTests(unittest.TestCase):
 
         self.assertIn("target_mean", state_dict)
         self.assertIn("target_std", state_dict)
-        np.testing.assert_allclose(
-            state_dict["target_mean"].numpy(), y.mean(axis=0), rtol=1e-10
-        )
+        np.testing.assert_allclose(state_dict["target_mean"].numpy(), y.mean(axis=0), rtol=1e-10)
 
 
 if __name__ == "__main__":

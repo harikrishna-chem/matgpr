@@ -8,6 +8,10 @@ import gpytorch
 import numpy as np
 import torch
 
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
+)
 from .gpytorch_gpr import (
     _make_gpytorch_base_kernel,
     _require_target_standardization,
@@ -16,10 +20,6 @@ from .gpytorch_gpr import (
     _validate_training_options,
 )
 from .multitask_gpr import MultitaskGPyTorchPrediction
-from ._validation import (
-    validate_confidence_level,
-    validate_task_covar_rank,
-)
 
 __all__ = [
     "ExactSparseMultitaskGPRModel",
@@ -290,10 +290,12 @@ def fit_sparse_multitask_gpytorch_gpr(
         standardize_y=standardize_y,
     )
     train_y_model = (train_y - target_mean[train_task_indices]) / target_std[train_task_indices]
-    observation_noise_variance, standardized_observation_noise_variance = _resolve_sparse_known_noise_variance(
-        known_noise_variance,
-        observation_data=observation_data,
-        target_std=target_std.detach().cpu().numpy(),
+    observation_noise_variance, standardized_observation_noise_variance = (
+        _resolve_sparse_known_noise_variance(
+            known_noise_variance,
+            observation_data=observation_data,
+            target_std=target_std.detach().cpu().numpy(),
+        )
     )
 
     noise_mode = _validate_sparse_noise_mode(noise_mode)
@@ -358,7 +360,9 @@ def fit_sparse_multitask_gpytorch_gpr(
         loss_history.append(float(loss.detach().cpu().item()))
 
         if verbose and _should_log_iteration(iteration, training_iter, log_every):
-            _print_sparse_multitask_training_status(iteration, training_iter, loss, likelihood, model)
+            _print_sparse_multitask_training_status(
+                iteration, training_iter, loss, likelihood, model
+            )
 
     model.training_loss_history = loss_history
     standardized_noise_variance = _standardized_sparse_task_noise_variance(
@@ -590,7 +594,9 @@ def _sparse_target_statistics(
         if target_std[task_index] <= 0:
             zero_std_tasks.append(task_index)
     if zero_std_tasks:
-        raise ValueError(f"y_train has zero standard deviation for task index(es): {zero_std_tasks}")
+        raise ValueError(
+            f"y_train has zero standard deviation for task index(es): {zero_std_tasks}"
+        )
     return target_mean, target_std
 
 
@@ -831,7 +837,9 @@ def _initial_task_noises_from_mapping(
             message_parts.append(f"missing task(s): {missing}")
         if unknown:
             message_parts.append(f"unknown task(s): {unknown}")
-        raise ValueError("initial_task_noises mapping must match task_names; " + "; ".join(message_parts))
+        raise ValueError(
+            "initial_task_noises mapping must match task_names; " + "; ".join(message_parts)
+        )
     values = np.asarray([provided[name] for name in task_names], dtype=float)
     return _validate_initial_noise_values(values, name="initial_task_noises")
 

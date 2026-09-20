@@ -9,11 +9,11 @@ from matgpr import (
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
     exclude_existing_candidates,
+    split_candidate_features,
     summarize_candidate_category_coverage,
     summarize_candidate_duplicates,
     summarize_candidate_feature_coverage,
     summarize_candidate_pool,
-    split_candidate_features,
 )
 
 

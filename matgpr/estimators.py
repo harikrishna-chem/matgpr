@@ -236,9 +236,7 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
             X_checked=X_checked,
             y_checked=None,
             output_rows=X_checked.shape[0],
-            imputed_features=_imputed_feature_names(self, X_checked)
-            if policy == "impute"
-            else (),
+            imputed_features=_imputed_feature_names(self, X_checked) if policy == "impute" else (),
             imputation_strategy=_validate_imputation_strategy(self.imputation_strategy)
             if policy == "impute"
             else None,
@@ -551,10 +549,12 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         Missing feature values still follow the estimator-level ``missing``
         policy: reject, drop feature-incomplete rows, or impute features.
         """
-        X_checked, y_checked, task_names, known_noise_variance = _validate_sparse_multitask_fit_input(
-            self,
-            X,
-            y,
+        X_checked, y_checked, task_names, known_noise_variance = (
+            _validate_sparse_multitask_fit_input(
+                self,
+                X,
+                y,
+            )
         )
 
         _seed_torch(self.random_state)
@@ -587,7 +587,9 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         self.target_mean_ = self.result_.target_mean.copy()
         self.target_std_ = self.result_.target_std.copy()
         self.noise_mode_ = self.result_.noise_mode
-        self.standardized_task_noise_variance_ = self.result_.standardized_task_noise_variance.copy()
+        self.standardized_task_noise_variance_ = (
+            self.result_.standardized_task_noise_variance.copy()
+        )
         self.task_noise_variance_ = self.result_.task_noise_variance.copy()
         self.task_noise_std_ = self.result_.task_noise_std.copy()
         self.standardized_observation_noise_variance_ = (
@@ -711,7 +713,9 @@ def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     return _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
 
 
-def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
+def _validate_multitask_fit_input(
+    estimator, X, y
+) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
     _clear_missing_state(estimator)
     if y is None:
         raise ValueError("requires y to be passed, but the target y is None")
@@ -758,8 +762,7 @@ def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarr
     )
     if y_checked.shape[1] < 2:
         raise ValueError(
-            "MultitaskGPRRegressor requires at least two target columns; "
-            f"got {y_checked.shape[1]}"
+            f"MultitaskGPRRegressor requires at least two target columns; got {y_checked.shape[1]}"
         )
 
     check_consistent_length(X_checked, y_checked)
@@ -914,8 +917,7 @@ def _validate_imputation_strategy(strategy: str) -> str:
     valid = {"mean", "median", "most_frequent", "constant"}
     if normalized not in valid:
         raise ValueError(
-            "imputation_strategy must be one of: "
-            "'mean', 'median', 'most_frequent', or 'constant'"
+            "imputation_strategy must be one of: 'mean', 'median', 'most_frequent', or 'constant'"
         )
     return normalized
 
@@ -1154,9 +1156,7 @@ def _feature_missing_counts(estimator, X_checked: np.ndarray) -> dict[str, int]:
     labels = _feature_labels(estimator, X_checked.shape[1])
     counts = np.isnan(X_checked).sum(axis=0)
     return {
-        label: int(count)
-        for label, count in zip(labels, counts, strict=True)
-        if int(count) > 0
+        label: int(count) for label, count in zip(labels, counts, strict=True) if int(count) > 0
     }
 
 
@@ -1193,9 +1193,7 @@ def _resolve_estimator_task_names(
 def _imputed_feature_names(estimator, X_checked: np.ndarray) -> tuple[str, ...]:
     labels = _feature_labels(estimator, X_checked.shape[1])
     counts = np.isnan(X_checked).sum(axis=0)
-    return tuple(
-        label for label, count in zip(labels, counts, strict=True) if int(count) > 0
-    )
+    return tuple(label for label, count in zip(labels, counts, strict=True) if int(count) > 0)
 
 
 def _raise_for_unimputable_columns(

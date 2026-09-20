@@ -110,7 +110,9 @@ def write_fingerprint_cache_record(
     }
     temporary_path = path.with_suffix(f".{os.getpid()}.tmp")
     with temporary_path.open("w", encoding="utf-8") as handle:
-        json.dump(_json_ready(payload), handle, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        json.dump(
+            _json_ready(payload), handle, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
     temporary_path.replace(path)
 
 

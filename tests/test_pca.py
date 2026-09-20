@@ -84,9 +84,7 @@ class TransformPcaFeatureAlignmentTests(unittest.TestCase):
         df = sample_frame()
         scores, pca, _ = fit_pca(df, n_components=2)
 
-        np.testing.assert_allclose(
-            transform_pca(df.to_numpy(), pca).to_numpy(), scores.to_numpy()
-        )
+        np.testing.assert_allclose(transform_pca(df.to_numpy(), pca).to_numpy(), scores.to_numpy())
 
     def test_transform_applies_the_fitted_scaler(self):
         df = sample_frame()

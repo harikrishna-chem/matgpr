@@ -100,6 +100,7 @@ For development:
 ```bash
 python -m pip install -e ".[dev,examples,bo]"
 python -m ruff check matgpr tests scripts
+python -m ruff format --check matgpr tests scripts
 python -m pytest
 ```
 

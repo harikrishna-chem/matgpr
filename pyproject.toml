@@ -133,6 +133,7 @@ extend-exclude = [
 select = [
     "E",
     "F",
+    "I",
 ]
 ignore = [
     "E402",
