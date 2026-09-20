@@ -26,9 +26,11 @@ phase.
   no longer prints training-loss lines to stdout unless asked. The estimator
   classes already defaulted to `verbose=False` and are unchanged. Pass
   `verbose=True` to restore per-iteration logging.
-- Four completed internal planning documents are no longer published to the
-  documentation site. They remain in `docs/` as project history, so their URLs
-  under <https://harikrishnasahu.com/matgpr/> no longer resolve.
+- Maintainer-only pages are no longer published to the documentation site: four
+  completed internal planning documents, the release checklist, and the PyPI
+  readiness notes. They remain in `docs/` and are linked from the site as
+  repository files, so only their URLs under
+  <https://harikrishnasahu.com/matgpr/> stop resolving.
 - `transform_pca` now raises when the numeric columns of `X` do not match the
   columns seen by `fit_pca`, including a different column order. Previously a
   reordered dataframe silently produced component scores from misaligned

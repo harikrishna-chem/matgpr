@@ -54,7 +54,9 @@ extra_javascript:
 
 exclude_docs: |
   meta_comments_hardening_plan.md
+  pypi_readiness.md
   pypi_release_v0_2_0_plan.md
+  release_checklist.md
   reviewer_feedback_hardening_plan.md
   safe_custom_equation_plan.md
 
@@ -73,8 +75,6 @@ nav:
   - Sparse Multitask Noise: sparse_multitask_noise_design.md
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
-  - Release Checklist: release_checklist.md
-  - PyPI Readiness: pypi_readiness.md
   - MCP Server: mcp_server.md
   - Development Notes:
       - MCP Server Design: mcp_server_design.md
