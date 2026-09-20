@@ -13,12 +13,8 @@ from sklearn.utils.validation import (
     check_consistent_length,
     check_is_fitted,
     column_or_1d,
+    validate_data,
 )
-
-try:
-    from sklearn.utils.validation import validate_data
-except ImportError:  # pragma: no cover - compatibility with older scikit-learn
-    validate_data = None
 
 from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMean, fit_gpytorch_gpr
 from .multitask_gpr import MultitaskGPyTorchPrediction, fit_multitask_gpytorch_gpr
@@ -675,30 +671,14 @@ def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     y_checked = check_array(
         y,
@@ -722,30 +702,14 @@ def _validate_multitask_fit_input(
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     inferred_task_names = _task_names_from_target_input(y)
     if inferred_task_names is not None:
@@ -781,30 +745,14 @@ def _validate_sparse_multitask_fit_input(
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     inferred_task_names = _task_names_from_target_input(y)
     if inferred_task_names is not None:
@@ -860,17 +808,15 @@ def _validate_predict_input(estimator, X) -> np.ndarray:
 
 
 def _validate_prediction_features(estimator, X, *, allow_nan: bool) -> np.ndarray:
-    if validate_data is not None:
-        return validate_data(
-            estimator,
-            X,
-            reset=False,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan" if allow_nan else True,
-            ensure_min_samples=1,
-        )
-
+    return validate_data(
+        estimator,
+        X,
+        reset=False,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan" if allow_nan else True,
+        ensure_min_samples=1,
+    )
     if hasattr(estimator, "feature_names_in_"):
         input_feature_names = _feature_names_from_input(X)
         if input_feature_names is not None and not np.array_equal(
