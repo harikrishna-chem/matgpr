@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import unittest
 
 import matplotlib
@@ -7,13 +8,17 @@ import matplotlib
 matplotlib.use("Agg", force=True)
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from matplotlib.figure import Figure
 
+import matgpr.visualization as visualization
 from matgpr import (
     plot_bo_benchmark_trace,
     plot_bo_campaign_progress,
     plot_bo_regret_trace,
     plot_learning_curve,
+    plot_parity,
 )
 
 
@@ -176,6 +181,52 @@ class LearningCurvePlotTests(unittest.TestCase):
         self.assertEqual(ax.get_ylabel(), "conductivity")
         self.assertEqual(summary["matgpr_best_so_far"].tolist(), [1.1, 1.4])
         self.assertEqual(summary["matgpr_observation_count"].tolist(), [2, 1])
+        plt.close(fig)
+
+
+class CallerSuppliedAxesTests(unittest.TestCase):
+    """Plot helpers must be composable and must not force pyplot figures."""
+
+    def test_every_public_plot_helper_accepts_an_axes(self):
+        without_ax = [
+            name
+            for name in visualization.__all__
+            if "ax" not in inspect.signature(getattr(visualization, name)).parameters
+        ]
+
+        self.assertEqual(without_ax, [])
+
+    def test_plot_draws_on_a_caller_supplied_axes(self):
+        y_true = np.arange(20.0)
+        figure = Figure(figsize=(10, 4))
+        left, right = figure.subplots(1, 2)
+
+        fig_left, ax_left = plot_parity(y_true, y_true + 0.1, ax=left, title="Run A")
+        fig_right, ax_right = plot_parity(y_true, y_true * 1.05, ax=right, title="Run B")
+
+        self.assertIs(fig_left, figure)
+        self.assertIs(fig_right, figure)
+        self.assertIs(ax_left, left)
+        self.assertIs(ax_right, right)
+        self.assertEqual(ax_left.get_title(), "Run A")
+        self.assertEqual(ax_right.get_title(), "Run B")
+
+    def test_supplying_an_axes_creates_no_pyplot_managed_figures(self):
+        y_true = np.arange(20.0)
+        plt.close("all")
+
+        for _ in range(25):
+            plot_parity(y_true, y_true + 0.1, ax=Figure().subplots())
+
+        self.assertEqual(plt.get_fignums(), [])
+
+    def test_omitting_an_axes_still_creates_a_pyplot_figure(self):
+        y_true = np.arange(20.0)
+        plt.close("all")
+
+        fig, _ = plot_parity(y_true, y_true + 0.1)
+
+        self.assertEqual(plt.get_fignums(), [fig.number])
         plt.close(fig)
 
 
