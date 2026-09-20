@@ -15,10 +15,37 @@ phase.
   metadata from a real MCP client session.
 - Read-only MCP prompt templates and static guide resources for featurization,
   physics-informed GPR, validation, and Bayesian-optimization planning.
+- An `ax` argument on every `plot_*` helper, so plots can be composed into a
+  caller-owned figure grid. Passing `ax` also keeps batch plotting out of the
+  global pyplot figure registry, which matters for long-running report jobs.
+
+### Changed
+
+- The functional `fit_*` and `train_*` entry points now default to
+  `verbose=False` instead of `verbose=True`, so importing and calling `matgpr`
+  no longer prints training-loss lines to stdout unless asked. The estimator
+  classes already defaulted to `verbose=False` and are unchanged. Pass
+  `verbose=True` to restore per-iteration logging.
+- `transform_pca` now raises when the numeric columns of `X` do not match the
+  columns seen by `fit_pca`, including a different column order. Previously a
+  reordered dataframe silently produced component scores from misaligned
+  features. `fit_pca` records the training columns on the returned estimator as
+  `matgpr_feature_names_in_`.
 
 ### Fixed
 
-- Nothing yet.
+- Target standardization is now stored in registered buffers on the GPR models
+  (`ExactGPRModel`, `ExactMultitaskGPRModel`, `ExactSparseMultitaskGPRModel`,
+  and `ExactTwoLevelCoKrigingGPRModel`) so it travels with `state_dict()`.
+  Previously it was held in plain attributes, and a model restored from a
+  `state_dict` returned predictions in standardized units with no error. The
+  prediction helpers now raise when a model carries no target standardization
+  rather than silently reporting the wrong units.
+
+  Note: a `state_dict` saved by an earlier version has no `target_mean` or
+  `target_std` entry, so `load_state_dict` will now report those as missing
+  keys. Refit the model, or add both entries before loading. Models saved with
+  `save_artifact`/joblib are unaffected.
 
 ## 0.2.0 - 2026-09-08
 
