@@ -31,11 +31,7 @@ Energy Materials, 8, 1801032, 2018. DOI:
 - Define two objective specifications:
   - PCE, maximized,
   - binding energy, minimized.
-- Rank candidates with BoTorch expected hypervolume improvement when BoTorch is
-  installed.
-- Use a deterministic descriptor-based PCE proxy with Pareto-front and
-  weighted-scalarization utilities as a fallback when optional BoTorch
-  dependencies are unavailable.
+- Rank candidates with BoTorch expected hypervolume improvement.
 - Summarize the recommendations with the BO audit utilities.
 - Plot the candidate pool, retrospective Pareto front, and selected candidates.
 
@@ -57,10 +53,6 @@ The notebook adds lightweight OPV physics scores to the descriptor table:
 - The degeneracy score favors smaller donor-acceptor orbital-offset terms.
 - The binding score favors lower exciton binding energy.
 
-When BoTorch is unavailable, the fallback uses these descriptor-derived scores
-to create a transparent PCE proxy before ranking candidates. It does not rank
-by withheld candidate PCE values.
-
 These scores are not used as hidden targets. They are candidate descriptors
 that help the surrogate model organize the finite pool around domain-relevant
 OPV design ideas.
@@ -69,8 +61,7 @@ OPV design ideas.
 
 Because this is a historical OPV dataset, PCE and binding-energy values are
 already known. The notebook treats PCE values in the candidate pool as withheld
-metadata for retrospective visualization and does not use them for fallback
-ranking. A real BO campaign would not include future target measurements in
+metadata for retrospective visualization and does not use them for ranking. A real BO campaign would not include future target measurements in
 candidate metadata.
 
 ## Takeaway

@@ -33,10 +33,7 @@ Energy Materials, 8, 1801032, 2018. DOI:
   - band-gap and binding-energy feasibility limits,
   - descriptor-space trust region,
   - duplicate or pending-candidate status.
-- Rank candidates with BoTorch upper confidence bound when `botorch` is
-  installed.
-- Use a deterministic ranked-table fallback only when BoTorch is unavailable,
-  so the audit workflow remains executable without optional dependencies.
+- Rank candidates with BoTorch upper confidence bound.
 - Select a diverse eligible batch from feasible, in-region, non-duplicate
   candidates.
 - Summarize the final recommendations with `summarize_bo_recommendation_audit`.

@@ -26,8 +26,8 @@ Energy Materials, 8, 1801032, 2018. DOI:
 - Start with an empty temporary campaign log.
 - Use `resume_bo_campaign` to recover the next iteration and available
   candidates.
-- Run a BO ask step using BoTorch when installed, or a deterministic fallback
-  ranking when BoTorch is unavailable.
+- Run a BO ask step: fit a BoTorch surrogate and rank the available pool with
+  upper confidence bound.
 - Log recommendations with `log_bo_recommendations`.
 - Log the selected experimental batch with `log_selected_experiments`.
 - Reveal withheld OPV PCE values as simulated observations and log them with
