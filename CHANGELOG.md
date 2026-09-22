@@ -53,6 +53,13 @@ phase.
 
 ### Fixed
 
+- The MCP server can be constructed on MCP SDK 1.x again. `create_server`
+  passed `title`, `description`, and `version` unconditionally; MCP 2.x
+  `MCPServer` accepts them but MCP 1.x `FastMCP` raises `TypeError`, so the 1.x
+  fallback could never build a server. The arguments are now filtered against
+  the server class signature. The `mcp` extra also gains an `mcp>=1.14` floor,
+  because 1.10 to 1.13 cannot register tools from modules that use
+  `from __future__ import annotations`.
 - Target standardization is now stored in registered buffers on the GPR models
   (`ExactGPRModel`, `ExactMultitaskGPRModel`, `ExactSparseMultitaskGPRModel`,
   and `ExactTwoLevelCoKrigingGPRModel`) so it travels with `state_dict()`.
