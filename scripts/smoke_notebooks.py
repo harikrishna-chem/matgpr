@@ -1,9 +1,11 @@
-"""Execute reduced versions of example notebooks for CI smoke testing.
+"""Execute the public example notebooks for CI smoke testing.
 
-The full notebooks are scientific benchmark workflows and can be expensive.
-This script modifies notebooks in memory only, reducing repeats, optimizer
-iterations, cross-validation folds, and SHAP sample sizes. It verifies that the
-notebook code paths execute without committing generated outputs.
+The GPR notebooks are scientific benchmark workflows and can be expensive, so
+this script modifies them in memory only, reducing repeats, optimizer
+iterations, cross-validation folds, and SHAP sample sizes. The
+Bayesian-optimization notebooks are already small and run unreduced. Either
+way it verifies that the notebook code paths execute without committing
+generated outputs.
 """
 
 from __future__ import annotations
@@ -18,6 +20,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 NOTEBOOKS = [
     PROJECT_ROOT / "examples" / "opv" / "opv_gpr_modeling.ipynb",
     PROJECT_ROOT / "examples" / "solvent_diffusivity" / "solvent_diffusivity_gpr_modeling.ipynb",
+    # The Bayesian-optimization examples are already small (a few seconds each),
+    # so they run unreduced and exercise the real BoTorch fitting path.
+    PROJECT_ROOT / "examples" / "bayesian_optimization" / "opv_bo_recommendation_audit.ipynb",
+    PROJECT_ROOT / "examples" / "bayesian_optimization" / "opv_closed_loop_bo_campaign.ipynb",
+    PROJECT_ROOT / "examples" / "bayesian_optimization" / "opv_multi_objective_bo_tradeoff.ipynb",
 ]
 
 REPLACEMENTS = {

@@ -48,8 +48,14 @@ For notebook integration smoke checks:
 python scripts/smoke_notebooks.py
 ```
 
-The smoke script executes reduced versions of the notebooks. It is not a
+The smoke script executes every public example notebook: the OPV and solvent
+diffusivity GPR notebooks, and the three OPV Bayesian-optimization notebooks.
+The GPR notebooks run with reduced repeats, iterations, and sample sizes; the
+Bayesian-optimization notebooks are small enough to run unreduced. It is not a
 replacement for full scientific benchmark runs.
+
+When you add an example notebook, add it to `NOTEBOOKS` in
+`scripts/smoke_notebooks.py` so CI executes it.
 
 ## Adding New Examples
 
