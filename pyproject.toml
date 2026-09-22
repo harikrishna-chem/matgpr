@@ -82,8 +82,11 @@ dev = [
 examples = [
     "shap",
 ]
+# MCP 1.10 to 1.13 cannot register tools whose modules use
+# `from __future__ import annotations`; 1.14 is the oldest verified version.
+# MCP 2.x renamed FastMCP to MCPServer and is supported as well.
 mcp = [
-    "mcp[cli]",
+    "mcp[cli]>=1.14",
 ]
 docs = [
     "mkdocs",
