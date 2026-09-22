@@ -21,6 +21,7 @@ pending experiment.
 Use the experiment-logging API to record recommendations, selected batches,
 measured outcomes, and compact campaign summaries across closed-loop
 iterations.
-BoTorch is optional; install `matgpr[bo]` before fitting BoTorch surrogates.
+BoTorch is a required dependency, so these helpers work in any `matgpr`
+installation. It is imported lazily, only when a BoTorch-backed helper runs.
 
 ::: matgpr.bayesian_optimization

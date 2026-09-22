@@ -204,7 +204,7 @@ def plan_bayesian_optimization_workflow(
         guardrails=[
             "Do not run BO on rows that were already measured unless duplicate selection is intentional.",
             "Do not hide feasibility or diversity filters from the recommendation report.",
-            "Keep BoTorch an optional dependency and explain how to install the BO extra.",
+            "State the acquisition function and any scalarization weights in the report, so a recommendation can be reproduced.",
         ],
     )
 

@@ -92,7 +92,7 @@ The following APIs are intended to remain as stable as practical during the
 - scikit-learn-style estimators and featurizers,
 - `PhysicsInformedMean` and GPyTorch GPR helpers,
 - validation, uncertainty, and plotting utilities used by public examples,
-- optional BoTorch finite-pool Bayesian-optimization helpers.
+- BoTorch finite-pool Bayesian-optimization helpers.
 
 When a public API must change, the preferred approach is:
 

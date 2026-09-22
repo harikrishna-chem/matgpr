@@ -31,7 +31,7 @@ prediction accuracy.
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,
   formulation, and processing-condition pools.
-- Optional BoTorch Bayesian optimization for ranking finite candidate pools,
+- BoTorch Bayesian optimization for ranking finite candidate pools,
   passing known observation noise, applying feasibility constraints, selecting
   diverse next-experiment batches, and auditing recommendation decisions.
 - Multi-objective finite-pool selection with Pareto-front and weighted
