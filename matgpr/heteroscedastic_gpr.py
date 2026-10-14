@@ -7,6 +7,7 @@ import gpytorch
 import numpy as np
 import torch
 
+from ._validation import validate_confidence_level
 from .gpytorch_gpr import GPyTorchGPRResult, fit_gpytorch_gpr
 
 __all__ = [
@@ -110,7 +111,7 @@ class HeteroscedasticGPRResult:
             Optional central confidence level, for example ``0.95`` for a
             95 percent interval.
         """
-        _validate_confidence_level(confidence_level)
+        validate_confidence_level(confidence_level)
         need_std = return_std or confidence_level is not None
 
         signal_prediction = self.signal_result.predict(
@@ -176,7 +177,7 @@ def fit_heteroscedastic_gpr(
     noise_variance_floor: float | None = None,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> HeteroscedasticGPRResult:
     """Fit a two-stage heteroscedastic Gaussian Process Regressor.
@@ -304,10 +305,3 @@ def _as_1d_numpy_array(values, *, name: str) -> np.ndarray:
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values")
     return array
-
-
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")

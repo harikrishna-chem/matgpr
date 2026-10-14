@@ -13,12 +13,8 @@ from sklearn.utils.validation import (
     check_consistent_length,
     check_is_fitted,
     column_or_1d,
+    validate_data,
 )
-
-try:
-    from sklearn.utils.validation import validate_data
-except ImportError:  # pragma: no cover - compatibility with older scikit-learn
-    validate_data = None
 
 from .gpytorch_gpr import GPyTorchPrediction, PhysicsEquation, PhysicsInformedMean, fit_gpytorch_gpr
 from .multitask_gpr import MultitaskGPyTorchPrediction, fit_multitask_gpytorch_gpr
@@ -236,9 +232,7 @@ class MatGPRRegressor(RegressorMixin, BaseEstimator):
             X_checked=X_checked,
             y_checked=None,
             output_rows=X_checked.shape[0],
-            imputed_features=_imputed_feature_names(self, X_checked)
-            if policy == "impute"
-            else (),
+            imputed_features=_imputed_feature_names(self, X_checked) if policy == "impute" else (),
             imputation_strategy=_validate_imputation_strategy(self.imputation_strategy)
             if policy == "impute"
             else None,
@@ -551,10 +545,12 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         Missing feature values still follow the estimator-level ``missing``
         policy: reject, drop feature-incomplete rows, or impute features.
         """
-        X_checked, y_checked, task_names, known_noise_variance = _validate_sparse_multitask_fit_input(
-            self,
-            X,
-            y,
+        X_checked, y_checked, task_names, known_noise_variance = (
+            _validate_sparse_multitask_fit_input(
+                self,
+                X,
+                y,
+            )
         )
 
         _seed_torch(self.random_state)
@@ -587,7 +583,9 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         self.target_mean_ = self.result_.target_mean.copy()
         self.target_std_ = self.result_.target_std.copy()
         self.noise_mode_ = self.result_.noise_mode
-        self.standardized_task_noise_variance_ = self.result_.standardized_task_noise_variance.copy()
+        self.standardized_task_noise_variance_ = (
+            self.result_.standardized_task_noise_variance.copy()
+        )
         self.task_noise_variance_ = self.result_.task_noise_variance.copy()
         self.task_noise_std_ = self.result_.task_noise_std.copy()
         self.standardized_observation_noise_variance_ = (
@@ -657,15 +655,6 @@ class SparseMultitaskGPRRegressor(MatGPRRegressor):
         )
 
 
-def _feature_names_from_input(X) -> np.ndarray | None:
-    if not hasattr(X, "columns"):
-        return None
-    names = np.asarray(X.columns, dtype=object)
-    if not all(isinstance(name, str) for name in names):
-        return None
-    return names
-
-
 def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     _clear_missing_state(estimator)
     if y is None:
@@ -673,30 +662,14 @@ def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     y_checked = check_array(
         y,
@@ -711,37 +684,23 @@ def _validate_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray]:
     return _apply_fit_missing_policy(estimator, X_checked, y_checked, policy)
 
 
-def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
+def _validate_multitask_fit_input(
+    estimator, X, y
+) -> tuple[np.ndarray, np.ndarray, tuple[str, ...] | None]:
     _clear_missing_state(estimator)
     if y is None:
         raise ValueError("requires y to be passed, but the target y is None")
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     inferred_task_names = _task_names_from_target_input(y)
     if inferred_task_names is not None:
@@ -758,8 +717,7 @@ def _validate_multitask_fit_input(estimator, X, y) -> tuple[np.ndarray, np.ndarr
     )
     if y_checked.shape[1] < 2:
         raise ValueError(
-            "MultitaskGPRRegressor requires at least two target columns; "
-            f"got {y_checked.shape[1]}"
+            f"MultitaskGPRRegressor requires at least two target columns; got {y_checked.shape[1]}"
         )
 
     check_consistent_length(X_checked, y_checked)
@@ -778,30 +736,14 @@ def _validate_sparse_multitask_fit_input(
     policy = _validate_missing_policy(estimator.missing)
     _validate_imputation_strategy(estimator.imputation_strategy)
 
-    if validate_data is not None:
-        X_checked = validate_data(
-            estimator,
-            X,
-            reset=True,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-    else:
-        feature_names = _feature_names_from_input(X)
-        X_checked = check_array(
-            X,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan",
-        )
-        estimator.n_features_in_ = X_checked.shape[1]
-        if feature_names is not None:
-            if len(feature_names) != estimator.n_features_in_:
-                raise ValueError("Number of dataframe columns does not match validated features")
-            estimator.feature_names_in_ = feature_names
-        elif hasattr(estimator, "feature_names_in_"):
-            delattr(estimator, "feature_names_in_")
+    X_checked = validate_data(
+        estimator,
+        X,
+        reset=True,
+        ensure_2d=True,
+        dtype="numeric",
+        ensure_all_finite="allow-nan",
+    )
 
     inferred_task_names = _task_names_from_target_input(y)
     if inferred_task_names is not None:
@@ -857,38 +799,15 @@ def _validate_predict_input(estimator, X) -> np.ndarray:
 
 
 def _validate_prediction_features(estimator, X, *, allow_nan: bool) -> np.ndarray:
-    if validate_data is not None:
-        return validate_data(
-            estimator,
-            X,
-            reset=False,
-            ensure_2d=True,
-            dtype="numeric",
-            ensure_all_finite="allow-nan" if allow_nan else True,
-            ensure_min_samples=1,
-        )
-
-    if hasattr(estimator, "feature_names_in_"):
-        input_feature_names = _feature_names_from_input(X)
-        if input_feature_names is not None and not np.array_equal(
-            input_feature_names,
-            estimator.feature_names_in_,
-        ):
-            raise ValueError("Prediction features must match the fitted feature names and order")
-
-    X_checked = check_array(
+    return validate_data(
+        estimator,
         X,
+        reset=False,
         ensure_2d=True,
         dtype="numeric",
-        ensure_min_samples=1,
         ensure_all_finite="allow-nan" if allow_nan else True,
+        ensure_min_samples=1,
     )
-    if X_checked.shape[1] != estimator.n_features_in_:
-        raise ValueError(
-            f"X has {X_checked.shape[1]} features, but this estimator was fitted with "
-            f"{estimator.n_features_in_} features"
-        )
-    return X_checked
 
 
 def _clear_missing_state(estimator) -> None:
@@ -914,8 +833,7 @@ def _validate_imputation_strategy(strategy: str) -> str:
     valid = {"mean", "median", "most_frequent", "constant"}
     if normalized not in valid:
         raise ValueError(
-            "imputation_strategy must be one of: "
-            "'mean', 'median', 'most_frequent', or 'constant'"
+            "imputation_strategy must be one of: 'mean', 'median', 'most_frequent', or 'constant'"
         )
     return normalized
 
@@ -1154,9 +1072,7 @@ def _feature_missing_counts(estimator, X_checked: np.ndarray) -> dict[str, int]:
     labels = _feature_labels(estimator, X_checked.shape[1])
     counts = np.isnan(X_checked).sum(axis=0)
     return {
-        label: int(count)
-        for label, count in zip(labels, counts, strict=True)
-        if int(count) > 0
+        label: int(count) for label, count in zip(labels, counts, strict=True) if int(count) > 0
     }
 
 
@@ -1193,9 +1109,7 @@ def _resolve_estimator_task_names(
 def _imputed_feature_names(estimator, X_checked: np.ndarray) -> tuple[str, ...]:
     labels = _feature_labels(estimator, X_checked.shape[1])
     counts = np.isnan(X_checked).sum(axis=0)
-    return tuple(
-        label for label, count in zip(labels, counts, strict=True) if int(count) > 0
-    )
+    return tuple(label for label, count in zip(labels, counts, strict=True) if int(count) > 0)
 
 
 def _raise_for_unimputable_columns(

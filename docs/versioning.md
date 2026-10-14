@@ -74,12 +74,12 @@ with modern scientific Python environments. Reproducibility should come from
 pinning the `matgpr` version or commit and saving an environment lock file for
 the project that used it.
 
-Core dependencies are kept lightweight enough for common GPR workflows. Heavier
-materials-informatics backends are exposed as optional extras, for example:
+Core dependencies cover the standard workflows end to end: featurization,
+GPR, Bayesian optimization, and plotting. Additional materials-informatics
+fingerprint backends are exposed as optional extras, for example:
 
 ```bash
 python -m pip install "matgpr[materials-extra]"
-python -m pip install "matgpr[bo]"
 python -m pip install "matgpr[all-fingerprints]"
 ```
 
@@ -92,7 +92,7 @@ The following APIs are intended to remain as stable as practical during the
 - scikit-learn-style estimators and featurizers,
 - `PhysicsInformedMean` and GPyTorch GPR helpers,
 - validation, uncertainty, and plotting utilities used by public examples,
-- optional BoTorch finite-pool Bayesian-optimization helpers.
+- BoTorch finite-pool Bayesian-optimization helpers.
 
 When a public API must change, the preferred approach is:
 

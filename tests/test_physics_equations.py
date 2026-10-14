@@ -6,8 +6,8 @@ import torch
 
 from matgpr import (
     R_GAS_CONSTANT_J_MOL_K,
-    PhysicsFeatureSpec,
     PhysicsEquationTemplate,
+    PhysicsFeatureSpec,
     PhysicsParameterSpec,
     arrhenius_linear_growth_equation,
     arrhenius_rate_equation,
@@ -17,8 +17,8 @@ from matgpr import (
     free_volume_exponential_equation,
     get_physics_equation_template,
     hall_petch_equation,
-    linear_parabolic_growth_equation,
     linear_growth_equation,
+    linear_parabolic_growth_equation,
     list_physics_equation_templates,
     power_law_equation,
     rule_of_mixtures_equation,
@@ -41,7 +41,9 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
         self.assertIn("linear_oxidation", names_with_aliases)
         self.assertIn("linear_parabolic_growth", names)
         self.assertIn("linear_parabolic", names_with_aliases)
-        self.assertTrue(all(isinstance(template, PhysicsEquationTemplate) for template in templates))
+        self.assertTrue(
+            all(isinstance(template, PhysicsEquationTemplate) for template in templates)
+        )
         self.assertEqual(get_physics_equation_template("arrhenius").name, "arrhenius_rate")
         self.assertEqual(
             get_physics_equation_template("linear_oxidation").name,
@@ -83,7 +85,9 @@ class PhysicsEquationTemplateTests(unittest.TestCase):
 
         self.assertIn("arrhenius_rate", {template.name for template in transport_templates})
         self.assertEqual([template.name for template in grain_templates], ["hall_petch"])
-        self.assertEqual([template.name for template in polymer_templates], ["free_volume_exponential"])
+        self.assertEqual(
+            [template.name for template in polymer_templates], ["free_volume_exponential"]
+        )
         self.assertIn("name", summary.columns)
         self.assertIn("required_features", summary.columns)
         self.assertGreaterEqual(summary.shape[0], 6)

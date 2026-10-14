@@ -519,7 +519,9 @@ def available_physics_equation_templates(*, include_aliases: bool = False) -> tu
     """Return available template names, optionally including aliases."""
     names = [template.name for template in _PHYSICS_EQUATION_TEMPLATES]
     if include_aliases:
-        names.extend(alias for template in _PHYSICS_EQUATION_TEMPLATES for alias in template.aliases)
+        names.extend(
+            alias for template in _PHYSICS_EQUATION_TEMPLATES for alias in template.aliases
+        )
     return tuple(names)
 
 
@@ -529,7 +531,9 @@ def get_physics_equation_template(name: str) -> PhysicsEquationTemplate:
     lookup = _template_lookup()
     if key not in lookup:
         available = ", ".join(available_physics_equation_templates(include_aliases=True))
-        raise ValueError(f"Unknown physics equation template '{name}'. Available templates: {available}")
+        raise ValueError(
+            f"Unknown physics equation template '{name}'. Available templates: {available}"
+        )
     return lookup[key]
 
 
@@ -557,7 +561,9 @@ def search_physics_equation_templates(
     )
     matches: list[PhysicsEquationTemplate] = []
     for template in _PHYSICS_EQUATION_TEMPLATES:
-        if query is not None and _normalize_template_name(query) not in _template_search_text(template):
+        if query is not None and _normalize_template_name(query) not in _template_search_text(
+            template
+        ):
             continue
         if application is not None and not _contains_normalized(
             template.applications,

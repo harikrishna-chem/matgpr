@@ -81,8 +81,12 @@ class StructureFingerprintTests(unittest.TestCase):
 
     def test_structure_cache_reports_hits(self):
         with tempfile.TemporaryDirectory() as cache_dir:
-            first = featurize_structures([_diamond_structure()], features=("density",), cache_dir=cache_dir)
-            second = featurize_structures([_diamond_structure()], features=("density",), cache_dir=cache_dir)
+            first = featurize_structures(
+                [_diamond_structure()], features=("density",), cache_dir=cache_dir
+            )
+            second = featurize_structures(
+                [_diamond_structure()], features=("density",), cache_dir=cache_dir
+            )
 
         self.assertFalse(bool(first.cache_hit.iloc[0]))
         self.assertTrue(bool(second.cache_hit.iloc[0]))

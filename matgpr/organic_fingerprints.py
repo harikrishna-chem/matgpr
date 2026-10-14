@@ -35,6 +35,7 @@ DEFAULT_RDKIT_DESCRIPTORS: tuple[str, ...] = (
     "HeavyAtomCount",
     "MolMR",
 )
+from ._validation import cached_float
 
 
 @dataclass(frozen=True)
@@ -243,7 +244,9 @@ def featurize_smiles(
             )
         except Exception as exc:
             if errors == "raise":
-                raise ValueError(f"Could not featurize SMILES at position {index}: {smiles!r}") from exc
+                raise ValueError(
+                    f"Could not featurize SMILES at position {index}: {smiles!r}"
+                ) from exc
             if feature_names is None:
                 feature_names = _feature_names(
                     fingerprint_type=fingerprint_type,
@@ -337,8 +340,7 @@ def _polymer_endpoint_info(molecule) -> dict[str, tuple[int, int, object]]:
     )
     if len(dummy_atoms) != 2:
         raise ValueError(
-            "Polymer SMILES must contain exactly two [*] dummy atoms; "
-            f"found {len(dummy_atoms)}"
+            f"Polymer SMILES must contain exactly two [*] dummy atoms; found {len(dummy_atoms)}"
         )
 
     endpoints = []
@@ -503,7 +505,7 @@ def _read_cached_smiles_row(
     if len(features) != n_features:
         return None
     return {
-        "array": np.asarray([_cached_float(value) for value in features], dtype=float),
+        "array": np.asarray([cached_float(value) for value in features], dtype=float),
         "canonical_smiles": canonical_smiles,
     }
 
@@ -529,12 +531,6 @@ def _write_cached_smiles_row(
             "metadata": dict(metadata),
         },
     )
-
-
-def _cached_float(value: object) -> float:
-    if value is None:
-        return np.nan
-    return float(value)
 
 
 def _bit_vector_to_array(bit_vector) -> np.ndarray:

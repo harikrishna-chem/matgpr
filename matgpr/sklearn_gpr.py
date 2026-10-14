@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import ConstantKernel, Matern, RBF, WhiteKernel
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern, WhiteKernel
 from sklearn.model_selection import GridSearchCV
 
 from .kernels import (

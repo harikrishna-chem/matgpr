@@ -8,11 +8,15 @@ import gpytorch
 import numpy as np
 import torch
 
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
+)
 from .gpytorch_gpr import (
     _make_gpytorch_base_kernel,
+    _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
-    _validate_confidence_level,
     _validate_training_options,
 )
 
@@ -148,6 +152,15 @@ class ExactMultitaskGPRModel(gpytorch.models.ExactGP):
             num_tasks=self.num_tasks,
             rank=self.task_covar_rank,
         )
+        # Buffers so per-task target standardization survives ``state_dict()``.
+        self.register_buffer(
+            "target_mean",
+            torch.zeros(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
+        )
+        self.register_buffer(
+            "target_std",
+            torch.ones(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
+        )
 
     def forward(self, x: torch.Tensor) -> gpytorch.distributions.MultitaskMultivariateNormal:
         mean_x = self.mean_module(x)
@@ -171,7 +184,7 @@ def fit_multitask_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> MultitaskGPyTorchResult:
     """Fit an exact multitask GPyTorch Gaussian Process Regressor.
@@ -220,7 +233,7 @@ def fit_multitask_gpytorch_gpr(
 
     num_tasks = train_y.shape[1]
     task_names_resolved = _resolve_task_names(task_names, num_tasks)
-    task_covar_rank = _validate_task_covar_rank(task_covar_rank, num_tasks)
+    task_covar_rank = validate_task_covar_rank(task_covar_rank, num_tasks)
 
     if standardize_y:
         target_mean = train_y.mean(dim=0)
@@ -229,7 +242,9 @@ def fit_multitask_gpytorch_gpr(
         if torch.any(zero_std_mask):
             zero_std_tasks = [
                 name
-                for name, is_zero in zip(task_names_resolved, zero_std_mask.detach().cpu(), strict=True)
+                for name, is_zero in zip(
+                    task_names_resolved, zero_std_mask.detach().cpu(), strict=True
+                )
                 if bool(is_zero)
             ]
             raise ValueError(f"y_train has zero standard deviation for task(s): {zero_std_tasks}")
@@ -323,7 +338,7 @@ def train_multitask_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):
@@ -403,7 +418,7 @@ def _predict_multitask_gpytorch_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> MultitaskGPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=device, dtype=dtype)
@@ -417,12 +432,16 @@ def _predict_multitask_gpytorch_gpr(
         mean = prediction_distribution.mean
         std = prediction_distribution.stddev if return_std or confidence_level is not None else None
 
-    if hasattr(model, "target_mean") and hasattr(model, "target_std"):
-        target_mean = model.target_mean.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        target_std = model.target_std.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        mean = mean * target_std + target_mean
-        if std is not None:
-            std = std * target_std
+    target_mean, target_std = _require_target_standardization(
+        model,
+        dtype=mean.dtype,
+        device=mean.device,
+    )
+    target_mean = target_mean.reshape(1, -1)
+    target_std = target_std.reshape(1, -1)
+    mean = mean * target_std + target_mean
+    if std is not None:
+        std = std * target_std
 
     mean_array = mean.detach().cpu().numpy()
     std_array = None if std is None else std.detach().cpu().numpy()
@@ -458,8 +477,7 @@ def _validate_multitask_training_arrays(train_x: torch.Tensor, train_y: torch.Te
         )
     if train_y.shape[1] < 2:
         raise ValueError(
-            "Multitask GPR requires at least two target tasks; "
-            f"got n_tasks = {train_y.shape[1]}"
+            f"Multitask GPR requires at least two target tasks; got n_tasks = {train_y.shape[1]}"
         )
     if not torch.isfinite(train_x).all():
         raise ValueError("X_train must contain only finite values")
@@ -494,16 +512,6 @@ def _resolve_task_names(task_names: Sequence[str] | None, num_tasks: int) -> tup
     if len(set(resolved)) != len(resolved):
         raise ValueError("task_names must be unique")
     return resolved
-
-
-def _validate_task_covar_rank(task_covar_rank: int, num_tasks: int) -> int:
-    if not isinstance(task_covar_rank, int):
-        raise ValueError("task_covar_rank must be an integer")
-    if task_covar_rank < 1:
-        raise ValueError("task_covar_rank must be at least 1")
-    if task_covar_rank > num_tasks:
-        raise ValueError("task_covar_rank cannot be larger than the number of tasks")
-    return task_covar_rank
 
 
 def _initialize_multitask_likelihood(

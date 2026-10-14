@@ -9,8 +9,17 @@ import numpy as np
 import torch
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.metrics import r2_score
-from sklearn.utils.validation import check_array, check_consistent_length, check_is_fitted, column_or_1d
+from sklearn.utils.validation import (
+    check_array,
+    check_consistent_length,
+    check_is_fitted,
+    column_or_1d,
+)
 
+from ._validation import (
+    normalize_fidelity_label,
+    validate_confidence_level,
+)
 from .gpytorch_gpr import (
     GPyTorchGPRResult,
     _make_gpytorch_base_kernel,
@@ -276,6 +285,13 @@ class ExactTwoLevelCoKrigingGPRModel(gpytorch.models.ExactGP):
         self.discrepancy_covar_module = gpytorch.kernels.ScaleKernel(
             _make_gpytorch_base_kernel(discrepancy_kernel, ard_num_dims=ard_num_dims)
         )
+        # Buffers so target standardization survives ``state_dict()``.
+        self.register_buffer(
+            "target_mean", torch.zeros((), dtype=train_x.dtype, device=train_x.device)
+        )
+        self.register_buffer(
+            "target_std", torch.ones((), dtype=train_x.dtype, device=train_x.device)
+        )
 
     def forward(
         self,
@@ -320,9 +336,9 @@ class ExactTwoLevelCoKrigingGPRModel(gpytorch.models.ExactGP):
             torch.zeros_like(x[:, 0]),
         )
         low_weight_matrix = low_weights.unsqueeze(-1) * low_weights.unsqueeze(-2)
-        discrepancy_weight_matrix = (
-            discrepancy_weights.unsqueeze(-1) * discrepancy_weights.unsqueeze(-2)
-        )
+        discrepancy_weight_matrix = discrepancy_weights.unsqueeze(
+            -1
+        ) * discrepancy_weights.unsqueeze(-2)
 
         low_covar = self.low_covar_module(x).mul(low_weight_matrix)
         discrepancy_covar = self.discrepancy_covar_module(x).mul(discrepancy_weight_matrix)
@@ -438,7 +454,7 @@ def fit_cokriging_gpr(
     min_observations_per_fidelity: int = 2,
     device: str = "cpu",
     dtype: torch.dtype | str = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> CoKrigingGPRResult:
     """Fit a two-level autoregressive co-kriging GPR model.
@@ -578,7 +594,7 @@ def fit_delta_multifidelity_gpr(
     include_low_fidelity_uncertainty: bool = True,
     device: str = "cpu",
     dtype: torch.dtype | str = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> DeltaMultiFidelityGPRResult:
     """Fit a delta multi-fidelity GPR model.
@@ -995,7 +1011,7 @@ def _predict_delta_multifidelity_gpr(
     include_observation_noise: bool,
     include_low_fidelity_uncertainty: bool | None,
 ) -> MultiFidelityGPRPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     X_array = _to_2d_numpy(X, "X")
     low_mean, low_std = _resolve_prediction_low_fidelity(
         result,
@@ -1057,7 +1073,7 @@ def _predict_cokriging_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> CoKrigingGPRPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     result.model.eval()
     result.likelihood.eval()
     test_x = _to_tensor(X, device=result.device, dtype=result.dtype)
@@ -1076,7 +1092,9 @@ def _predict_cokriging_gpr(
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         latent_distribution = result.model(test_x, pred_fidelity_indices)
         prediction_distribution = (
-            result.likelihood(latent_distribution) if include_observation_noise else latent_distribution
+            result.likelihood(latent_distribution)
+            if include_observation_noise
+            else latent_distribution
         )
         mean = prediction_distribution.mean
         std = prediction_distribution.stddev if return_std or confidence_level is not None else None
@@ -1263,8 +1281,7 @@ def _resolve_prediction_low_fidelity(
         return values, None
     if result.low_fidelity_model is None:
         raise ValueError(
-            "low_fidelity is required for prediction because no low-fidelity "
-            "surrogate was fitted"
+            "low_fidelity is required for prediction because no low-fidelity surrogate was fitted"
         )
     prediction = result.low_fidelity_model.predict(
         X,
@@ -1318,7 +1335,7 @@ def _resolve_two_level_fidelities(
     target_name = (
         observation_data.target_fidelity
         if target_fidelity is None
-        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+        else normalize_fidelity_label(target_fidelity, "target_fidelity")
     )
     if target_name not in observation_data.fidelity_names:
         raise ValueError(
@@ -1328,7 +1345,7 @@ def _resolve_two_level_fidelities(
     if low_fidelity is None:
         low_name = low_candidates[0]
     else:
-        low_name = _normalize_fidelity_label(low_fidelity, "low_fidelity")
+        low_name = normalize_fidelity_label(low_fidelity, "low_fidelity")
         if low_name not in observation_data.fidelity_names:
             raise ValueError(
                 f"low_fidelity must be one of {observation_data.fidelity_names}; got {low_name!r}"
@@ -1478,7 +1495,7 @@ def _to_1d_fidelity_labels(values, name: str) -> np.ndarray:
 
     labels: list[str] = []
     for raw_value in array:
-        labels.append(_normalize_fidelity_label(raw_value, name))
+        labels.append(normalize_fidelity_label(raw_value, name))
     return np.asarray(labels, dtype=object)
 
 
@@ -1491,7 +1508,7 @@ def _resolve_fidelity_names(
         fidelity_names = tuple(dict.fromkeys(labels.tolist()))
     else:
         fidelity_names = tuple(
-            _normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
+            normalize_fidelity_label(name, "fidelity_order") for name in fidelity_order
         )
 
     if not fidelity_names:
@@ -1529,20 +1546,11 @@ def _resolve_target_fidelity(
     target = (
         fidelity_names[-1]
         if target_fidelity is None
-        else _normalize_fidelity_label(target_fidelity, "target_fidelity")
+        else normalize_fidelity_label(target_fidelity, "target_fidelity")
     )
     if target not in fidelity_names:
         raise ValueError(f"target_fidelity must be one of {fidelity_names}; got {target!r}")
     return target
-
-
-def _normalize_fidelity_label(value, name: str) -> str:
-    if value is None:
-        raise ValueError(f"{name} must not contain missing labels")
-    label = str(value).strip()
-    if label == "" or label.lower() == "nan":
-        raise ValueError(f"{name} must not contain missing labels")
-    return label
 
 
 def _resolve_sample_id(sample_id, n_samples: int) -> np.ndarray | None:
@@ -1621,13 +1629,6 @@ def _validate_feature_width_match(X_high: np.ndarray, X_low, high_name: str, low
             f"{high_name} has {X_high.shape[1]} features, but {low_name} has "
             f"{X_low_array.shape[1]} features"
         )
-
-
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
 
 
 def _resolve_torch_dtype(dtype: str | torch.dtype) -> torch.dtype:

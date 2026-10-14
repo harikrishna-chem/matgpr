@@ -31,7 +31,7 @@ prediction accuracy.
   configurable learning curves.
 - Candidate-generation helpers for finite chemistry, composition,
   formulation, and processing-condition pools.
-- Optional BoTorch Bayesian optimization for ranking finite candidate pools,
+- BoTorch Bayesian optimization for ranking finite candidate pools,
   passing known observation noise, applying feasibility constraints, selecting
   diverse next-experiment batches, and auditing recommendation decisions.
 - Multi-objective finite-pool selection with Pareto-front and weighted
@@ -67,13 +67,13 @@ prediction accuracy.
 11. Use [Fingerprinting Options](fingerprinting_options.md) to choose descriptors.
 12. Review [Versioning And Stability](versioning.md) before pinning a release
    for a paper, benchmark, or production workflow.
-13. Use the [Release Checklist](release_checklist.md) before tagging a public
-   package release.
-14. Review [PyPI Readiness](pypi_readiness.md) before uploading a package
-   distribution.
-15. Use the [MCP Server](mcp_server.md) guide to connect `matgpr` to local AI
+13. Use the [Release Checklist](https://github.com/harikrishna-chem/matgpr/blob/main/docs/release_checklist.md) and
+   [PyPI Readiness](https://github.com/harikrishna-chem/matgpr/blob/main/docs/pypi_readiness.md) notes in the repository before
+   tagging a release or uploading a distribution. These are maintainer notes
+   and are not published here.
+14. Use the [MCP Server](mcp_server.md) guide to connect `matgpr` to local AI
     coding agents.
-16. Check the [API Reference](api/index.md) when writing scripts or notebooks.
+15. Check the [API Reference](api/index.md) when writing scripts or notebooks.
 
 ## Installation
 
@@ -86,7 +86,7 @@ python -m pip install matgpr
 For optional example and Bayesian-optimization dependencies:
 
 ```bash
-python -m pip install "matgpr[examples,bo]"
+python -m pip install "matgpr[examples]"
 ```
 
 From a local checkout:
@@ -98,8 +98,9 @@ python -m pip install -e .
 For development:
 
 ```bash
-python -m pip install -e ".[dev,examples,bo]"
+python -m pip install -e ".[dev,examples]"
 python -m ruff check matgpr tests scripts
+python -m ruff format --check matgpr tests scripts
 python -m pytest
 ```
 

@@ -9,6 +9,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from ._validation import validate_confidence_level
+
 TensorMap = dict[str, torch.Tensor]
 PhysicsEquation = Callable[[Mapping[str, torch.Tensor], Mapping[str, torch.Tensor]], torch.Tensor]
 
@@ -314,6 +316,15 @@ class ExactGPRModel(gpytorch.models.ExactGP):
         self.covar_module = gpytorch.kernels.ScaleKernel(
             _make_gpytorch_base_kernel(kernel, ard_num_dims=ard_num_dims)
         )
+        # Registered as buffers so target standardization travels with
+        # ``state_dict()``. Predictions are returned in original target units,
+        # so losing these values silently would return standardized units.
+        self.register_buffer(
+            "target_mean", torch.zeros((), dtype=train_x.dtype, device=train_x.device)
+        )
+        self.register_buffer(
+            "target_std", torch.ones((), dtype=train_x.dtype, device=train_x.device)
+        )
 
     def forward(self, x: torch.Tensor) -> gpytorch.distributions.MultivariateNormal:
         mean_x = self.mean_module(x)
@@ -334,7 +345,7 @@ def fit_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> GPyTorchGPRResult:
     """Fit an exact GPyTorch Gaussian Process Regressor.
@@ -361,6 +372,12 @@ def fit_gpytorch_gpr(
     standardize_y
         Whether to standardize target values during optimization. Predictions
         are always returned in original target units.
+    verbose
+        If ``True``, print a training-loss line every ``log_every``
+        iterations. Off by default so library calls stay quiet.
+    log_every
+        Iteration interval between printed training-loss lines when
+        ``verbose`` is ``True``.
     """
     _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
     device_object = torch.device(device)
@@ -454,7 +471,7 @@ def train_gpytorch_gpr(
     standardize_y: bool = True,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):
@@ -531,7 +548,7 @@ def _predict_gpytorch_gpr(
     confidence_level: float | None,
     include_observation_noise: bool,
 ) -> GPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=torch.device(device), dtype=dtype)
@@ -544,12 +561,14 @@ def _predict_gpytorch_gpr(
         mean = prediction_distribution.mean
         std = prediction_distribution.stddev if return_std or confidence_level is not None else None
 
-    if hasattr(model, "target_mean") and hasattr(model, "target_std"):
-        target_mean = model.target_mean.to(dtype=mean.dtype, device=mean.device)
-        target_std = model.target_std.to(dtype=mean.dtype, device=mean.device)
-        mean = mean * target_std + target_mean
-        if std is not None:
-            std = std * target_std
+    target_mean, target_std = _require_target_standardization(
+        model,
+        dtype=mean.dtype,
+        device=mean.device,
+    )
+    mean = mean * target_std + target_mean
+    if std is not None:
+        std = std * target_std
 
     mean_array = mean.detach().cpu().numpy()
     std_array = None if std is None else std.detach().cpu().numpy()
@@ -718,11 +737,32 @@ def _validate_mean_module_feature_width(
         mean_module._validate_feature_width(n_features)
 
 
-def _validate_confidence_level(confidence_level: float | None) -> None:
-    if confidence_level is None:
-        return
-    if not 0 < confidence_level < 1:
-        raise ValueError("confidence_level must be between 0 and 1")
+def _require_target_standardization(
+    model: torch.nn.Module,
+    *,
+    dtype: torch.dtype,
+    device: torch.device,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return the target mean and standard deviation held by a fitted model.
+
+    Models fitted by ``matgpr`` keep target standardization in registered
+    buffers so predictions can be returned in original target units. A model
+    without those buffers cannot be de-standardized, and returning standardized
+    predictions silently would report values in the wrong units, so this raises
+    instead.
+    """
+    target_mean = getattr(model, "target_mean", None)
+    target_std = getattr(model, "target_std", None)
+    if target_mean is None or target_std is None:
+        raise ValueError(
+            "model is missing the target_mean/target_std buffers needed to return "
+            "predictions in original target units. Use a model fitted by matgpr, or "
+            "register both buffers before predicting."
+        )
+    return (
+        target_mean.to(dtype=dtype, device=device),
+        target_std.to(dtype=dtype, device=device),
+    )
 
 
 def _should_log_iteration(iteration: int, training_iter: int, log_every: int) -> bool:

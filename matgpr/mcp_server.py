@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from ._version import __version__
@@ -52,12 +53,7 @@ def create_server() -> Any:
     """
     server_class = _mcp_server_class()
 
-    server = server_class(
-        MCP_SERVER_NAME,
-        title="matgpr",
-        description="Read-only public helpers for the matgpr materials-informatics GPR toolkit.",
-        version=__version__,
-    )
+    server = server_class(MCP_SERVER_NAME, **_server_metadata_arguments(server_class))
     for tool_function in MCP_TOOL_FUNCTIONS:
         server.tool()(tool_function)
     for registration in MCP_PROMPT_REGISTRATIONS:
@@ -85,6 +81,28 @@ def main() -> None:
     except ImportError as exc:
         raise SystemExit(str(exc)) from exc
     server.run()
+
+
+def _server_metadata_arguments(server_class: type[Any]) -> dict[str, Any]:
+    """Return the server metadata arguments this MCP SDK version accepts.
+
+    MCP 2.x `MCPServer` takes `title`, `description`, and `version`. MCP 1.x
+    `FastMCP` takes none of them and raises `TypeError` if they are passed, so
+    they are filtered against the constructor signature rather than assumed.
+    """
+    metadata: dict[str, Any] = {
+        "title": "matgpr",
+        "description": "Read-only public helpers for the matgpr materials-informatics GPR toolkit.",
+        "version": __version__,
+    }
+    try:
+        parameters = inspect.signature(server_class).parameters
+    except (TypeError, ValueError):  # pragma: no cover - exotic server classes
+        return metadata
+
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return metadata
+    return {name: value for name, value in metadata.items() if name in parameters}
 
 
 def _mcp_server_class() -> type[Any]:

@@ -175,7 +175,6 @@ def list_capabilities() -> dict[str, object]:
                     "CandidateDuplicatePolicy",
                     "CandidateTrustRegion",
                 ],
-                optional_extra="bo",
             ),
             _capability(
                 "visualization",
@@ -558,7 +557,7 @@ def suggest_bo_workflow(
             "log_bo_recommendations",
             "summarize_bo_recommendation_audit",
         ],
-        "optional_extra": "bo",
+        "optional_extra": None,
         "warnings": _bo_warnings(count),
     }
 

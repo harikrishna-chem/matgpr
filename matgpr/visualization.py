@@ -6,6 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes
 
 try:
     from .metrics import regression_metrics
@@ -37,6 +38,7 @@ def plot_parity(
     y_test_true=None,
     y_test_pred=None,
     y_test_std=None,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6.5, 6.5),
     title: str = "Parity Plot",
     xlabel: str = "True values",
@@ -53,7 +55,7 @@ def plot_parity(
     y_train_pred = _to_1d_array(y_train_pred)
     y_train_std = None if y_train_std is None else _to_1d_array(y_train_std)
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     ax.errorbar(
         y_train_true,
         y_train_pred,
@@ -121,7 +123,9 @@ def plot_parity(
     min_val -= padding
     max_val += padding
 
-    ax.plot([min_val, max_val], [min_val, max_val], "--", linewidth=1.5, color="black", label="Ideal")
+    ax.plot(
+        [min_val, max_val], [min_val, max_val], "--", linewidth=1.5, color="black", label="Ideal"
+    )
     ax.set_xlim(min_val, max_val)
     ax.set_ylim(min_val, max_val)
     ax.set_xlabel(xlabel)
@@ -141,6 +145,7 @@ def plot_distribution(
     density: bool = False,
     color: str = "tab:blue",
     alpha: float = 0.8,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6, 4.5),
     title: str = "Distribution Plot",
     xlabel: str = "Value",
@@ -156,15 +161,31 @@ def plot_distribution(
     if values.size == 0:
         raise ValueError("No valid numeric values provided")
 
-    fig, ax = plt.subplots(figsize=figsize)
-    ax.hist(values, bins=bins, density=density, color=color, alpha=alpha, edgecolor="black", linewidth=0.8)
+    fig, ax = _resolve_axes(ax, figsize)
+    ax.hist(
+        values,
+        bins=bins,
+        density=density,
+        color=color,
+        alpha=alpha,
+        edgecolor="black",
+        linewidth=0.8,
+    )
 
     if show_mean:
         mean_value = np.mean(values)
-        ax.axvline(mean_value, color="red", linestyle="--", linewidth=2, label=f"Mean = {mean_value:.3f}")
+        ax.axvline(
+            mean_value, color="red", linestyle="--", linewidth=2, label=f"Mean = {mean_value:.3f}"
+        )
     if show_median:
         median_value = np.median(values)
-        ax.axvline(median_value, color="darkorange", linestyle="-.", linewidth=2, label=f"Median = {median_value:.3f}")
+        ax.axvline(
+            median_value,
+            color="darkorange",
+            linestyle="-.",
+            linewidth=2,
+            label=f"Median = {median_value:.3f}",
+        )
 
     ax.set_title(title)
     ax.set_xlabel(xlabel)
@@ -182,6 +203,7 @@ def plot_correlation_matrix(
     *,
     columns: list[str] | None = None,
     method: str = "pearson",
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (8, 6),
     title: str = "Correlation Matrix",
     cmap: str = "coolwarm",
@@ -203,7 +225,7 @@ def plot_correlation_matrix(
         raise ValueError("At least two numeric columns are required")
 
     corr = data.corr(method=method)
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     image = ax.imshow(corr, cmap=cmap, vmin=-1, vmax=1, aspect="auto")
     colorbar = fig.colorbar(image, ax=ax)
     colorbar.set_label(f"{method.title()} correlation")
@@ -243,6 +265,7 @@ def plot_learning_curve(
     x_axis: str = "percent",
     model_col: str = "model",
     models: list[str] | None = None,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (7, 5),
     title: str | None = None,
     ylabel: str | None = None,
@@ -286,9 +309,7 @@ def plot_learning_curve(
     metric_frames = []
     for column in metric_columns:
         split_name, metric_name = _metric_column_parts(column)
-        metric_frame = plot_df[[model_col, x_col, column]].rename(
-            columns={column: "metric_value"}
-        )
+        metric_frame = plot_df[[model_col, x_col, column]].rename(columns={column: "metric_value"})
         metric_frame["metric_col"] = column
         metric_frame["split"] = split_name
         metric_frame["metric"] = metric_name
@@ -307,19 +328,16 @@ def plot_learning_curve(
     )
     summary["metric_std"] = summary["metric_std"].fillna(0.0)
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     markers = ["o", "s", "^", "D", "v", "P", "X"]
     linestyles = ["-", "--", "-.", ":"]
 
     curve_keys = (
-        summary[[model_col, "metric_col"]]
-        .drop_duplicates()
-        .itertuples(index=False, name=None)
+        summary[[model_col, "metric_col"]].drop_duplicates().itertuples(index=False, name=None)
     )
     for i, (model_name, metric_column) in enumerate(curve_keys):
         model_data = summary[
-            (summary[model_col] == model_name)
-            & (summary["metric_col"] == metric_column)
+            (summary[model_col] == model_name) & (summary["metric_col"] == metric_column)
         ]
         label = _learning_curve_label(
             model_name,
@@ -363,10 +381,7 @@ def _resolve_learning_curve_metric_columns(
 ) -> tuple[str, ...]:
     if metric is not None:
         metric_name = _normalize_plot_metric(metric)
-        return tuple(
-            f"{split_name}_{metric_name}"
-            for split_name in _normalize_plot_splits(split)
-        )
+        return tuple(f"{split_name}_{metric_name}" for split_name in _normalize_plot_splits(split))
     if metric_col is None:
         raise ValueError("metric_col is required when metric is not supplied")
     if isinstance(metric_col, str):
@@ -477,6 +492,7 @@ def plot_bo_benchmark_trace(
     show_std: bool = True,
     std_style: str = "band",
     markers: bool = True,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (7, 5),
     title: str | None = None,
     xlabel: str = "Evaluated candidates",
@@ -507,7 +523,7 @@ def plot_bo_benchmark_trace(
     )
     std_style = _normalize_std_style(std_style)
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     marker_styles = ["o", "s", "^", "D", "v", "P", "X"]
     linestyles = ["-", "--", "-.", ":"]
 
@@ -576,6 +592,7 @@ def plot_bo_regret_trace(
     show_std: bool = True,
     std_style: str = "band",
     markers: bool = True,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (7, 5),
     title: str | None = None,
     xlabel: str = "Evaluated candidates",
@@ -593,6 +610,7 @@ def plot_bo_regret_trace(
         show_std=show_std,
         std_style=std_style,
         markers=markers,
+        ax=ax,
         figsize=figsize,
         title=title or "Simple Regret vs BO Evaluations",
         xlabel=xlabel,
@@ -612,6 +630,7 @@ def plot_bo_campaign_progress(
     iteration_col: str = "matgpr_iteration",
     record_type_col: str = "matgpr_record_type",
     observation_record_type: str = "observation",
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (7, 5),
     title: str | None = None,
     xlabel: str = "BO iteration",
@@ -643,6 +662,7 @@ def plot_bo_campaign_progress(
             summary,
             iteration_col=iteration_col,
             record_type_col=record_type_col,
+            ax=ax,
             figsize=figsize,
             title=title,
             xlabel=xlabel,
@@ -662,6 +682,7 @@ def plot_bo_campaign_progress(
             target_column=target_column,
             iteration_col=iteration_col,
             maximize=maximize,
+            ax=ax,
             figsize=figsize,
             title=title,
             xlabel=xlabel,
@@ -799,12 +820,13 @@ def _plot_bo_campaign_record_counts(
     *,
     iteration_col: str,
     record_type_col: str,
+    ax: Axes | None,
     figsize: tuple[float, float],
     title: str | None,
     xlabel: str,
     ylabel: str | None,
 ):
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     marker_styles = ["o", "s", "^", "D", "v", "P", "X"]
     for i, record_type in enumerate(_ordered_record_types(summary[record_type_col])):
         record_data = summary.loc[summary[record_type_col] == record_type]
@@ -876,12 +898,13 @@ def _plot_bo_campaign_target_progress(
     target_column: str,
     iteration_col: str,
     maximize: bool,
+    ax: Axes | None,
     figsize: tuple[float, float],
     title: str | None,
     xlabel: str,
     ylabel: str | None,
 ):
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     iterations = summary[iteration_col].to_numpy(dtype=float)
     iteration_best = summary["matgpr_iteration_best"].to_numpy(dtype=float)
     best_so_far = summary["matgpr_best_so_far"].to_numpy(dtype=float)
@@ -936,7 +959,9 @@ def _coerce_finite_numeric_columns(
             invalid_columns.append(column)
         df[column] = numeric.astype(float)
     if invalid_columns:
-        raise ValueError(f"{name} has missing, non-numeric, or infinite values in {invalid_columns}")
+        raise ValueError(
+            f"{name} has missing, non-numeric, or infinite values in {invalid_columns}"
+        )
 
 
 def _ordered_record_types(record_types: pd.Series) -> list[str]:
@@ -956,6 +981,7 @@ def _set_integer_xticks_if_compact(ax, values: pd.Series) -> None:
 def plot_pca_scree(
     pca,
     *,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6, 4),
     title: str = "PCA Scree Plot",
 ):
@@ -964,7 +990,7 @@ def plot_pca_scree(
     components = np.arange(1, len(explained) + 1)
     cumulative = np.cumsum(explained)
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     ax.bar(components, explained, alpha=0.7, label="Explained variance")
     ax.plot(components, cumulative, marker="o", label="Cumulative variance")
     ax.set_xlabel("Principal component")
@@ -984,6 +1010,7 @@ def plot_pca_scores(
     test_scores: pd.DataFrame | None = None,
     pc_x: str = "PC1",
     pc_y: str = "PC2",
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6, 5),
     title: str = "PCA Scores",
 ):
@@ -992,7 +1019,7 @@ def plot_pca_scores(
     if test_scores is not None:
         _require_columns(test_scores, [pc_x, pc_y], "test_scores")
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     ax.scatter(
         train_scores[pc_x],
         train_scores[pc_y],
@@ -1030,6 +1057,7 @@ def plot_uncertainty_calibration(
     y_std,
     *,
     confidence_levels=None,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6, 5),
     title: str = "Uncertainty Calibration",
     save_path: str | None = None,
@@ -1043,7 +1071,7 @@ def plot_uncertainty_calibration(
         confidence_levels=confidence_levels,
     )
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     ax.plot(
         curve["expected_coverage"],
         curve["observed_coverage"],
@@ -1071,6 +1099,7 @@ def plot_uncertainty_vs_error(
     y_pred,
     y_std,
     *,
+    ax: Axes | None = None,
     figsize: tuple[float, float] = (6, 5),
     title: str = "Uncertainty vs Error",
     save_path: str | None = None,
@@ -1088,7 +1117,7 @@ def plot_uncertainty_vs_error(
     absolute_error = np.abs(y_true - y_pred)
     diagnostics = uncertainty_diagnostics(y_true, y_pred, y_std)
 
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = _resolve_axes(ax, figsize)
     ax.scatter(
         y_std,
         absolute_error,
@@ -1130,6 +1159,22 @@ def _to_1d_float_array(values, name: str) -> np.ndarray:
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values")
     return array
+
+
+def _resolve_axes(ax: Axes | None, figsize: tuple[float, float]) -> tuple[plt.Figure, Axes]:
+    """Return the figure and axes to draw on.
+
+    When ``ax`` is ``None`` a new pyplot-managed figure is created, which keeps
+    inline display working in notebooks. Callers that draw many plots in one
+    process, such as batch report jobs, should pass their own ``ax`` so the
+    figures are not retained by the pyplot registry.
+    """
+    if ax is None:
+        return plt.subplots(figsize=figsize)
+    figure = ax.get_figure()
+    if figure is None:  # pragma: no cover - detached axes are not expected
+        raise ValueError("ax must be attached to a matplotlib figure")
+    return figure, ax
 
 
 def _save_figure(fig, save_path: str | None, dpi: int) -> None:

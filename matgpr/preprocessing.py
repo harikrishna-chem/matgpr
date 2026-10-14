@@ -83,7 +83,7 @@ def build_preprocessor(
         categorical_pipeline = Pipeline(
             steps=[
                 ("imputer", SimpleImputer(strategy=categorical_imputation)),
-                ("onehot", _build_one_hot_encoder()),
+                ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
             ]
         )
         transformers.append(("categorical", categorical_pipeline, categorical_features))
@@ -92,11 +92,3 @@ def build_preprocessor(
         raise ValueError("Provide at least one numeric or categorical feature")
 
     return ColumnTransformer(transformers=transformers, remainder="drop")
-
-
-def _build_one_hot_encoder() -> OneHotEncoder:
-    """Create a dense one-hot encoder across scikit-learn versions."""
-    try:
-        return OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-    except TypeError:
-        return OneHotEncoder(handle_unknown="ignore", sparse=False)

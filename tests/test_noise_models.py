@@ -48,13 +48,17 @@ class NoiseModelTests(unittest.TestCase):
         self.assertTrue(
             np.array_equal(
                 profile.labels,
-                np.array(["source:experiment", "source:simulation", "source:literature"], dtype=object),
+                np.array(
+                    ["source:experiment", "source:simulation", "source:literature"], dtype=object
+                ),
             )
         )
 
     def test_replicate_noise_model_estimates_group_noise_and_singleton_fallback(self):
         y = np.array([1.0, 1.2, 2.0, 2.4, 10.0])
-        groups = np.array(["sample_a", "sample_a", "sample_b", "sample_b", "sample_c"], dtype=object)
+        groups = np.array(
+            ["sample_a", "sample_a", "sample_b", "sample_b", "sample_c"], dtype=object
+        )
         model = ReplicateNoiseModel(min_noise_std=0.05)
 
         profile = model.fit_profile(y, groups)
@@ -76,7 +80,9 @@ class NoiseModelTests(unittest.TestCase):
             }
         )
         model = FeatureNoiseModel(
-            noise_std_function=lambda values: 0.01 + 1e-4 * (values[:, 0] - 300.0) + 0.02 * values[:, 1],
+            noise_std_function=lambda values: (
+                0.01 + 1e-4 * (values[:, 0] - 300.0) + 0.02 * values[:, 1]
+            ),
             label="temperature_loading_noise",
         )
 

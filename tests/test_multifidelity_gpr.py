@@ -208,9 +208,7 @@ class MultiFidelityGPRTests(unittest.TestCase):
             observations.sample_id.tolist(),
             ["mat-1", "mat-2", "mat-3", "mat-4", "mat-5"],
         )
-        self.assertTrue(
-            np.allclose(observations.noise_variance, [0.02, 0.02, 0.05, 0.02, 0.05])
-        )
+        self.assertTrue(np.allclose(observations.noise_variance, [0.02, 0.02, 0.05, 0.02, 0.05]))
 
     def test_prepare_multifidelity_observations_can_infer_order(self):
         observations = prepare_multifidelity_observations(

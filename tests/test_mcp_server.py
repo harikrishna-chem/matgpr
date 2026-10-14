@@ -17,9 +17,12 @@ from matgpr.mcp_server import (
 
 
 class FakeFastMCP:
-    def __init__(self, name: str, **kwargs):
+    """Mirrors MCP 1.x `FastMCP`, which takes no title/description/version."""
+
+    def __init__(self, name: str, instructions: str | None = None):
         self.name = name
-        self.kwargs = kwargs
+        self.instructions = instructions
+        self.kwargs: dict[str, object] = {}
         self.tools: dict[str, object] = {}
         self.prompts: dict[str, object] = {}
         self.resources: dict[str, object] = {}
@@ -77,6 +80,21 @@ class FakeFastMCP:
         self.ran = True
 
 
+class FakeMCPServer(FakeFastMCP):
+    """Mirrors MCP 2.x `MCPServer`, which accepts the server metadata."""
+
+    def __init__(
+        self,
+        name: str,
+        title: str | None = None,
+        description: str | None = None,
+        instructions: str | None = None,
+        version: str = "",
+    ):
+        super().__init__(name, instructions=instructions)
+        self.kwargs = {"title": title, "description": description, "version": version}
+
+
 def fake_mcp_modules() -> dict[str, types.ModuleType]:
     mcp_module = types.ModuleType("mcp")
     mcp_module.__path__ = []
@@ -95,7 +113,7 @@ def fake_mcp_modules() -> dict[str, types.ModuleType]:
 
 def fake_mcp_v2_modules() -> dict[str, types.ModuleType]:
     modules = fake_mcp_modules()
-    modules["mcp.server"].MCPServer = FakeFastMCP
+    modules["mcp.server"].MCPServer = FakeMCPServer
     return modules
 
 

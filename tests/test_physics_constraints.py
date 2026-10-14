@@ -81,7 +81,9 @@ class PhysicsConstraintTests(unittest.TestCase):
         self.assertTrue(np.allclose(virtual.X[:, 1], X[:, 1]))
         self.assertTrue(np.allclose(virtual.y, y + 1.0))
         self.assertTrue(np.allclose(virtual.alpha, 0.3**2))
-        self.assertTrue(np.array_equal(virtual.labels, np.array(["monotonic_increasing"] * 3, dtype=object)))
+        self.assertTrue(
+            np.array_equal(virtual.labels, np.array(["monotonic_increasing"] * 3, dtype=object))
+        )
 
     def test_monotonic_trend_constraint_supports_decreasing_trends_and_bounds(self):
         X = pd.DataFrame(
@@ -107,7 +109,9 @@ class PhysicsConstraintTests(unittest.TestCase):
         self.assertTrue(np.allclose(virtual.X[:, 0], [95.0, 100.0]))
         self.assertTrue(np.allclose(virtual.y, [9.0, 8.0]))
         self.assertTrue(np.allclose(virtual.alpha, [0.01, 0.04]))
-        self.assertTrue(np.array_equal(virtual.labels, np.array(["arrhenius_decrease"] * 2, dtype=object)))
+        self.assertTrue(
+            np.array_equal(virtual.labels, np.array(["arrhenius_decrease"] * 2, dtype=object))
+        )
 
     def test_append_virtual_observations_preserves_dataframe_and_returns_alpha(self):
         X = pd.DataFrame(
@@ -147,7 +151,9 @@ class PhysicsConstraintTests(unittest.TestCase):
         self.assertTrue(np.allclose(augmented.alpha[:2], 1e-6))
         self.assertTrue(np.allclose(augmented.alpha[2:4], 0.05**2))
         self.assertTrue(np.allclose(augmented.alpha[4:], 0.2**2))
-        self.assertTrue(np.array_equal(augmented.labels[:2], np.array(["observed", "observed"], dtype=object)))
+        self.assertTrue(
+            np.array_equal(augmented.labels[:2], np.array(["observed", "observed"], dtype=object))
+        )
 
     def test_validation_errors_are_explicit(self):
         with self.assertRaises(ValueError):

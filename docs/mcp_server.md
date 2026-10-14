@@ -46,6 +46,19 @@ cd matgpr
 python -m pip install -e ".[mcp]"
 ```
 
+### Supported MCP SDK versions
+
+The `mcp` extra requires `mcp>=1.14`. Both major SDK lines work:
+
+| MCP SDK | Server class | Notes |
+| --- | --- | --- |
+| 2.x | `mcp.server.MCPServer` | Current line. `FastMCP` was renamed to `MCPServer`. |
+| 1.14 to 1.x | `mcp.server.fastmcp.FastMCP` | Supported; server metadata is omitted because `FastMCP` does not accept it. |
+
+`matgpr` picks the right class automatically. Versions 1.10 to 1.13 are not
+supported: they cannot register tools from modules that use
+`from __future__ import annotations`, which `matgpr` does throughout.
+
 Check that the command is available:
 
 ```bash
@@ -139,7 +152,7 @@ Static guide resources provide compact Markdown notes for common agent tasks.
 | `matgpr://guide/featurization` | Materials column types and matching featurizers. |
 | `matgpr://guide/physics-informed-gpr` | PI-GPR mean-function setup and reporting expectations. |
 | `matgpr://guide/validation` | Validation outputs, repeated splits, and uncertainty checks. |
-| `matgpr://guide/bayesian-optimization` | Finite-pool BO planning flow and optional dependency notes. |
+| `matgpr://guide/bayesian-optimization` | Finite-pool BO planning flow and recommendation reporting. |
 
 ## Example Agent Prompts
 
@@ -353,6 +366,7 @@ Before releasing MCP support, run:
 
 ```bash
 python -m ruff check matgpr tests scripts
+python -m ruff format --check matgpr tests scripts
 python -m pytest
 python -m mkdocs build --strict
 python -m build

@@ -15,10 +15,63 @@ phase.
   metadata from a real MCP client session.
 - Read-only MCP prompt templates and static guide resources for featurization,
   physics-informed GPR, validation, and Bayesian-optimization planning.
+- An `ax` argument on every `plot_*` helper, so plots can be composed into a
+  caller-owned figure grid. Passing `ax` also keeps batch plotting out of the
+  global pyplot figure registry, which matters for long-running report jobs.
+
+### Changed
+
+- BoTorch is now a required dependency rather than the optional `bo` extra.
+  Bayesian optimization is a core `matgpr` workflow, so `pip install matgpr`
+  installs everything needed for featurization, physics-informed GPR, active
+  learning, and plotting. BoTorch is still imported lazily, so `import matgpr`
+  does not load it. The `bo` extra is kept as an empty alias so existing
+  `matgpr[bo]` pins keep resolving, and the BoTorch-backed helpers no longer
+  raise an optional-dependency install message.
+- Runtime dependencies now declare lower bounds instead of being unconstrained.
+  The floors are the oldest versions the test suite actually passes on, and a
+  new CI job installs exactly those versions so the bounds stay verified.
+  `gpytorch>=1.15` is required for `HadamardGaussianLikelihood`,
+  `scikit-learn>=1.6` for the `ensure_all_finite` validation argument, and
+  `botorch>=0.16` because earlier botorch releases pin `gpytorch==1.14`
+  exactly, which conflicts with the gpytorch floor.
+- The functional `fit_*` and `train_*` entry points now default to
+  `verbose=False` instead of `verbose=True`, so importing and calling `matgpr`
+  no longer prints training-loss lines to stdout unless asked. The estimator
+  classes already defaulted to `verbose=False` and are unchanged. Pass
+  `verbose=True` to restore per-iteration logging.
+- Maintainer-only pages are no longer published to the documentation site: four
+  completed internal planning documents, the release checklist, and the PyPI
+  readiness notes. They remain in `docs/` and are linked from the site as
+  repository files, so only their URLs under
+  <https://harikrishnasahu.com/matgpr/> stop resolving.
+- `transform_pca` now raises when the numeric columns of `X` do not match the
+  columns seen by `fit_pca`, including a different column order. Previously a
+  reordered dataframe silently produced component scores from misaligned
+  features. `fit_pca` records the training columns on the returned estimator as
+  `matgpr_feature_names_in_`.
 
 ### Fixed
 
-- Nothing yet.
+- The MCP server can be constructed on MCP SDK 1.x again. `create_server`
+  passed `title`, `description`, and `version` unconditionally; MCP 2.x
+  `MCPServer` accepts them but MCP 1.x `FastMCP` raises `TypeError`, so the 1.x
+  fallback could never build a server. The arguments are now filtered against
+  the server class signature. The `mcp` extra also gains an `mcp>=1.14` floor,
+  because 1.10 to 1.13 cannot register tools from modules that use
+  `from __future__ import annotations`.
+- Target standardization is now stored in registered buffers on the GPR models
+  (`ExactGPRModel`, `ExactMultitaskGPRModel`, `ExactSparseMultitaskGPRModel`,
+  and `ExactTwoLevelCoKrigingGPRModel`) so it travels with `state_dict()`.
+  Previously it was held in plain attributes, and a model restored from a
+  `state_dict` returned predictions in standardized units with no error. The
+  prediction helpers now raise when a model carries no target standardization
+  rather than silently reporting the wrong units.
+
+  Note: a `state_dict` saved by an earlier version has no `target_mean` or
+  `target_std` entry, so `load_state_dict` will now report those as missing
+  keys. Refit the model, or add both entries before loading. Models saved with
+  `save_artifact`/joblib are unaffected.
 
 ## 0.2.0 - 2026-09-08
 

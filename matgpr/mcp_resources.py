@@ -152,9 +152,10 @@ MCP server plans BO workflows but does not execute BO.
    score, feasibility status, duplicate status, and rank.
 6. Log campaign settings and selected candidates for reproducibility.
 
-## Optional Dependencies
+## Dependencies
 
-Install `matgpr[bo]` for BoTorch-backed utilities.
+BoTorch ships as a required dependency, so the BoTorch-backed utilities are
+available in any `matgpr` installation.
 """
 
 

@@ -8,11 +8,15 @@ import gpytorch
 import numpy as np
 import torch
 
+from ._validation import (
+    validate_confidence_level,
+    validate_task_covar_rank,
+)
 from .gpytorch_gpr import (
     _make_gpytorch_base_kernel,
+    _require_target_standardization,
     _should_log_iteration,
     _to_tensor,
-    _validate_confidence_level,
     _validate_training_options,
 )
 from .multitask_gpr import MultitaskGPyTorchPrediction
@@ -157,6 +161,15 @@ class ExactSparseMultitaskGPRModel(gpytorch.models.ExactGP):
             num_tasks=self.num_tasks,
             rank=self.task_covar_rank,
         )
+        # Buffers so per-task target standardization survives ``state_dict()``.
+        self.register_buffer(
+            "target_mean",
+            torch.zeros(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
+        )
+        self.register_buffer(
+            "target_std",
+            torch.ones(self.num_tasks, dtype=train_x.dtype, device=train_x.device),
+        )
 
     def forward(
         self,
@@ -242,7 +255,7 @@ def fit_sparse_multitask_gpytorch_gpr(
     min_observations_per_task: int = 2,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
 ) -> SparseMultitaskGPyTorchResult:
     """Fit exact sparse multitask GPR from a target matrix with ``NaN`` gaps.
@@ -268,7 +281,7 @@ def fit_sparse_multitask_gpytorch_gpr(
     )
     train_y = _to_tensor(observation_data.y_observed, device=device, dtype=dtype)
     num_tasks = len(observation_data.task_names)
-    task_covar_rank = _validate_task_covar_rank(task_covar_rank, num_tasks)
+    task_covar_rank = validate_task_covar_rank(task_covar_rank, num_tasks)
 
     target_mean, target_std = _sparse_target_statistics(
         train_y,
@@ -277,10 +290,12 @@ def fit_sparse_multitask_gpytorch_gpr(
         standardize_y=standardize_y,
     )
     train_y_model = (train_y - target_mean[train_task_indices]) / target_std[train_task_indices]
-    observation_noise_variance, standardized_observation_noise_variance = _resolve_sparse_known_noise_variance(
-        known_noise_variance,
-        observation_data=observation_data,
-        target_std=target_std.detach().cpu().numpy(),
+    observation_noise_variance, standardized_observation_noise_variance = (
+        _resolve_sparse_known_noise_variance(
+            known_noise_variance,
+            observation_data=observation_data,
+            target_std=target_std.detach().cpu().numpy(),
+        )
     )
 
     noise_mode = _validate_sparse_noise_mode(noise_mode)
@@ -345,7 +360,9 @@ def fit_sparse_multitask_gpytorch_gpr(
         loss_history.append(float(loss.detach().cpu().item()))
 
         if verbose and _should_log_iteration(iteration, training_iter, log_every):
-            _print_sparse_multitask_training_status(iteration, training_iter, loss, likelihood, model)
+            _print_sparse_multitask_training_status(
+                iteration, training_iter, loss, likelihood, model
+            )
 
     model.training_loss_history = loss_history
     standardized_noise_variance = _standardized_sparse_task_noise_variance(
@@ -405,7 +422,7 @@ def train_sparse_multitask_gpytorch_gpr(
     min_observations_per_task: int = 2,
     device: str = "cpu",
     dtype: torch.dtype = torch.float64,
-    verbose: bool = True,
+    verbose: bool = False,
     log_every: int = 100,
     return_result: bool = False,
 ):
@@ -481,7 +498,7 @@ def _predict_sparse_multitask_gpytorch_gpr(
     include_observation_noise: bool,
     prediction_noise_variance,
 ) -> MultitaskGPyTorchPrediction:
-    _validate_confidence_level(confidence_level)
+    validate_confidence_level(confidence_level)
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=device, dtype=dtype)
@@ -522,12 +539,16 @@ def _predict_sparse_multitask_gpytorch_gpr(
     if std is not None:
         std = std.reshape(n_samples, num_tasks)
 
-    if hasattr(model, "target_mean") and hasattr(model, "target_std"):
-        target_mean = model.target_mean.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        target_std = model.target_std.to(dtype=mean.dtype, device=mean.device).reshape(1, -1)
-        mean = mean * target_std + target_mean
-        if std is not None:
-            std = std * target_std
+    target_mean, target_std = _require_target_standardization(
+        model,
+        dtype=mean.dtype,
+        device=mean.device,
+    )
+    target_mean = target_mean.reshape(1, -1)
+    target_std = target_std.reshape(1, -1)
+    mean = mean * target_std + target_mean
+    if std is not None:
+        std = std * target_std
 
     mean_array = mean.detach().cpu().numpy()
     std_array = None if std is None else std.detach().cpu().numpy()
@@ -573,7 +594,9 @@ def _sparse_target_statistics(
         if target_std[task_index] <= 0:
             zero_std_tasks.append(task_index)
     if zero_std_tasks:
-        raise ValueError(f"y_train has zero standard deviation for task index(es): {zero_std_tasks}")
+        raise ValueError(
+            f"y_train has zero standard deviation for task index(es): {zero_std_tasks}"
+        )
     return target_mean, target_std
 
 
@@ -620,16 +643,6 @@ def _resolve_sparse_task_names(
     if len(set(resolved)) != len(resolved):
         raise ValueError("task_names must be unique")
     return resolved
-
-
-def _validate_task_covar_rank(task_covar_rank: int, num_tasks: int) -> int:
-    if not isinstance(task_covar_rank, int):
-        raise ValueError("task_covar_rank must be an integer")
-    if task_covar_rank < 1:
-        raise ValueError("task_covar_rank must be at least 1")
-    if task_covar_rank > num_tasks:
-        raise ValueError("task_covar_rank cannot be larger than the number of tasks")
-    return task_covar_rank
 
 
 def _validate_min_observations_per_task(value: int) -> int:
@@ -824,7 +837,9 @@ def _initial_task_noises_from_mapping(
             message_parts.append(f"missing task(s): {missing}")
         if unknown:
             message_parts.append(f"unknown task(s): {unknown}")
-        raise ValueError("initial_task_noises mapping must match task_names; " + "; ".join(message_parts))
+        raise ValueError(
+            "initial_task_noises mapping must match task_names; " + "; ".join(message_parts)
+        )
     values = np.asarray([provided[name] for name in task_names], dtype=float)
     return _validate_initial_noise_values(values, name="initial_task_noises")
 

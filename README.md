@@ -18,6 +18,85 @@ The importable package is `matgpr`. Python 3.10 or newer is required.
 commit hashes for reproducible research workflows, and see
 `docs/versioning.md` for the API-stability and versioning policy.
 
+## Installation
+
+Python 3.10 or newer is required.
+
+```bash
+python3 -m pip install matgpr
+```
+
+That installs everything needed for the core workflows: featurization with
+RDKit and pymatgen, GPR with PyTorch and GPyTorch, Bayesian optimization with
+BoTorch, and plotting with matplotlib.
+
+Further optional extras, installed as `"matgpr[examples]"` or from a local
+checkout as `-e ".[examples]"`:
+
+| Extra | Adds |
+| --- | --- |
+| `examples` | SHAP, used by the example notebooks |
+| `materials-extra` | matminer and mendeleev, for Magpie composition descriptors |
+| `structures` | ASE and DScribe, for crystal-structure descriptors |
+| `molecular-extra` | Mordred molecular descriptors |
+| `jarvis`, `deep` | JARVIS-Tools and DeepChem fingerprint backends |
+| `all-fingerprints` | every optional fingerprint backend above |
+| `mcp` | the optional local MCP server |
+| `docs` | MkDocs and the documentation theme |
+| `dev` | build, test, lint, and packaging tools |
+
+Fingerprint backends are imported lazily, so missing extras raise a message
+naming the package and the extra to install rather than failing at import.
+
+For development:
+
+```bash
+python3 -m pip install -e ".[dev,examples]"
+python3 -m ruff check matgpr tests scripts
+python3 -m ruff format --check matgpr tests scripts
+python3 -m pytest
+python3 -m build
+```
+
+For documentation:
+
+```bash
+python3 -m pip install -e ".[docs,examples]"
+python3 -m mkdocs serve
+```
+
+## Quickstart
+
+```python
+import numpy as np
+
+from matgpr import MatGPRRegressor, regression_metrics, uncertainty_diagnostics
+
+rng = np.random.default_rng(0)
+X = rng.uniform(0.0, 1.0, size=(60, 3))
+y = 120.0 + 45.0 * X[:, 0] - 20.0 * X[:, 1] ** 2 + rng.normal(0.0, 2.0, size=60)
+
+X_train, X_test = X[:45], X[45:]
+y_train, y_test = y[:45], y[45:]
+
+model = MatGPRRegressor(kernel="matern", training_iter=300, random_state=0)
+model.fit(X_train, y_train)
+
+y_pred, y_std = model.predict(X_test, return_std=True)
+
+print(regression_metrics(y_test, y_pred, prefix="test"))
+# approximately {'test_R2': 0.982, 'test_RMSE': 2.19, 'test_MAE': 1.95, 'test_r': 0.991}
+
+print(uncertainty_diagnostics(y_test, y_pred, y_std)["observed_coverage"])
+# 1.0, meaning every test point fell inside its 95 percent interval
+```
+
+`predict(..., return_std=True)` returns the predictive standard deviation in
+the original target units, and `uncertainty_diagnostics` reports whether those
+uncertainties are calibrated. To put a mechanistic equation in the GP prior
+mean instead of fitting a purely data-driven model, see
+[Physics-Informed GPR](#physics-informed-gpr) below.
+
 ## Repository Description
 
 Gaussian Process Regression toolkit for materials informatics, including
@@ -68,7 +147,7 @@ physics-informed mean functions and uncertainty-aware prediction.
   formulation, and processing-condition pools.
 - Candidate-pool diagnostics for descriptor completeness, duplicate keys,
   numeric feature coverage, and categorical search-space coverage.
-- Optional BoTorch Bayesian optimization helpers for single- and
+- BoTorch Bayesian optimization helpers for single- and
   multi-objective finite materials candidate pools, known observation noise,
   feasibility constraints, trust regions, duplicate avoidance, and diverse or
   sequential next-experiment batches.
@@ -220,7 +299,7 @@ file alongside any published benchmark results.
 | `matgpr.validation` | `evaluate_train_test_split`, `evaluate_multitask_train_test_split`, `evaluate_sparse_multitask_train_test_split`, `evaluate_cokriging_train_test_split`, `cross_validate_regressor`, `learning_curve`, `cokriging_learning_curve`, `summarize_multitask_predictions`, `summarize_sparse_multitask_predictions` | Reusable train/test, co-kriging target-fidelity validation and learning curves, complete/sparse multitask task-summary, cross-validation, and learning-curve workflows |
 | `matgpr.sparse_multitask_gpr` | `fit_sparse_multitask_gpytorch_gpr`, `prepare_sparse_multitask_observations`, `predict_sparse_multitask_gpytorch_gpr` | Exact sparse multitask GPR for incomplete multi-property target matrices |
 | `matgpr.candidate_generation` | `build_cartesian_candidate_grid`, `build_composition_candidate_grid`, `summarize_candidate_pool`, `summarize_candidate_feature_coverage`, `summarize_candidate_category_coverage`, `exclude_existing_candidates`, `split_candidate_features` | Finite candidate-pool builders and diagnostics for BO |
-| `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `summarize_bo_recommendation_audit`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | Optional BoTorch finite-pool Bayesian optimization |
+| `matgpr.bayesian_optimization` | `suggest_next_experiments`, `suggest_multi_objective_next_experiments`, `summarize_bo_recommendation_audit`, `select_sequential_multi_objective_batch`, `observation_noise_variance`, `select_diverse_batch`, `CandidateConstraint`, `CandidateTrustRegion`, `CandidateDuplicatePolicy` | BoTorch finite-pool Bayesian optimization |
 | `matgpr.bo_benchmarking` | `BOBenchmarkStrategy`, `simulate_bo_strategy`, `compare_bo_strategies`, `summarize_bo_benchmark` | Offline finite-pool BO strategy benchmarks |
 | `matgpr.multi_objective` | `ObjectiveSpec`, `rank_multi_objective_candidates`, `select_pareto_front`, `scalarize_objectives` | Pareto-front and weighted multi-objective candidate ranking |
 | `matgpr.experiment_logging` | `resume_bo_campaign`, `infer_next_bo_iteration`, `log_bo_recommendations`, `log_selected_experiments`, `log_observations`, `summarize_closed_loop_log` | Closed-loop BO campaign state and audit trails |
@@ -297,53 +376,6 @@ y_pred, y_std = model.predict(X_test, return_std=True)
 learned_parameters = model.learned_physics_parameters_
 ```
 
-## Installation
-
-From PyPI:
-
-```bash
-python3 -m pip install matgpr
-```
-
-For optional example and Bayesian-optimization dependencies:
-
-```bash
-python3 -m pip install "matgpr[examples,bo]"
-```
-
-From a local checkout:
-
-```bash
-python3 -m pip install -e .
-```
-
-For development:
-
-```bash
-python3 -m pip install -e ".[dev,examples,bo]"
-python3 -m ruff check matgpr tests scripts
-python3 -m pytest
-python3 -m build
-```
-
-For documentation:
-
-```bash
-python3 -m pip install -e ".[docs,examples]"
-python3 -m mkdocs serve
-```
-
-For Bayesian optimization:
-
-```bash
-python3 -m pip install -e ".[bo]"
-```
-
-For optional matminer Magpie descriptors:
-
-```bash
-python3 -m pip install -e ".[materials-extra]"
-```
 
 ## Citation
 

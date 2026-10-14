@@ -55,7 +55,9 @@ class DerivativeGPRTests(unittest.TestCase):
         self.assertTrue(
             np.array_equal(
                 observations.labels,
-                np.array(["positive_temperature_slope", "positive_temperature_slope"], dtype=object),
+                np.array(
+                    ["positive_temperature_slope", "positive_temperature_slope"], dtype=object
+                ),
             )
         )
 
@@ -125,7 +127,9 @@ class DerivativeGPRTests(unittest.TestCase):
         )
 
         self.assertEqual(combined.n_observations, 3)
-        self.assertTrue(np.array_equal(combined.labels, np.array(["left", "left", "right"], dtype=object)))
+        self.assertTrue(
+            np.array_equal(combined.labels, np.array(["left", "left", "right"], dtype=object))
+        )
         self.assertEqual(model.length_scale.shape, (1,))
         self.assertGreater(model.signal_variance, 0.0)
         self.assertIsInstance(model.optimizer_success, bool)

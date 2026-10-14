@@ -2352,12 +2352,8 @@ combine SHAP with domain checks, correlation analysis, and sensitivity plots.
 
 After validating a GPR model, use Bayesian optimization when the goal is to
 choose the next material, molecule, polymer, formulation, or experiment from a
-finite candidate pool. The first `matgpr` Bayesian-optimization API uses
-BoTorch as an optional backend:
-
-```bash
-python -m pip install "matgpr[bo]"
-```
+finite candidate pool. The `matgpr` Bayesian-optimization API is backed by
+BoTorch, which is installed with the package.
 
 For finite candidate lists, featurize measured rows and candidate rows with the
 same descriptor pipeline, then rank the candidates:
