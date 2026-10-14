@@ -76,6 +76,7 @@ nav:
   - Fingerprinting Options: fingerprinting_options.md
   - Versioning And Stability: versioning.md
   - MCP Server: mcp_server.md
+  - BO Feature Optimization Design: bo_feature_optimization_design.md
   - Development Notes:
       - MCP Server Design: mcp_server_design.md
   - API Reference:
@@ -97,6 +98,7 @@ nav:
       - Validation: api/validation.md
       - Candidate Generation: api/candidate_generation.md
       - Bayesian Optimization: api/bayesian_optimization.md
+      - BO Optimization Specs: api/bayesian_optimization_specs.md
       - BO Benchmarking: api/bo_benchmarking.md
       - Multi-Objective Selection: api/multi_objective.md
       - Experiment Logging: api/experiment_logging.md
