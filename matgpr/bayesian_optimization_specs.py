@@ -8,7 +8,7 @@ recommended acquisition-function families without fitting a model.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from math import isfinite
@@ -170,12 +170,14 @@ class BOObjectivePreference:
 
     Use ``TARGET_VALUE`` or ``TARGET_RANGE`` for process-development settings
     where the best experiment is near a specification window rather than at an
-    extreme value.
+    extreme value. ``target_tolerance`` is an optional positive half-width
+    around ``target_value`` in the declared target units.
     """
 
     target_name: str
     mode: BOObjectiveMode | str = BOObjectiveMode.MAXIMIZE
     target_value: float | None = None
+    target_tolerance: float | None = None
     target_lower_bound: float | None = None
     target_upper_bound: float | None = None
     weight: float = 1.0
@@ -185,6 +187,10 @@ class BOObjectivePreference:
     def __post_init__(self) -> None:
         mode = _coerce_enum(BOObjectiveMode, self.mode)
         target_value = _optional_finite_float(self.target_value, "target_value")
+        target_tolerance = _optional_finite_float(
+            self.target_tolerance,
+            "target_tolerance",
+        )
         target_lower_bound = _optional_finite_float(
             self.target_lower_bound,
             "target_lower_bound",
@@ -198,6 +204,11 @@ class BOObjectivePreference:
                 raise ValueError("target_lower_bound must be <= target_upper_bound")
         if mode is BOObjectiveMode.TARGET_VALUE and target_value is None:
             raise ValueError("target_value mode requires target_value")
+        if target_tolerance is not None:
+            if mode is not BOObjectiveMode.TARGET_VALUE:
+                raise ValueError("target_tolerance is only valid for target_value objectives")
+            if target_tolerance <= 0.0:
+                raise ValueError("target_tolerance must be finite and positive")
         if mode is BOObjectiveMode.TARGET_RANGE and (
             target_lower_bound is None or target_upper_bound is None
         ):
@@ -207,6 +218,7 @@ class BOObjectivePreference:
         object.__setattr__(self, "target_name", _clean_text(self.target_name))
         object.__setattr__(self, "mode", mode)
         object.__setattr__(self, "target_value", target_value)
+        object.__setattr__(self, "target_tolerance", target_tolerance)
         object.__setattr__(self, "target_lower_bound", target_lower_bound)
         object.__setattr__(self, "target_upper_bound", target_upper_bound)
         object.__setattr__(self, "weight", weight)
@@ -220,6 +232,7 @@ class BOObjectivePreference:
             "target_name": self.target_name,
             "mode": self.mode.value,
             "target_value": self.target_value,
+            "target_tolerance": self.target_tolerance,
             "target_lower_bound": self.target_lower_bound,
             "target_upper_bound": self.target_upper_bound,
             "weight": self.weight,
@@ -297,6 +310,14 @@ class BOOptimizationSpec:
         )
         if not objectives:
             raise ValueError("BOOptimizationSpec requires at least one objective")
+        duplicate_objectives = _duplicate_names(objective.target_name for objective in objectives)
+        if duplicate_objectives:
+            raise ValueError(
+                f"objective target names must be unique; duplicates: {duplicate_objectives}"
+            )
+        duplicate_features = _duplicate_names(feature.name for feature in features)
+        if duplicate_features:
+            raise ValueError(f"feature names must be unique; duplicates: {duplicate_features}")
         if mode is BOOptimizationMode.FEATURE_OPTIMIZATION:
             if not any(feature.is_controllable for feature in features):
                 raise ValueError("feature_optimization requires at least one controllable feature")
@@ -537,6 +558,16 @@ def _positive_int(value: Any, field_name: str) -> int:
     if integer < 1:
         raise ValueError(f"{field_name} must be a positive integer")
     return integer
+
+
+def _duplicate_names(values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for value in values:
+        if value in seen and value not in duplicates:
+            duplicates.append(value)
+        seen.add(value)
+    return duplicates
 
 
 def _json_safe(value: Any) -> Any:

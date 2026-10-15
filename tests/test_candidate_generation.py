@@ -6,6 +6,10 @@ import numpy as np
 import pandas as pd
 
 from matgpr import (
+    BOFeatureSpec,
+    BOObjectivePreference,
+    BOOptimizationSpec,
+    build_bo_candidate_pool,
     build_cartesian_candidate_grid,
     build_composition_candidate_grid,
     exclude_existing_candidates,
@@ -91,6 +95,140 @@ class CandidateGenerationTests(unittest.TestCase):
             build_composition_candidate_grid(
                 ["Al", "Ni"],
                 candidate_id_column="formula",
+            )
+
+    def test_build_bo_candidate_pool_creates_grid_from_feature_specs(self):
+        spec = BOOptimizationSpec(
+            mode="feature_optimization",
+            objectives=(BOObjectivePreference("density", mode="maximize"),),
+            features=(
+                BOFeatureSpec(
+                    "laser_power_w",
+                    lower_bound=100.0,
+                    upper_bound=300.0,
+                ),
+                BOFeatureSpec(
+                    "scan_speed_mm_s",
+                    variable_type="integer",
+                    lower_bound=200,
+                    upper_bound=400,
+                ),
+                BOFeatureSpec(
+                    "alloy",
+                    variable_type="fixed",
+                    fixed_value="316L",
+                ),
+            ),
+        )
+
+        candidates = build_bo_candidate_pool(
+            spec,
+            continuous_points={"laser_power_w": 3},
+            integer_step={"scan_speed_mm_s": 100},
+        )
+
+        self.assertEqual(candidates.shape[0], 9)
+        self.assertEqual(
+            candidates.columns.tolist(),
+            ["candidate_id", "laser_power_w", "scan_speed_mm_s", "alloy"],
+        )
+        self.assertEqual(candidates["alloy"].unique().tolist(), ["316L"])
+        self.assertEqual(candidates["laser_power_w"].unique().tolist(), [100.0, 200.0, 300.0])
+        self.assertEqual(candidates["scan_speed_mm_s"].unique().tolist(), [200, 300, 400])
+
+    def test_build_bo_candidate_pool_can_sample_random_candidates(self):
+        spec = {
+            "mode": "feature_optimization",
+            "objectives": ({"target_name": "yield_strength"},),
+            "features": (
+                {
+                    "name": "cooling_rate",
+                    "variable_type": "continuous",
+                    "lower_bound": 1.0,
+                    "upper_bound": 1000.0,
+                    "transform": "log",
+                },
+                {
+                    "name": "route",
+                    "variable_type": "categorical",
+                    "values": ("cast", "am"),
+                },
+            ),
+        }
+
+        candidates = build_bo_candidate_pool(
+            spec,
+            strategy="random",
+            random_candidate_count=5,
+            random_state=42,
+            candidate_id_column=None,
+        )
+
+        self.assertEqual(candidates.shape, (5, 2))
+        self.assertTrue(candidates["cooling_rate"].between(1.0, 1000.0).all())
+        self.assertTrue(set(candidates["route"]).issubset({"cast", "am"}))
+
+    def test_build_bo_candidate_pool_validates_mode_and_size(self):
+        with self.assertRaises(ValueError):
+            build_bo_candidate_pool(
+                {
+                    "mode": "finite_pool_ranking",
+                    "objectives": ({"target_name": "y"},),
+                }
+            )
+        with self.assertRaises(ValueError):
+            build_bo_candidate_pool(
+                {
+                    "mode": "feature_optimization",
+                    "objectives": ({"target_name": "y"},),
+                    "features": (
+                        {
+                            "name": "x",
+                            "variable_type": "continuous",
+                            "lower_bound": 0,
+                            "upper_bound": 1,
+                        },
+                    ),
+                },
+                strategy="random",
+                random_candidate_count=10,
+                max_candidates=5,
+            )
+
+    def test_build_bo_candidate_pool_checks_grid_size_before_materializing(self):
+        with self.assertRaisesRegex(ValueError, "above max_candidates=1000"):
+            build_bo_candidate_pool(
+                {
+                    "mode": "feature_optimization",
+                    "objectives": ({"target_name": "y"},),
+                    "features": (
+                        {
+                            "name": "integer_process_setting",
+                            "variable_type": "integer",
+                            "lower_bound": 0,
+                            "upper_bound": 10_000_000,
+                        },
+                    ),
+                },
+                max_candidates=1000,
+            )
+
+    def test_build_bo_candidate_pool_rejects_unknown_spacing_transform(self):
+        with self.assertRaisesRegex(ValueError, "unsupported candidate-spacing"):
+            build_bo_candidate_pool(
+                {
+                    "mode": "feature_optimization",
+                    "objectives": ({"target_name": "y"},),
+                    "features": (
+                        {
+                            "name": "temperature",
+                            "variable_type": "continuous",
+                            "lower_bound": 20.0,
+                            "upper_bound": 100.0,
+                            "transform": "square_root",
+                        },
+                    ),
+                }
             )
 
     def test_exclude_existing_candidates_removes_or_annotates_observed_rows(self):

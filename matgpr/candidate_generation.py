@@ -10,9 +10,16 @@ import numpy as np
 import pandas as pd
 
 from ._validation import validate_positive_int
+from .bayesian_optimization_specs import (
+    BOFeatureSpec,
+    BOFeatureType,
+    BOOptimizationMode,
+    BOOptimizationSpec,
+)
 
 __all__ = [
     "CandidatePoolDiagnostics",
+    "build_bo_candidate_pool",
     "build_cartesian_candidate_grid",
     "build_composition_candidate_grid",
     "exclude_existing_candidates",
@@ -205,6 +212,80 @@ def build_composition_candidate_grid(
     candidates = pd.DataFrame(rows, columns=[formula_column, "n_components", *fraction_columns])
     _insert_candidate_ids(candidates, candidate_id_column, prefix=candidate_id_prefix)
     return candidates.reset_index(drop=True)
+
+
+def build_bo_candidate_pool(
+    spec: BOOptimizationSpec | Mapping[str, Any],
+    *,
+    strategy: str = "grid",
+    continuous_points: int | Mapping[str, int] = 5,
+    integer_step: int | Mapping[str, int] = 1,
+    random_candidate_count: int = 256,
+    random_state: int | np.random.Generator | None = None,
+    candidate_id_column: str | None = "candidate_id",
+    candidate_id_prefix: str = "bo_candidate",
+    max_candidates: int | None = 100_000,
+) -> pd.DataFrame:
+    """Build a finite BO candidate pool from `BOOptimizationSpec` features.
+
+    This helper converts a feature-optimization request into a finite candidate
+    table that can be scored by downstream BO routines. Use ``strategy="grid"``
+    for small, interpretable process windows and ``strategy="random"`` for
+    high-dimensional spaces where a Cartesian grid would be too large.
+
+    Parameters
+    ----------
+    spec
+        BO optimization specification with `BOFeatureSpec` entries.
+    strategy
+        Candidate-generation strategy: ``"grid"`` or ``"random"``.
+    continuous_points
+        Number of grid points for each continuous feature, either one integer
+        applied to all continuous features or a per-feature mapping.
+    integer_step
+        Step size for integer features in grid mode, either one integer applied
+        to all integer features or a per-feature mapping.
+    random_candidate_count
+        Number of rows sampled when ``strategy="random"``.
+    random_state
+        Seed or NumPy random generator for reproducible random sampling.
+    candidate_id_column
+        Optional candidate identifier column. Set to `None` to omit IDs.
+    candidate_id_prefix
+        Prefix used when `candidate_id_column` is not `None`.
+    max_candidates
+        Safety limit applied before returning a generated pool.
+    """
+    optimization_spec = _coerce_bo_optimization_spec(spec)
+    if optimization_spec.mode is not BOOptimizationMode.FEATURE_OPTIMIZATION:
+        raise ValueError("build_bo_candidate_pool requires feature_optimization mode")
+    _validate_candidate_id_prefix(candidate_id_prefix)
+    _validate_max_candidates(max_candidates)
+    candidate_id_column = _normalize_candidate_id_column(candidate_id_column)
+    features = optimization_spec.features
+    if not any(feature.is_controllable for feature in features):
+        raise ValueError("spec must contain at least one controllable feature")
+
+    normalized_strategy = str(strategy).strip().lower().replace("-", "_")
+    if normalized_strategy == "grid":
+        return _build_bo_candidate_grid(
+            features,
+            continuous_points=continuous_points,
+            integer_step=integer_step,
+            candidate_id_column=candidate_id_column,
+            candidate_id_prefix=candidate_id_prefix,
+            max_candidates=max_candidates,
+        )
+    if normalized_strategy == "random":
+        return _build_bo_candidate_random_sample(
+            features,
+            random_candidate_count=random_candidate_count,
+            random_state=random_state,
+            candidate_id_column=candidate_id_column,
+            candidate_id_prefix=candidate_id_prefix,
+            max_candidates=max_candidates,
+        )
+    raise ValueError("strategy must be one of: grid, random")
 
 
 def exclude_existing_candidates(
@@ -451,6 +532,226 @@ def _validate_candidate_frame(frame: pd.DataFrame, *, name: str) -> pd.DataFrame
     if not isinstance(frame, pd.DataFrame):
         raise TypeError(f"{name} must be a pandas DataFrame")
     return frame.copy()
+
+
+def _coerce_bo_optimization_spec(
+    spec: BOOptimizationSpec | Mapping[str, Any],
+) -> BOOptimizationSpec:
+    if isinstance(spec, BOOptimizationSpec):
+        return spec
+    if isinstance(spec, Mapping):
+        return BOOptimizationSpec(**dict(spec))
+    raise TypeError("spec must be a BOOptimizationSpec or mapping")
+
+
+def _build_bo_candidate_grid(
+    features: Sequence[BOFeatureSpec],
+    *,
+    continuous_points: int | Mapping[str, int],
+    integer_step: int | Mapping[str, int],
+    candidate_id_column: str | None,
+    candidate_id_prefix: str,
+    max_candidates: int | None,
+) -> pd.DataFrame:
+    parameter_space: dict[str, tuple[Any, ...]] = {}
+    fixed_values: dict[str, Any] = {}
+    candidate_count = 1
+    for feature in features:
+        if feature.variable_type is BOFeatureType.FIXED:
+            fixed_values[feature.name] = feature.fixed_value
+        else:
+            level_count = _bo_feature_grid_level_count(
+                feature,
+                continuous_points=continuous_points,
+                integer_step=integer_step,
+            )
+            candidate_count *= level_count
+            if max_candidates is not None and candidate_count > max_candidates:
+                raise ValueError(
+                    "BO candidate grid would contain at least "
+                    f"{candidate_count} rows, above max_candidates={max_candidates}"
+                )
+            parameter_space[feature.name] = _bo_feature_grid_values(
+                feature,
+                continuous_points=continuous_points,
+                integer_step=integer_step,
+            )
+    return build_cartesian_candidate_grid(
+        parameter_space,
+        fixed_values=fixed_values,
+        candidate_id_column=candidate_id_column,
+        candidate_id_prefix=candidate_id_prefix,
+        max_candidates=max_candidates,
+    )
+
+
+def _build_bo_candidate_random_sample(
+    features: Sequence[BOFeatureSpec],
+    *,
+    random_candidate_count: int,
+    random_state: int | np.random.Generator | None,
+    candidate_id_column: str | None,
+    candidate_id_prefix: str,
+    max_candidates: int | None,
+) -> pd.DataFrame:
+    n_candidates = validate_positive_int(
+        random_candidate_count,
+        name="random_candidate_count",
+    )
+    if max_candidates is not None and n_candidates > max_candidates:
+        raise ValueError(f"random_candidate_count is above max_candidates={max_candidates}")
+    rng = (
+        random_state
+        if isinstance(random_state, np.random.Generator)
+        else np.random.default_rng(random_state)
+    )
+    rows: dict[str, Any] = {}
+    for feature in features:
+        rows[feature.name] = _sample_bo_feature(feature, n_candidates, rng)
+    candidates = pd.DataFrame(rows)
+    _validate_candidate_id_column(candidate_id_column, candidates.columns.tolist())
+    _insert_candidate_ids(candidates, candidate_id_column, prefix=candidate_id_prefix)
+    return candidates.reset_index(drop=True)
+
+
+def _bo_feature_grid_values(
+    feature: BOFeatureSpec,
+    *,
+    continuous_points: int | Mapping[str, int],
+    integer_step: int | Mapping[str, int],
+) -> tuple[Any, ...]:
+    if feature.variable_type is BOFeatureType.CONTINUOUS:
+        points = _feature_positive_int_option(
+            continuous_points,
+            feature.name,
+            option_name="continuous_points",
+        )
+        return tuple(
+            _continuous_feature_levels(
+                feature,
+                n_points=points,
+            ).tolist()
+        )
+    if feature.variable_type is BOFeatureType.INTEGER:
+        step = _feature_positive_int_option(
+            integer_step,
+            feature.name,
+            option_name="integer_step",
+        )
+        lower = int(round(float(feature.lower_bound)))
+        upper = int(round(float(feature.upper_bound)))
+        return tuple(int(value) for value in range(lower, upper + 1, step))
+    if feature.variable_type is BOFeatureType.CATEGORICAL:
+        return tuple(feature.values or ())
+    raise ValueError(f"Unsupported controllable feature type: {feature.variable_type.value}")
+
+
+def _bo_feature_grid_level_count(
+    feature: BOFeatureSpec,
+    *,
+    continuous_points: int | Mapping[str, int],
+    integer_step: int | Mapping[str, int],
+) -> int:
+    if feature.variable_type is BOFeatureType.CONTINUOUS:
+        points = _feature_positive_int_option(
+            continuous_points,
+            feature.name,
+            option_name="continuous_points",
+        )
+        _validated_continuous_spacing(feature)
+        if np.isclose(float(feature.lower_bound), float(feature.upper_bound)):
+            return 1
+        return points
+    if feature.variable_type is BOFeatureType.INTEGER:
+        step = _feature_positive_int_option(
+            integer_step,
+            feature.name,
+            option_name="integer_step",
+        )
+        lower = int(round(float(feature.lower_bound)))
+        upper = int(round(float(feature.upper_bound)))
+        return ((upper - lower) // step) + 1
+    if feature.variable_type is BOFeatureType.CATEGORICAL:
+        return len(tuple(feature.values or ()))
+    raise ValueError(f"Unsupported controllable feature type: {feature.variable_type.value}")
+
+
+def _sample_bo_feature(
+    feature: BOFeatureSpec,
+    n_candidates: int,
+    rng: np.random.Generator,
+) -> np.ndarray | list[Any]:
+    if feature.variable_type is BOFeatureType.FIXED:
+        return [feature.fixed_value] * n_candidates
+    if feature.variable_type is BOFeatureType.CONTINUOUS:
+        lower = float(feature.lower_bound)
+        upper = float(feature.upper_bound)
+        if _uses_log_spacing(feature):
+            _validate_positive_log_bounds(feature, lower, upper)
+            return np.exp(rng.uniform(np.log(lower), np.log(upper), size=n_candidates))
+        return rng.uniform(lower, upper, size=n_candidates)
+    if feature.variable_type is BOFeatureType.INTEGER:
+        lower = int(round(float(feature.lower_bound)))
+        upper = int(round(float(feature.upper_bound)))
+        return rng.integers(lower, upper + 1, size=n_candidates)
+    if feature.variable_type is BOFeatureType.CATEGORICAL:
+        values = tuple(feature.values or ())
+        indices = rng.integers(0, len(values), size=n_candidates)
+        return [values[index] for index in indices]
+    raise ValueError(f"Unsupported feature type: {feature.variable_type.value}")
+
+
+def _continuous_feature_levels(
+    feature: BOFeatureSpec,
+    *,
+    n_points: int,
+) -> np.ndarray:
+    lower = float(feature.lower_bound)
+    upper = float(feature.upper_bound)
+    if np.isclose(lower, upper):
+        return np.asarray([lower], dtype=float)
+    if _uses_log_spacing(feature):
+        _validate_positive_log_bounds(feature, lower, upper)
+        return np.geomspace(lower, upper, num=n_points)
+    return np.linspace(lower, upper, num=n_points)
+
+
+def _uses_log_spacing(feature: BOFeatureSpec) -> bool:
+    return _validated_continuous_spacing(feature) == "log"
+
+
+def _validated_continuous_spacing(feature: BOFeatureSpec) -> str:
+    transform = "" if feature.transform is None else feature.transform.strip().lower()
+    if transform in {"", "linear", "identity", "standardized"}:
+        return "linear"
+    if transform in {"log", "ln", "log10", "log_space", "logspace"}:
+        return "log"
+    raise ValueError(
+        f"feature {feature.name!r} has unsupported candidate-spacing transform "
+        f"{feature.transform!r}"
+    )
+
+
+def _validate_positive_log_bounds(
+    feature: BOFeatureSpec,
+    lower: float,
+    upper: float,
+) -> None:
+    if lower <= 0.0 or upper <= 0.0:
+        raise ValueError(f"feature {feature.name!r} uses log spacing and requires positive bounds")
+
+
+def _feature_positive_int_option(
+    value: int | Mapping[str, int],
+    feature_name: str,
+    *,
+    option_name: str,
+) -> int:
+    if isinstance(value, Mapping):
+        if feature_name not in value:
+            raise ValueError(f"{option_name} is missing feature {feature_name!r}")
+        value = value[feature_name]
+    return validate_positive_int(value, name=f"{option_name}[{feature_name!r}]")
 
 
 def _resolve_numeric_feature_columns(

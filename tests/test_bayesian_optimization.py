@@ -20,6 +20,8 @@ from matgpr import (
     fit_botorch_surrogate,
     fit_multi_objective_botorch_surrogate,
     observation_noise_variance,
+    rank_bo_candidate_pool,
+    rank_bo_candidate_predictions,
     rank_discrete_candidates,
     rank_multi_objective_discrete_candidates,
     select_diverse_batch,
@@ -280,6 +282,168 @@ class BayesianOptimizationApiTests(unittest.TestCase):
                 ),
                 policy="drop",
             )
+
+    def test_rank_bo_candidate_pool_scores_target_range_and_constraints(self):
+        X_train = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        y_train = pd.Series([0.0, 0.5, 1.0], name="density")
+        X_candidates = pd.DataFrame({"x": [0.0, 0.5, 1.0]})
+        candidate_data = pd.DataFrame({"candidate_id": ["low", "target", "high"]})
+
+        ranked = rank_bo_candidate_pool(
+            X_train,
+            y_train,
+            X_candidates,
+            objective={
+                "target_name": "density",
+                "mode": "target_range",
+                "target_lower_bound": 0.4,
+                "target_upper_bound": 0.6,
+            },
+            output_constraints=(
+                {
+                    "target_name": "density",
+                    "lower_bound": 0.2,
+                    "upper_bound": 0.8,
+                    "probability_threshold": 0.1,
+                },
+            ),
+            candidate_data=candidate_data,
+            top_k=2,
+            normalize_features=False,
+            standardize_target=False,
+            fit_model=False,
+        )
+
+        self.assertEqual(ranked.shape[0], 2)
+        self.assertIn("matgpr_preference_score", ranked.columns)
+        self.assertIn("matgpr_feasibility_probability", ranked.columns)
+        self.assertIn("matgpr_constraint_probability_density", ranked.columns)
+        self.assertTrue(ranked["matgpr_acquisition"].between(0.0, 1.0).all())
+        self.assertTrue(ranked["matgpr_feasibility_probability"].between(0.0, 1.0).all())
+        self.assertEqual(ranked["matgpr_rank"].tolist(), [1, 2])
+
+    def test_rank_bo_candidate_pool_scores_target_value_with_tolerance(self):
+        ranked = rank_bo_candidate_pool(
+            pd.DataFrame({"x": [0.0, 1.0]}),
+            pd.Series([0.0, 1.0], name="band_gap"),
+            pd.DataFrame({"x": [0.0, 0.5, 1.0]}),
+            objective={
+                "target_name": "band_gap",
+                "mode": "target_value",
+                "target_value": 0.5,
+                "target_tolerance": 0.2,
+            },
+            normalize_features=False,
+            standardize_target=False,
+            fit_model=False,
+        )
+
+        self.assertEqual(ranked["matgpr_objective_mode"].unique().tolist(), ["target_value"])
+        self.assertTrue(ranked["matgpr_preference_score"].between(0.0, 1.0).all())
+
+    def test_rank_bo_candidate_pool_validates_single_target_constraints(self):
+        with self.assertRaises(ValueError):
+            rank_bo_candidate_pool(
+                pd.DataFrame({"x": [0.0, 1.0]}),
+                pd.Series([0.0, 1.0]),
+                pd.DataFrame({"x": [0.5]}),
+                objective={"target_name": "strength", "mode": "maximize"},
+                output_constraints=({"target_name": "ductility", "lower_bound": 0.1},),
+                fit_model=False,
+            )
+
+    def test_rank_bo_candidate_predictions_reuses_saved_predictions(self):
+        candidate_data = pd.DataFrame(
+            {
+                "candidate_id": ["low", "target", "high"],
+                "matgpr_rank": [99, 99, 99],
+            }
+        )
+
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(0.2, 0.5, 0.9),
+            predicted_std=(0.05, 0.1, 0.05),
+            objective={
+                "target_name": "density",
+                "mode": "target_range",
+                "target_lower_bound": 0.4,
+                "target_upper_bound": 0.6,
+            },
+            output_constraints=(
+                {
+                    "target_name": "density",
+                    "lower_bound": 0.3,
+                    "upper_bound": 0.8,
+                    "probability_threshold": 0.1,
+                },
+            ),
+            candidate_data=candidate_data,
+            candidate_index=(10, 11, 12),
+            top_k=2,
+        )
+
+        self.assertEqual(ranked["candidate_id"].iloc[0], "target")
+        self.assertEqual(ranked["matgpr_rank"].tolist(), [1, 2])
+        self.assertEqual(ranked["matgpr_candidate_index"].iloc[0], 11)
+        self.assertNotIn("matgpr_rank", ranked.columns[2:])
+        self.assertIn("matgpr_constraint_probability_density", ranked.columns)
+        self.assertTrue(ranked["matgpr_acquisition"].between(0.0, 1.0).all())
+
+    def test_rank_bo_candidate_predictions_validates_prediction_lengths(self):
+        with self.assertRaises(ValueError):
+            rank_bo_candidate_predictions(
+                predicted_mean=(0.2, 0.5),
+                predicted_std=(0.1,),
+                objective={"target_name": "density", "mode": "maximize"},
+            )
+
+        with self.assertRaises(ValueError):
+            rank_bo_candidate_predictions(
+                predicted_mean=(),
+                objective={"target_name": "density", "mode": "maximize"},
+            )
+        with self.assertRaises(ValueError):
+            rank_bo_candidate_predictions(
+                predicted_mean=(0.2, 0.5),
+                predicted_std=(-0.1, 0.2),
+                objective={"target_name": "density", "mode": "maximize"},
+            )
+
+    def test_rank_bo_candidate_predictions_uses_joint_same_target_feasibility(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(0.0,),
+            predicted_std=(1.0,),
+            objective={"target_name": "density", "mode": "maximize"},
+            output_constraints=(
+                {"target_name": "density", "lower_bound": -1.0},
+                {"target_name": "density", "upper_bound": 1.0},
+            ),
+        )
+
+        self.assertAlmostEqual(
+            ranked["matgpr_feasibility_probability"].iloc[0],
+            0.682689492,
+            places=7,
+        )
+        self.assertIn("matgpr_constraint_probability_density", ranked.columns)
+        self.assertIn("matgpr_constraint_probability_density_2", ranked.columns)
+
+    def test_rank_bo_candidate_predictions_respects_exclusive_deterministic_bounds(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(1.0,),
+            predicted_std=None,
+            objective={"target_name": "density", "mode": "maximize"},
+            output_constraints=(
+                {
+                    "target_name": "density",
+                    "lower_bound": 1.0,
+                    "inclusive": False,
+                },
+            ),
+        )
+
+        self.assertEqual(ranked["matgpr_feasibility_probability"].iloc[0], 0.0)
+        self.assertFalse(bool(ranked["matgpr_feasible"].iloc[0]))
 
     def test_select_diverse_batch_can_return_score_only_top_k(self):
         candidates = pd.DataFrame(

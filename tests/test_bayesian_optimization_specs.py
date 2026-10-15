@@ -112,6 +112,23 @@ def test_bo_objective_preference_validates_target_modes() -> None:
     with pytest.raises(ValueError, match="target_lower_bound"):
         BOObjectivePreference(target_name="density", mode="target_range")
 
+    with pytest.raises(ValueError, match="finite and positive"):
+        BOObjectivePreference(
+            target_name="band_gap",
+            mode="target_value",
+            target_value=1.5,
+            target_tolerance=0.0,
+        )
+
+    objective = BOObjectivePreference(
+        target_name="band_gap",
+        mode="target_value",
+        target_value=1.5,
+        target_tolerance=0.1,
+        units="eV",
+    )
+    assert objective.to_dict()["target_tolerance"] == 0.1
+
 
 def test_bo_feature_optimization_requires_controllable_feature() -> None:
     with pytest.raises(ValueError, match="controllable feature"):
@@ -119,4 +136,25 @@ def test_bo_feature_optimization_requires_controllable_feature() -> None:
             mode="feature_optimization",
             objectives=(BOObjectivePreference("conductivity"),),
             features=(BOFeatureSpec("material_id", variable_type="fixed", fixed_value="A"),),
+        )
+
+
+def test_bo_optimization_spec_rejects_duplicate_names() -> None:
+    with pytest.raises(ValueError, match="feature names must be unique"):
+        BOOptimizationSpec(
+            mode="feature_optimization",
+            objectives=(BOObjectivePreference("density"),),
+            features=(
+                BOFeatureSpec("temperature", lower_bound=20.0, upper_bound=100.0),
+                BOFeatureSpec("temperature", lower_bound=100.0, upper_bound=200.0),
+            ),
+        )
+
+    with pytest.raises(ValueError, match="objective target names must be unique"):
+        BOOptimizationSpec(
+            mode="finite_pool_ranking",
+            objectives=(
+                BOObjectivePreference("density", mode="maximize"),
+                BOObjectivePreference("density", mode="minimize"),
+            ),
         )
