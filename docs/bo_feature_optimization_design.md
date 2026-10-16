@@ -1,6 +1,7 @@
 # Bayesian Optimization Feature-Optimization Design
 
 Date: 2026-10-14
+Last updated: 2026-10-15
 
 ## Goal
 
@@ -99,6 +100,22 @@ axes for two features, and a standardized two-component PCA projection for
 higher-dimensional numeric spaces. The package returns coordinates and
 embedding metadata; applications remain responsible only for rendering.
 
+The sixth code step adds `build_bo_what_if_slice(...)`. It constructs a strict
+one- or two-feature view from an already ranked candidate table and returns:
+
+- original feature-axis coordinates,
+- predicted mean and standard deviation,
+- configurable uncertainty bounds,
+- objective, feasibility, and acquisition components,
+- recommendation role, rank, and stable candidate/input ID,
+- fixed and constant context values plus explicit
+  `interpolation_method="none"` provenance.
+
+The builder does not refit or call a model and does not interpolate between
+candidates. If hidden varying features leave more than one candidate at an
+axis coordinate, it rejects the slice until the caller supplies additional
+fixed feature values.
+
 ## Explanation Payloads for Apps
 
 Future BO result payloads should make recommendations explainable. For each
@@ -132,4 +149,6 @@ semantics.
    scorer is implemented for fitted models and saved predictions.
 5. Add app-neutral recommendation explanation payloads: done for single-target
    feature-optimization ranking.
-6. Add examples for process development and additive manufacturing.
+6. Add strict one/two-variable what-if slices over evaluated candidates: done.
+7. Add examples for process development and additive manufacturing: private
+   GenMatics smoke example done; a public example can follow in a later release.

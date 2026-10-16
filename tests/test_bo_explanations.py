@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from matgpr import BOExplanationTables, build_bo_explanation_tables
+from matgpr import (
+    BOExplanationTables,
+    BOWhatIfSlice,
+    build_bo_explanation_tables,
+    build_bo_what_if_slice,
+)
 
 
 def test_build_bo_explanation_tables_returns_plot_ready_rows() -> None:
@@ -91,6 +96,109 @@ def test_build_bo_explanation_tables_rejects_duplicate_ranks() -> None:
         build_bo_explanation_tables(ranked, top_k=1)
 
 
+def test_build_bo_what_if_slice_returns_conditioned_one_feature_rows() -> None:
+    result = build_bo_what_if_slice(
+        _what_if_candidates(),
+        x_feature="laser_power_W",
+        fixed_feature_values={"scan_speed_mm_s": 500.0},
+        top_k=2,
+        uncertainty_multiplier=2.0,
+    )
+
+    assert isinstance(result, BOWhatIfSlice)
+    assert result.rows["x"].tolist() == [100.0, 200.0]
+    assert result.rows["y"].tolist() == [None, None]
+    assert result.rows["predicted_lower"].tolist() == pytest.approx([0.93, 0.97])
+    assert result.rows["predicted_upper"].tolist() == pytest.approx([1.01, 1.01])
+    assert result.rows["point_role"].tolist() == ["candidate", "recommended"]
+    assert result.metadata["slice_dimension"] == 1
+    assert result.metadata["fixed_feature_values"] == {"scan_speed_mm_s": 500.0}
+    assert result.metadata["constant_context_values"]["alloy"] == "316L"
+    assert result.metadata["interpolation_method"] == "none"
+
+
+def test_build_bo_what_if_slice_returns_sorted_two_feature_surface() -> None:
+    result = build_bo_what_if_slice(
+        _what_if_candidates().iloc[[3, 0, 2, 1]],
+        x_feature="laser_power_W",
+        y_feature="scan_speed_mm_s",
+        top_k=1,
+    )
+
+    assert result.rows[["x", "y"]].values.tolist() == [
+        [100.0, 500.0],
+        [200.0, 500.0],
+        [100.0, 1000.0],
+        [200.0, 1000.0],
+    ]
+    assert result.rows["candidate_or_input_id"].tolist() == [
+        "candidate-3",
+        "candidate-1",
+        "candidate-4",
+        "candidate-2",
+    ]
+    assert result.metadata["slice_dimension"] == 2
+    assert result.metadata["matched_candidate_count"] == 4
+
+
+def test_build_bo_what_if_slice_rejects_ambiguous_hidden_context() -> None:
+    ranked = _what_if_candidates()
+    duplicate = ranked.iloc[[0]].copy()
+    duplicate["candidate_id"] = "candidate-5"
+    duplicate["alloy"] = "Ti-6Al-4V"
+    duplicate["matgpr_rank"] = 5
+    duplicate["matgpr_candidate_index"] = 4
+    ranked = pd.concat((ranked, duplicate), ignore_index=True)
+
+    with pytest.raises(ValueError, match="additional fixed_feature_values"):
+        build_bo_what_if_slice(
+            ranked,
+            x_feature="laser_power_W",
+            y_feature="scan_speed_mm_s",
+        )
+
+
+def test_build_bo_what_if_slice_validates_axes_and_fixed_context() -> None:
+    ranked = _what_if_candidates()
+
+    with pytest.raises(ValueError, match="must be numeric"):
+        build_bo_what_if_slice(ranked, x_feature="alloy")
+    with pytest.raises(ValueError, match="identifier column"):
+        build_bo_what_if_slice(
+            ranked.assign(batch_number=[1, 2, 3, 4]),
+            x_feature="batch_number",
+            identifier_columns=("batch_number",),
+        )
+    with pytest.raises(ValueError, match="do not match any"):
+        build_bo_what_if_slice(
+            ranked,
+            x_feature="laser_power_W",
+            fixed_feature_values={"scan_speed_mm_s": 750.0},
+        )
+    with pytest.raises(ValueError, match="at least two distinct"):
+        build_bo_what_if_slice(
+            ranked.iloc[[0, 1]],
+            x_feature="laser_power_W",
+        )
+
+
+def test_build_bo_what_if_slice_ignores_missing_categorical_context_values() -> None:
+    ranked = _what_if_candidates()
+    ranked["alloy"] = pd.Series(
+        ["316L", "316L", pd.NA, pd.NA],
+        dtype="string",
+    )
+
+    result = build_bo_what_if_slice(
+        ranked,
+        x_feature="scan_speed_mm_s",
+        fixed_feature_values={"alloy": "316L"},
+    )
+
+    assert result.rows["x"].tolist() == [500.0, 1000.0]
+    assert result.metadata["matched_candidate_count"] == 2
+
+
 def _ranked_candidates() -> pd.DataFrame:
     return pd.DataFrame(
         {
@@ -109,5 +217,32 @@ def _ranked_candidates() -> pd.DataFrame:
             "matgpr_constraint_probability_density": [0.95, 0.85, 0.30],
             "matgpr_feasible": [True, True, False],
             "matgpr_constraint_violations": ["", "", "density"],
+        }
+    )
+
+
+def _what_if_candidates() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "candidate_id": [
+                "candidate-1",
+                "candidate-2",
+                "candidate-3",
+                "candidate-4",
+            ],
+            "laser_power_W": [200.0, 200.0, 100.0, 100.0],
+            "scan_speed_mm_s": [500.0, 1000.0, 500.0, 1000.0],
+            "alloy": ["316L"] * 4,
+            "matgpr_rank": [1, 2, 3, 4],
+            "matgpr_candidate_index": [0, 1, 2, 3],
+            "matgpr_predicted_mean": [0.99, 0.98, 0.97, 0.96],
+            "matgpr_predicted_std": [0.01, 0.015, 0.02, 0.025],
+            "matgpr_preference_score": [0.95, 0.85, 0.75, 0.65],
+            "matgpr_objective_component": [0.95, 0.85, 0.75, 0.65],
+            "matgpr_feasibility_probability": [0.99, 0.95, 0.90, 0.80],
+            "matgpr_acquisition": [0.94, 0.81, 0.68, 0.52],
+            "matgpr_constraint_probability_density": [0.99, 0.95, 0.90, 0.80],
+            "matgpr_feasible": [True, True, True, True],
+            "matgpr_constraint_violations": ["", "", "", ""],
         }
     )

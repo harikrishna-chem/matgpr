@@ -11,7 +11,12 @@ import pandas as pd
 
 from .bayesian_optimization_specs import BOOutputConstraintSpec
 
-__all__ = ["BOExplanationTables", "build_bo_explanation_tables"]
+__all__ = [
+    "BOExplanationTables",
+    "BOWhatIfSlice",
+    "build_bo_explanation_tables",
+    "build_bo_what_if_slice",
+]
 
 _REQUIRED_RANKING_COLUMNS = (
     "matgpr_rank",
@@ -61,6 +66,19 @@ class BOExplanationTables:
         """Return training/reference and candidate coordinates for plotting."""
 
         return self.feature_space_table.copy()
+
+
+@dataclass(frozen=True)
+class BOWhatIfSlice:
+    """Evaluated one- or two-feature BO slice with uncertainty metadata."""
+
+    rows: pd.DataFrame
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def frame(self) -> pd.DataFrame:
+        """Return a copy of the plot-ready slice rows."""
+
+        return self.rows.copy()
 
 
 def build_bo_explanation_tables(
@@ -119,6 +137,166 @@ def build_bo_explanation_tables(
             "constraint_count": len(constraints),
             "identifier_columns": list(identifiers),
             **feature_metadata,
+        },
+    )
+
+
+def build_bo_what_if_slice(
+    ranked_candidates: pd.DataFrame,
+    *,
+    x_feature: str,
+    y_feature: str | None = None,
+    fixed_feature_values: Mapping[str, Any] | None = None,
+    top_k: int = 5,
+    uncertainty_multiplier: float = 1.96,
+    identifier_columns: Sequence[str] | None = None,
+    match_relative_tolerance: float = 1e-9,
+    match_absolute_tolerance: float = 1e-12,
+) -> BOWhatIfSlice:
+    """Build a strict one- or two-feature slice from evaluated BO candidates.
+
+    This function does not interpolate, refit, or call a surrogate model. It
+    filters already evaluated candidate predictions to the requested fixed
+    context. A slice must contain at most one candidate per axis coordinate;
+    callers must condition additional varying features when coordinates are
+    ambiguous.
+    """
+
+    ranked = _validate_ranked_candidates(ranked_candidates)
+    identifiers = _resolve_identifier_columns(ranked, identifier_columns)
+    x_axis = _resolve_slice_axis(
+        ranked,
+        x_feature,
+        "x_feature",
+        identifier_columns=identifiers,
+    )
+    y_axis = (
+        None
+        if y_feature is None
+        else _resolve_slice_axis(
+            ranked,
+            y_feature,
+            "y_feature",
+            identifier_columns=identifiers,
+        )
+    )
+    if y_axis == x_axis:
+        raise ValueError("y_feature must differ from x_feature")
+
+    recommendation_count = _positive_int(top_k, "top_k")
+    multiplier = _positive_float(uncertainty_multiplier, "uncertainty_multiplier")
+    relative_tolerance = _nonnegative_float(
+        match_relative_tolerance,
+        "match_relative_tolerance",
+    )
+    absolute_tolerance = _nonnegative_float(
+        match_absolute_tolerance,
+        "match_absolute_tolerance",
+    )
+    fixed_values = dict(fixed_feature_values or {})
+    _validate_fixed_slice_features(
+        ranked,
+        fixed_values,
+        axis_features=(x_axis,) if y_axis is None else (x_axis, y_axis),
+        identifier_columns=identifiers,
+    )
+    sliced = _filter_slice_context(
+        ranked,
+        fixed_values,
+        relative_tolerance=relative_tolerance,
+        absolute_tolerance=absolute_tolerance,
+    )
+    if sliced.empty:
+        raise ValueError("fixed_feature_values do not match any ranked candidates")
+
+    axis_features = (x_axis,) if y_axis is None else (x_axis, y_axis)
+    for axis in axis_features:
+        if sliced[axis].nunique(dropna=False) < 2:
+            raise ValueError(
+                f"what-if slice axis {axis!r} must contain at least two "
+                "distinct evaluated values after conditioning"
+            )
+    duplicate_coordinates = sliced.duplicated(
+        subset=list(axis_features),
+        keep=False,
+    )
+    if duplicate_coordinates.any():
+        varying = _varying_context_columns(
+            sliced.loc[duplicate_coordinates],
+            excluded_columns=axis_features,
+        )
+        detail = f"; varying context columns={list(varying)}" if varying else ""
+        raise ValueError(
+            "what-if slice has multiple candidates at the same axis coordinate; "
+            f"provide additional fixed_feature_values{detail}"
+        )
+
+    labels = _candidate_labels(sliced, identifiers)
+    predicted_mean = sliced["matgpr_predicted_mean"].to_numpy(dtype=float)
+    predicted_std = sliced["matgpr_predicted_std"].to_numpy(dtype=float)
+    ranks = sliced["matgpr_rank"].to_numpy(dtype=int)
+    recommended = ranks <= recommendation_count
+    constrained = any(
+        str(column).startswith("matgpr_constraint_probability_") for column in sliced.columns
+    )
+    rows = pd.DataFrame(
+        {
+            "candidate_or_input_id": labels,
+            "rank": ranks,
+            "x": sliced[x_axis].to_numpy(dtype=float),
+            "y": (
+                np.full(len(sliced), np.nan)
+                if y_axis is None
+                else sliced[y_axis].to_numpy(dtype=float)
+            ),
+            "x_feature": [x_axis] * len(sliced),
+            "y_feature": [y_axis] * len(sliced),
+            "predicted_mean": predicted_mean,
+            "predicted_std": predicted_std,
+            "predicted_lower": predicted_mean - multiplier * predicted_std,
+            "predicted_upper": predicted_mean + multiplier * predicted_std,
+            "objective_preference_score": sliced["matgpr_preference_score"].to_numpy(dtype=float),
+            "objective_component": sliced["matgpr_objective_component"].to_numpy(dtype=float),
+            "feasibility_probability": sliced["matgpr_feasibility_probability"].to_numpy(
+                dtype=float
+            ),
+            "acquisition_score": sliced["matgpr_acquisition"].to_numpy(dtype=float),
+            "feasibility_status": _feasibility_status(sliced, constrained),
+            "constraint_violations": _optional_text_column(
+                sliced,
+                "matgpr_constraint_violations",
+            ),
+            "is_recommended": recommended.astype(bool),
+            "point_role": np.where(recommended, "recommended", "candidate"),
+        }
+    )
+    sort_columns = ["x", "rank"] if y_axis is None else ["y", "x", "rank"]
+    rows = rows.sort_values(sort_columns, kind="stable").reset_index(drop=True)
+    if y_axis is None:
+        rows["y"] = None
+
+    constant_context = _constant_context_values(
+        sliced,
+        excluded_columns=(*axis_features, *identifiers),
+    )
+    return BOWhatIfSlice(
+        rows=rows,
+        metadata={
+            "slice_dimension": len(axis_features),
+            "x_feature": x_axis,
+            "y_feature": y_axis,
+            "fixed_feature_values": {
+                str(name): _python_scalar(value) for name, value in fixed_values.items()
+            },
+            "constant_context_values": constant_context,
+            "source_candidate_count": len(ranked),
+            "matched_candidate_count": len(sliced),
+            "recommendation_rank_cutoff": recommendation_count,
+            "uncertainty_multiplier": multiplier,
+            "interpolation_method": "none",
+            "identifier_columns": list(identifiers),
+            "match_relative_tolerance": relative_tolerance,
+            "match_absolute_tolerance": absolute_tolerance,
         },
     )
 
@@ -489,11 +667,143 @@ def _coerce_output_constraint(
     raise TypeError("output_constraints must contain BOOutputConstraintSpec or mappings")
 
 
+def _resolve_slice_axis(
+    ranked: pd.DataFrame,
+    value: str,
+    field_name: str,
+    *,
+    identifier_columns: Sequence[str],
+) -> str:
+    feature = str(value).strip()
+    if not feature:
+        raise ValueError(f"{field_name} must not be empty")
+    if feature not in ranked:
+        raise ValueError(f"{field_name} {feature!r} is missing from ranked_candidates")
+    if feature.startswith("matgpr_"):
+        raise ValueError(f"{field_name} must reference a candidate input feature")
+    if feature in identifier_columns:
+        raise ValueError(f"{field_name} must not reference an identifier column")
+    if not pd.api.types.is_numeric_dtype(ranked[feature]):
+        raise ValueError(f"{field_name} {feature!r} must be numeric")
+    values = pd.to_numeric(ranked[feature], errors="coerce").to_numpy(dtype=float)
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"{field_name} {feature!r} must contain finite values")
+    return feature
+
+
+def _validate_fixed_slice_features(
+    ranked: pd.DataFrame,
+    fixed_values: Mapping[str, Any],
+    *,
+    axis_features: Sequence[str],
+    identifier_columns: Sequence[str],
+) -> None:
+    missing = [str(name) for name in fixed_values if str(name) not in ranked]
+    if missing:
+        raise ValueError(f"fixed_feature_values missing from ranked_candidates: {missing}")
+    invalid = [
+        str(name)
+        for name in fixed_values
+        if str(name).startswith("matgpr_")
+        or str(name) in axis_features
+        or str(name) in identifier_columns
+    ]
+    if invalid:
+        raise ValueError(
+            "fixed_feature_values must contain non-axis candidate input features; "
+            f"invalid={invalid}"
+        )
+
+
+def _filter_slice_context(
+    ranked: pd.DataFrame,
+    fixed_values: Mapping[str, Any],
+    *,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+) -> pd.DataFrame:
+    selected = np.ones(len(ranked), dtype=bool)
+    for raw_name, expected in fixed_values.items():
+        name = str(raw_name)
+        series = ranked[name]
+        if expected is None:
+            matches = series.isna().to_numpy(dtype=bool)
+        elif pd.api.types.is_numeric_dtype(series) and not isinstance(expected, bool):
+            try:
+                expected_numeric = float(expected)
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"fixed_feature_values[{name!r}] must be numeric") from error
+            if not np.isfinite(expected_numeric):
+                raise ValueError(f"fixed_feature_values[{name!r}] must be finite")
+            numeric = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+            matches = np.isfinite(numeric) & np.isclose(
+                numeric,
+                expected_numeric,
+                rtol=relative_tolerance,
+                atol=absolute_tolerance,
+            )
+        else:
+            matches = series.eq(expected).fillna(False).to_numpy(dtype=bool)
+        selected &= matches
+    return ranked.loc[selected].reset_index(drop=True)
+
+
+def _varying_context_columns(
+    frame: pd.DataFrame,
+    *,
+    excluded_columns: Sequence[str],
+) -> tuple[str, ...]:
+    excluded = set(excluded_columns)
+    return tuple(
+        str(column)
+        for column in frame.columns
+        if column not in excluded
+        and not str(column).startswith("matgpr_")
+        and column not in _AUTO_IDENTIFIER_COLUMNS
+        and frame[column].nunique(dropna=False) > 1
+    )
+
+
+def _constant_context_values(
+    frame: pd.DataFrame,
+    *,
+    excluded_columns: Sequence[str],
+) -> dict[str, Any]:
+    excluded = set(excluded_columns)
+    context: dict[str, Any] = {}
+    for column in frame.columns:
+        if column in excluded or str(column).startswith("matgpr_"):
+            continue
+        if frame[column].nunique(dropna=False) != 1:
+            continue
+        value = frame[column].iloc[0]
+        context[str(column)] = None if pd.isna(value) else _python_scalar(value)
+    return context
+
+
+def _python_scalar(value: Any) -> Any:
+    return value.item() if isinstance(value, np.generic) else value
+
+
 def _positive_int(value: Any, name: str) -> int:
     integer = int(value)
     if integer < 1:
         raise ValueError(f"{name} must be at least 1")
     return integer
+
+
+def _positive_float(value: Any, name: str) -> float:
+    number = float(value)
+    if not np.isfinite(number) or number <= 0.0:
+        raise ValueError(f"{name} must be a positive finite number")
+    return number
+
+
+def _nonnegative_float(value: Any, name: str) -> float:
+    number = float(value)
+    if not np.isfinite(number) or number < 0.0:
+        raise ValueError(f"{name} must be a non-negative finite number")
+    return number
 
 
 def _slug(value: str) -> str:

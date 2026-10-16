@@ -25,3 +25,13 @@ BoTorch is a required dependency, so these helpers work in any `matgpr`
 installation. It is imported lazily, only when a BoTorch-backed helper runs.
 
 ::: matgpr.bayesian_optimization
+
+## Explanation And What-If Tables
+
+`build_bo_explanation_tables(...)` converts ranked candidates into
+plot-ready recommendation, acquisition, constraint, and feature-space tables.
+`build_bo_what_if_slice(...)` creates strict one- or two-feature views over
+evaluated candidates, including predictive uncertainty and ranking components,
+without fitting a model or interpolating between candidates.
+
+::: matgpr.bo_explanations

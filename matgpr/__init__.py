@@ -30,6 +30,7 @@ __all__ = [
     "BOBenchmarkResult",
     "BOBenchmarkStrategy",
     "BOExplanationTables",
+    "BOWhatIfSlice",
     "BOObjectiveMode",
     "BOObjectivePreference",
     "BOOptimizationMode",
@@ -135,6 +136,7 @@ __all__ = [
     "build_additive_kernel",
     "build_bo_candidate_pool",
     "build_bo_explanation_tables",
+    "build_bo_what_if_slice",
     "build_cartesian_candidate_grid",
     "build_composition_candidate_grid",
     "build_element_fraction_gpr_kernel",
@@ -322,6 +324,7 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "BOBenchmarkResult": (".bo_benchmarking", "BOBenchmarkResult"),
     "BOBenchmarkStrategy": (".bo_benchmarking", "BOBenchmarkStrategy"),
     "BOExplanationTables": (".bo_explanations", "BOExplanationTables"),
+    "BOWhatIfSlice": (".bo_explanations", "BOWhatIfSlice"),
     "BOObjectiveMode": (".bayesian_optimization_specs", "BOObjectiveMode"),
     "BOObjectivePreference": (".bayesian_optimization_specs", "BOObjectivePreference"),
     "BOOptimizationMode": (".bayesian_optimization_specs", "BOOptimizationMode"),
@@ -447,6 +450,10 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "build_bo_explanation_tables": (
         ".bo_explanations",
         "build_bo_explanation_tables",
+    ),
+    "build_bo_what_if_slice": (
+        ".bo_explanations",
+        "build_bo_what_if_slice",
     ),
     "build_cartesian_candidate_grid": (".candidate_generation", "build_cartesian_candidate_grid"),
     "build_composition_candidate_grid": (
