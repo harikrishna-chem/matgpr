@@ -271,6 +271,8 @@ class BayesianOptimizationApiTests(unittest.TestCase):
             annotated["matgpr_matched_existing_id"].tolist(),
             ["exp-17", None],
         )
+        self.assertEqual(annotated["matgpr_matched_existing_id"].dtype, object)
+        self.assertIsNone(annotated.loc[1, "matgpr_matched_existing_id"])
 
     def test_candidate_domain_policy_validation_errors_are_explicit(self):
         candidates = pd.DataFrame({"material_id": ["a"], "descriptor_x": [0.0]})

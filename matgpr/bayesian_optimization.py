@@ -640,7 +640,11 @@ def apply_candidate_duplicate_policy(
     result = candidates.copy()
     result[duplicate_column] = is_duplicate
     result[reason_column] = reasons
-    result[matched_id_column] = matched_ids
+    result[matched_id_column] = pd.Series(
+        matched_ids,
+        index=result.index,
+        dtype=object,
+    )
     if distances is not None:
         result[distance_column] = distances
     if policy == "filter":
@@ -3528,7 +3532,11 @@ def _apply_candidate_domain_policies_with_mask(
         )
         result["matgpr_is_duplicate"] = is_duplicate
         result["matgpr_duplicate_reason"] = reasons
-        result["matgpr_matched_existing_id"] = matched_ids
+        result["matgpr_matched_existing_id"] = pd.Series(
+            matched_ids,
+            index=result.index,
+            dtype=object,
+        )
         if distances is not None:
             result["matgpr_duplicate_distance"] = distances
         if duplicate_policy_action == "filter":
