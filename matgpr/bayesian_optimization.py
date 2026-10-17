@@ -9,6 +9,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from .bayesian_optimization_specs import (
+    BOObjectiveMode,
+    BOObjectivePreference,
+    BOOutputConstraintSpec,
+)
 from .multi_objective import ObjectiveSpec, pareto_front_mask
 
 _OUTPUT_COLUMNS = (
@@ -22,6 +27,9 @@ _OUTPUT_COLUMNS = (
     "matgpr_diversity_distance",
     "matgpr_predicted_mean",
     "matgpr_predicted_std",
+    "matgpr_preference_score",
+    "matgpr_objective_component",
+    "matgpr_feasibility_probability",
     "matgpr_acquisition",
 )
 
@@ -40,6 +48,8 @@ __all__ = [
     "fit_botorch_surrogate",
     "fit_multi_objective_botorch_surrogate",
     "observation_noise_variance",
+    "rank_bo_candidate_predictions",
+    "rank_bo_candidate_pool",
     "rank_discrete_candidates",
     "rank_multi_objective_discrete_candidates",
     "select_diverse_batch",
@@ -1588,6 +1598,174 @@ def suggest_next_experiments(
     )
 
 
+def rank_bo_candidate_pool(
+    X_train: pd.DataFrame | np.ndarray,
+    y_train: pd.Series | np.ndarray,
+    X_candidates: pd.DataFrame | np.ndarray,
+    *,
+    objective: BOObjectivePreference | dict[str, Any],
+    output_constraints: Sequence[BOOutputConstraintSpec | dict[str, Any]] = (),
+    candidate_data: pd.DataFrame | None = None,
+    top_k: int | None = None,
+    beta: float = 0.2,
+    noise_variance: float | np.ndarray | pd.Series | None = None,
+    normalize_features: bool = True,
+    standardize_target: bool = True,
+    fit_model: bool = True,
+    device: str | None = None,
+) -> pd.DataFrame:
+    """Rank generated BO candidates from objective and output-limit preferences.
+
+    This scorer is designed for feature-optimization workflows where a finite
+    candidate pool has already been generated from a search space. It supports
+    maximize, minimize, target-value, and target-range objectives. Output
+    constraints are interpreted as predicted constraints on the same modeled
+    target and are converted into feasibility probabilities.
+
+    For target-value objectives, provide `metadata={"tolerance": value}` on the
+    objective to score the probability of falling inside a finite target window.
+    Without a tolerance, the score is a unitless Gaussian closeness score.
+    """
+    objective_spec = _coerce_bo_objective_preference(objective)
+    constraint_specs = tuple(_coerce_bo_output_constraint(item) for item in output_constraints)
+    _validate_single_target_output_constraints(objective_spec, constraint_specs)
+    if top_k is not None and top_k < 1:
+        raise ValueError("top_k must be at least 1 when provided")
+    if beta < 0 or not np.isfinite(beta):
+        raise ValueError("beta must be finite and non-negative")
+
+    surrogate = fit_botorch_surrogate(
+        X_train,
+        y_train,
+        maximize=True,
+        noise_variance=noise_variance,
+        normalize_features=normalize_features,
+        standardize_target=standardize_target,
+        fit_model=fit_model,
+        device=device,
+    )
+    candidate_array, _, candidate_index = _as_numeric_matrix(
+        X_candidates,
+        name="X_candidates",
+    )
+    if candidate_array.shape[1] != surrogate.train_X.shape[-1]:
+        raise ValueError(
+            "X_candidates must have the same number of features as X_train "
+            f"({candidate_array.shape[1]} != {surrogate.train_X.shape[-1]})"
+        )
+    ranked = _candidate_frame(
+        X_candidates=X_candidates,
+        candidate_data=candidate_data,
+        candidate_index=candidate_index,
+    )
+
+    import torch
+
+    candidate_X = _to_tensor(
+        torch,
+        candidate_array,
+        device=surrogate.train_X.device,
+    )
+    surrogate.model.eval()
+    with torch.no_grad():
+        posterior = surrogate.model.posterior(candidate_X)
+        predicted_mean = posterior.mean.detach().cpu().numpy().reshape(-1)
+        predicted_std = posterior.variance.clamp_min(0.0).sqrt().detach().cpu().numpy().reshape(-1)
+
+    return rank_bo_candidate_predictions(
+        predicted_mean,
+        predicted_std,
+        objective=objective_spec,
+        output_constraints=constraint_specs,
+        candidate_data=ranked,
+        candidate_index=ranked["matgpr_candidate_index"].to_numpy(),
+        top_k=top_k,
+        beta=beta,
+    )
+
+
+def rank_bo_candidate_predictions(
+    predicted_mean: Sequence[float] | np.ndarray | pd.Series,
+    predicted_std: Sequence[float] | np.ndarray | pd.Series | None = None,
+    *,
+    objective: BOObjectivePreference | dict[str, Any],
+    output_constraints: Sequence[BOOutputConstraintSpec | dict[str, Any]] = (),
+    candidate_data: pd.DataFrame | None = None,
+    candidate_index: Sequence[int] | np.ndarray | pd.Series | None = None,
+    top_k: int | None = None,
+    beta: float = 0.2,
+) -> pd.DataFrame:
+    """Rank BO candidates from saved predictions and uncertainty.
+
+    Use this when a fitted model has already produced candidate-level
+    predictions, for example from a persisted estimator artifact. The scorer
+    applies the same objective-preference, target-range, and same-target
+    feasibility logic used by `rank_bo_candidate_pool(...)`, but does not fit
+    or call a surrogate model.
+    """
+    objective_spec = _coerce_bo_objective_preference(objective)
+    constraint_specs = tuple(_coerce_bo_output_constraint(item) for item in output_constraints)
+    _validate_single_target_output_constraints(objective_spec, constraint_specs)
+    if top_k is not None and top_k < 1:
+        raise ValueError("top_k must be at least 1 when provided")
+    if beta < 0 or not np.isfinite(beta):
+        raise ValueError("beta must be finite and non-negative")
+
+    mean = _as_prediction_vector(predicted_mean, name="predicted_mean")
+    if mean.size == 0:
+        raise ValueError("predicted_mean must contain at least one value")
+    std = (
+        np.zeros_like(mean, dtype=float)
+        if predicted_std is None
+        else _as_prediction_vector(
+            predicted_std,
+            name="predicted_std",
+            expected_length=mean.shape[0],
+            allow_negative=False,
+        )
+    )
+    indices = _candidate_prediction_index(candidate_index, expected_length=mean.shape[0])
+    ranked = _candidate_prediction_frame(candidate_data, indices)
+
+    preference_score = _objective_preference_score(
+        mean,
+        std,
+        objective_spec,
+        beta=beta,
+    )
+    feasibility_probability, feasible, violations, constraint_columns = (
+        _output_constraint_feasibility(
+            mean,
+            std,
+            constraint_specs,
+        )
+    )
+    acquisition_component = _preference_acquisition_component(
+        preference_score,
+        objective_spec,
+    )
+
+    ranked["matgpr_predicted_mean"] = mean
+    ranked["matgpr_predicted_std"] = std
+    ranked["matgpr_objective_name"] = objective_spec.target_name
+    ranked["matgpr_objective_mode"] = objective_spec.mode.value
+    ranked["matgpr_preference_score"] = preference_score
+    ranked["matgpr_objective_component"] = acquisition_component
+    ranked["matgpr_feasibility_probability"] = feasibility_probability
+    ranked["matgpr_acquisition"] = acquisition_component * feasibility_probability
+    if constraint_specs:
+        for column, values in constraint_columns.items():
+            ranked[column] = values
+        ranked["matgpr_feasible"] = feasible
+        ranked["matgpr_constraint_violations"] = violations
+
+    ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
+    ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
+    if top_k is not None:
+        return ranked.head(top_k).reset_index(drop=True)
+    return ranked
+
+
 def suggest_multi_objective_next_experiments(
     X_train: pd.DataFrame | np.ndarray,
     y_train: pd.DataFrame | np.ndarray,
@@ -2313,6 +2491,289 @@ def _recommended_boolean_count(
         return 0
     values = _boolean_array(frame[column])
     return int((values == value).sum())
+
+
+def _objective_preference_score(
+    mean: np.ndarray,
+    std: np.ndarray,
+    objective: BOObjectivePreference,
+    *,
+    beta: float,
+) -> np.ndarray:
+    if objective.mode is BOObjectiveMode.MAXIMIZE:
+        return mean + beta * std
+    if objective.mode is BOObjectiveMode.MINIMIZE:
+        return -mean + beta * std
+    if objective.mode is BOObjectiveMode.TARGET_RANGE:
+        return _normal_interval_probability(
+            mean,
+            std,
+            lower_bound=objective.target_lower_bound,
+            upper_bound=objective.target_upper_bound,
+        )
+    if objective.mode is BOObjectiveMode.TARGET_VALUE:
+        tolerance = _objective_target_tolerance(objective)
+        if tolerance is not None:
+            return _normal_interval_probability(
+                mean,
+                std,
+                lower_bound=float(objective.target_value) - tolerance,
+                upper_bound=float(objective.target_value) + tolerance,
+            )
+        return _normal_target_closeness(
+            mean,
+            std,
+            target=float(objective.target_value),
+        )
+    raise ValueError(f"Unsupported objective mode: {objective.mode.value}")
+
+
+def _preference_acquisition_component(
+    preference_score: np.ndarray,
+    objective: BOObjectivePreference,
+) -> np.ndarray:
+    if objective.mode in {
+        BOObjectiveMode.TARGET_VALUE,
+        BOObjectiveMode.TARGET_RANGE,
+    }:
+        return np.clip(preference_score.astype(float), 0.0, 1.0)
+    return _unit_interval_scores(preference_score)
+
+
+def _output_constraint_feasibility(
+    mean: np.ndarray,
+    std: np.ndarray,
+    constraints: Sequence[BOOutputConstraintSpec],
+) -> tuple[np.ndarray, np.ndarray, list[str], dict[str, np.ndarray]]:
+    if not constraints:
+        return (
+            np.ones(mean.shape[0], dtype=float),
+            np.ones(mean.shape[0], dtype=bool),
+            [""] * mean.shape[0],
+            {},
+        )
+
+    feasible_masks: list[np.ndarray] = []
+    violation_parts: list[list[str]] = [[] for _ in range(mean.shape[0])]
+    columns: dict[str, np.ndarray] = {}
+    for constraint in constraints:
+        probability = _normal_interval_probability(
+            mean,
+            std,
+            lower_bound=constraint.lower_bound,
+            upper_bound=constraint.upper_bound,
+            inclusive=constraint.inclusive,
+        )
+        threshold = (
+            0.5
+            if constraint.probability_threshold is None
+            else float(constraint.probability_threshold)
+        )
+        passes = probability >= threshold
+        slug = _slugify_objective_name(constraint.target_name)
+        column = f"matgpr_constraint_probability_{slug}"
+        if column in columns:
+            column = f"{column}_{len(columns) + 1}"
+        columns[column] = probability
+        feasible_masks.append(passes)
+        for row_index, is_feasible in enumerate(passes):
+            if not is_feasible:
+                violation_parts[row_index].append(constraint.target_name)
+
+    feasibility_probability = _joint_output_constraint_probability(
+        mean,
+        std,
+        constraints,
+    )
+    feasible = np.logical_and.reduce(feasible_masks)
+    violations = ["; ".join(dict.fromkeys(parts)) for parts in violation_parts]
+    return feasibility_probability, feasible, violations, columns
+
+
+def _normal_interval_probability(
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    lower_bound: float | None,
+    upper_bound: float | None,
+    inclusive: bool = True,
+    lower_inclusive: bool | None = None,
+    upper_inclusive: bool | None = None,
+) -> np.ndarray:
+    if lower_bound is None and upper_bound is None:
+        return np.ones(mean.shape[0], dtype=float)
+
+    mean = mean.astype(float)
+    std = np.maximum(std.astype(float), 0.0)
+    lower_closed = inclusive if lower_inclusive is None else lower_inclusive
+    upper_closed = inclusive if upper_inclusive is None else upper_inclusive
+    deterministic = std <= 1e-12
+    probability = np.zeros(mean.shape[0], dtype=float)
+
+    if np.any(~deterministic):
+        active_mean = mean[~deterministic]
+        active_std = std[~deterministic]
+        lower_probability = (
+            0.0
+            if lower_bound is None
+            else _standard_normal_cdf((float(lower_bound) - active_mean) / active_std)
+        )
+        upper_probability = (
+            1.0
+            if upper_bound is None
+            else _standard_normal_cdf((float(upper_bound) - active_mean) / active_std)
+        )
+        probability[~deterministic] = np.clip(
+            upper_probability - lower_probability,
+            0.0,
+            1.0,
+        )
+
+    if np.any(deterministic):
+        lower_ok = (
+            np.ones(np.count_nonzero(deterministic), dtype=bool)
+            if lower_bound is None
+            else (
+                mean[deterministic] >= float(lower_bound)
+                if lower_closed
+                else mean[deterministic] > float(lower_bound)
+            )
+        )
+        upper_ok = (
+            np.ones(np.count_nonzero(deterministic), dtype=bool)
+            if upper_bound is None
+            else (
+                mean[deterministic] <= float(upper_bound)
+                if upper_closed
+                else mean[deterministic] < float(upper_bound)
+            )
+        )
+        probability[deterministic] = (lower_ok & upper_ok).astype(float)
+    return probability
+
+
+def _joint_output_constraint_probability(
+    mean: np.ndarray,
+    std: np.ndarray,
+    constraints: Sequence[BOOutputConstraintSpec],
+) -> np.ndarray:
+    lower_bounds = [
+        float(constraint.lower_bound)
+        for constraint in constraints
+        if constraint.lower_bound is not None
+    ]
+    upper_bounds = [
+        float(constraint.upper_bound)
+        for constraint in constraints
+        if constraint.upper_bound is not None
+    ]
+    lower_bound = max(lower_bounds) if lower_bounds else None
+    upper_bound = min(upper_bounds) if upper_bounds else None
+    if lower_bound is not None and upper_bound is not None and lower_bound > upper_bound:
+        return np.zeros(mean.shape[0], dtype=float)
+
+    lower_inclusive = all(
+        constraint.inclusive
+        for constraint in constraints
+        if constraint.lower_bound is not None and float(constraint.lower_bound) == lower_bound
+    )
+    upper_inclusive = all(
+        constraint.inclusive
+        for constraint in constraints
+        if constraint.upper_bound is not None and float(constraint.upper_bound) == upper_bound
+    )
+    return _normal_interval_probability(
+        mean,
+        std,
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
+        lower_inclusive=lower_inclusive,
+        upper_inclusive=upper_inclusive,
+    )
+
+
+def _normal_target_closeness(
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    target: float,
+) -> np.ndarray:
+    mean = mean.astype(float)
+    std = np.maximum(std.astype(float), 0.0)
+    deterministic = std <= 1e-12
+    score = np.zeros(mean.shape[0], dtype=float)
+    if np.any(~deterministic):
+        z = (mean[~deterministic] - target) / std[~deterministic]
+        score[~deterministic] = np.exp(-0.5 * z**2)
+    if np.any(deterministic):
+        score[deterministic] = np.isclose(mean[deterministic], target).astype(float)
+    return score
+
+
+def _standard_normal_cdf(values: np.ndarray) -> np.ndarray:
+    from scipy.special import ndtr
+
+    return ndtr(values)
+
+
+def _unit_interval_scores(values: np.ndarray) -> np.ndarray:
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        return np.zeros_like(values, dtype=float)
+    min_value = float(np.min(finite))
+    max_value = float(np.max(finite))
+    if np.isclose(min_value, max_value):
+        return np.ones_like(values, dtype=float)
+    scaled = (values - min_value) / (max_value - min_value)
+    return np.clip(scaled, 0.0, 1.0)
+
+
+def _objective_target_tolerance(objective: BOObjectivePreference) -> float | None:
+    if objective.target_tolerance is not None:
+        return float(objective.target_tolerance)
+    for key in ("tolerance", "target_tolerance", "absolute_tolerance"):
+        if key in objective.metadata:
+            tolerance = float(objective.metadata[key])
+            if not np.isfinite(tolerance) or tolerance < 0.0:
+                raise ValueError("objective target tolerance must be finite and non-negative")
+            return tolerance
+    return None
+
+
+def _coerce_bo_objective_preference(
+    objective: BOObjectivePreference | dict[str, Any],
+) -> BOObjectivePreference:
+    if isinstance(objective, BOObjectivePreference):
+        return objective
+    if isinstance(objective, dict):
+        return BOObjectivePreference(**objective)
+    raise TypeError("objective must be a BOObjectivePreference or mapping")
+
+
+def _coerce_bo_output_constraint(
+    constraint: BOOutputConstraintSpec | dict[str, Any],
+) -> BOOutputConstraintSpec:
+    if isinstance(constraint, BOOutputConstraintSpec):
+        return constraint
+    if isinstance(constraint, dict):
+        return BOOutputConstraintSpec(**constraint)
+    raise TypeError("output_constraints must contain BOOutputConstraintSpec or mappings")
+
+
+def _validate_single_target_output_constraints(
+    objective: BOObjectivePreference,
+    constraints: Sequence[BOOutputConstraintSpec],
+) -> None:
+    mismatched = [
+        constraint.target_name
+        for constraint in constraints
+        if constraint.target_name != objective.target_name
+    ]
+    if mismatched:
+        raise ValueError(
+            "single-target BO preference scoring only supports output constraints "
+            f"on the modeled objective {objective.target_name!r}; got {mismatched}"
+        )
 
 
 def _build_acquisition_function(
@@ -3539,6 +4000,78 @@ def _candidate_frame(
     else:
         frame = pd.DataFrame()
 
-    frame = frame.drop(columns=[column for column in _OUTPUT_COLUMNS if column in frame.columns])
+    frame = _drop_generated_bo_columns(frame)
     frame.insert(0, "matgpr_candidate_index", candidate_index)
     return frame
+
+
+def _candidate_prediction_frame(
+    candidate_data: pd.DataFrame | None,
+    candidate_index: np.ndarray,
+) -> pd.DataFrame:
+    if candidate_data is None:
+        frame = pd.DataFrame()
+    elif isinstance(candidate_data, pd.DataFrame):
+        if candidate_data.shape[0] != candidate_index.shape[0]:
+            raise ValueError(
+                "candidate_data rows must match prediction rows "
+                f"({candidate_data.shape[0]} != {candidate_index.shape[0]})"
+            )
+        frame = candidate_data.reset_index(drop=True).copy()
+    else:
+        raise TypeError("candidate_data must be a pandas DataFrame when provided")
+
+    frame = _drop_generated_bo_columns(frame)
+    frame.insert(0, "matgpr_candidate_index", candidate_index)
+    return frame
+
+
+def _drop_generated_bo_columns(frame: pd.DataFrame) -> pd.DataFrame:
+    generated_columns = [
+        column
+        for column in frame.columns
+        if column in _OUTPUT_COLUMNS
+        or str(column).startswith("matgpr_constraint_probability_")
+        or column in {"matgpr_objective_name", "matgpr_objective_mode"}
+    ]
+    return frame.drop(columns=generated_columns)
+
+
+def _as_prediction_vector(
+    values: Sequence[float] | np.ndarray | pd.Series,
+    *,
+    name: str,
+    expected_length: int | None = None,
+    allow_negative: bool = True,
+) -> np.ndarray:
+    array = np.asarray(values, dtype=float).reshape(-1)
+    if expected_length is not None and array.shape[0] != expected_length:
+        raise ValueError(
+            f"{name} length must match predicted_mean length "
+            f"({array.shape[0]} != {expected_length})"
+        )
+    if not np.all(np.isfinite(array)):
+        raise ValueError(f"{name} contains NaN or infinite values")
+    if not allow_negative and np.any(array < 0.0):
+        raise ValueError(f"{name} must contain non-negative values")
+    return array.astype(float)
+
+
+def _candidate_prediction_index(
+    candidate_index: Sequence[int] | np.ndarray | pd.Series | None,
+    *,
+    expected_length: int,
+) -> np.ndarray:
+    if candidate_index is None:
+        return np.arange(expected_length, dtype=int)
+    index_values = np.asarray(candidate_index, dtype=float).reshape(-1)
+    if index_values.shape[0] != expected_length:
+        raise ValueError(
+            "candidate_index length must match prediction rows "
+            f"({index_values.shape[0]} != {expected_length})"
+        )
+    if not np.all(np.isfinite(index_values)) or not np.all(
+        np.equal(index_values, np.floor(index_values))
+    ):
+        raise ValueError("candidate_index must contain finite integer values")
+    return index_values.astype(int)

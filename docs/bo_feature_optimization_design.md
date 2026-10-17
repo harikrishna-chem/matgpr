@@ -1,6 +1,7 @@
 # Bayesian Optimization Feature-Optimization Design
 
 Date: 2026-10-14
+Last updated: 2026-10-15
 
 ## Goal
 
@@ -61,6 +62,60 @@ The first code step adds typed, JSON-friendly specification records in
 These records do not fit a model. They define the contract that later optimizer
 implementations can consume.
 
+The second code step adds `build_bo_candidate_pool(...)` in
+`matgpr.candidate_generation`. It converts `BOOptimizationSpec.features` into a
+finite candidate table using either:
+
+- `strategy="grid"` for small, interpretable process windows.
+- `strategy="random"` for high-dimensional continuous, integer, and categorical
+  spaces.
+
+The third code step adds `rank_bo_candidate_pool(...)` in
+`matgpr.bayesian_optimization`. It scores generated candidate pools for one
+modeled target using maximize/minimize, target-value, or target-range objective
+preferences. Output constraints on the same target are converted into
+feasibility probabilities and multiplied into the acquisition score.
+Target-value requests can provide the typed `target_tolerance` field in target
+units; legacy metadata tolerance keys remain accepted for compatibility.
+
+The fourth code step adds `rank_bo_candidate_predictions(...)`. It applies the
+same objective and feasibility semantics to saved prediction rows with
+`predicted_mean` and optional `predicted_std`, without refitting or calling a
+surrogate. This is the reusable public utility for apps that load a persisted
+model artifact, run predictions once, and then rank candidate recommendations
+from those saved predictions.
+
+The fifth code step adds `build_bo_explanation_tables(...)`. It converts a
+ranked candidate table into four app-neutral DataFrames:
+
+- Recommendation summary rows for the selected candidates.
+- Acquisition decomposition rows showing the objective component,
+  feasibility probability, and final acquisition score.
+- Constraint rows with bounds, probability thresholds, and predicted
+  feasibility for every candidate/constraint pair.
+- Feature-space rows containing reference, candidate, and recommended points.
+
+Feature-space rows use the original axis for one feature, the two original
+axes for two features, and a standardized two-component PCA projection for
+higher-dimensional numeric spaces. The package returns coordinates and
+embedding metadata; applications remain responsible only for rendering.
+
+The sixth code step adds `build_bo_what_if_slice(...)`. It constructs a strict
+one- or two-feature view from an already ranked candidate table and returns:
+
+- original feature-axis coordinates,
+- predicted mean and standard deviation,
+- configurable uncertainty bounds,
+- objective, feasibility, and acquisition components,
+- recommendation role, rank, and stable candidate/input ID,
+- fixed and constant context values plus explicit
+  `interpolation_method="none"` provenance.
+
+The builder does not refit or call a model and does not interpolate between
+candidates. If hidden varying features leave more than one candidate at an
+axis coordinate, it rejects the slice until the caller supplies additional
+fixed feature values.
+
 ## Explanation Payloads for Apps
 
 Future BO result payloads should make recommendations explainable. For each
@@ -88,7 +143,12 @@ semantics.
 
 1. Add optimizer-neutral result records for feature-optimization BO.
 2. Add continuous/mixed search-space candidate generation from `BOFeatureSpec`.
-3. Add constrained single-objective acquisition wrappers.
-4. Add target-value and target-range acquisition utilities.
-5. Add app-neutral recommendation explanation payloads.
-6. Add examples for process development and additive manufacturing.
+3. Add constrained single-objective acquisition wrappers: first single-target
+   preference scorer is implemented.
+4. Add target-value and target-range acquisition utilities: first single-target
+   scorer is implemented for fitted models and saved predictions.
+5. Add app-neutral recommendation explanation payloads: done for single-target
+   feature-optimization ranking.
+6. Add strict one/two-variable what-if slices over evaluated candidates: done.
+7. Add examples for process development and additive manufacturing: private
+   GenMatics smoke example done; a public example can follow in a later release.
