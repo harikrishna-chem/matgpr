@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .bayesian_optimization_specs import (
+    BOAcquisitionIntent,
     BOObjectiveMode,
     BOObjectivePreference,
     BOOutputConstraintSpec,
@@ -30,7 +31,12 @@ _OUTPUT_COLUMNS = (
     "matgpr_preference_score",
     "matgpr_objective_component",
     "matgpr_feasibility_probability",
+    "matgpr_acquisition_base",
     "matgpr_acquisition",
+    "matgpr_acquisition_rank",
+    "matgpr_eligible_rank",
+    "matgpr_eligible_for_recommendation",
+    "matgpr_selected_for_batch",
 )
 
 __all__ = [
@@ -382,6 +388,7 @@ class CandidateDuplicatePolicy:
     feature_tolerance: float | None = None
     metric: str = "euclidean"
     feature_scales: Any | None = None
+    existing_id_column: str | None = None
 
     def __post_init__(self) -> None:
         if self.key_columns is None and self.feature_tolerance is None:
@@ -408,6 +415,11 @@ class CandidateDuplicatePolicy:
                 )
             object.__setattr__(self, "feature_tolerance", tolerance)
         object.__setattr__(self, "metric", _normalize_distance_metric(self.metric))
+        if self.existing_id_column is not None:
+            identifier = str(self.existing_id_column).strip()
+            if not identifier:
+                raise ValueError("existing_id_column must be non-empty when provided")
+            object.__setattr__(self, "existing_id_column", identifier)
 
 
 @dataclass(frozen=True)
@@ -594,6 +606,7 @@ def apply_candidate_duplicate_policy(
     duplicate_column: str = "matgpr_is_duplicate",
     distance_column: str = "matgpr_duplicate_distance",
     reason_column: str = "matgpr_duplicate_reason",
+    matched_id_column: str = "matgpr_matched_existing_id",
 ) -> pd.DataFrame:
     """Annotate or filter duplicate candidates in a finite BO pool.
 
@@ -609,10 +622,16 @@ def apply_candidate_duplicate_policy(
     duplicate_column = _validate_output_name(duplicate_column, name="duplicate_column")
     distance_column = _validate_output_name(distance_column, name="distance_column")
     reason_column = _validate_output_name(reason_column, name="reason_column")
-    _validate_distinct_names(duplicate_column, distance_column, reason_column)
+    matched_id_column = _validate_output_name(matched_id_column, name="matched_id_column")
+    _validate_distinct_names(
+        duplicate_column,
+        distance_column,
+        reason_column,
+        matched_id_column,
+    )
 
     candidate_data = candidates if candidate_features is None else candidate_features
-    is_duplicate, distances, reasons = _duplicate_policy_annotations(
+    is_duplicate, distances, reasons, matched_ids = _duplicate_policy_annotations(
         candidates,
         candidate_data,
         duplicate_policy,
@@ -621,6 +640,11 @@ def apply_candidate_duplicate_policy(
     result = candidates.copy()
     result[duplicate_column] = is_duplicate
     result[reason_column] = reasons
+    result[matched_id_column] = pd.Series(
+        matched_ids,
+        index=result.index,
+        dtype=object,
+    )
     if distances is not None:
         result[distance_column] = distances
     if policy == "filter":
@@ -1694,6 +1718,9 @@ def rank_bo_candidate_predictions(
     candidate_index: Sequence[int] | np.ndarray | pd.Series | None = None,
     top_k: int | None = None,
     beta: float = 0.2,
+    acquisition_intent: BOAcquisitionIntent | str | None = None,
+    incumbent_value: float | None = None,
+    improvement_threshold: float = 0.0,
 ) -> pd.DataFrame:
     """Rank BO candidates from saved predictions and uncertainty.
 
@@ -1710,13 +1737,16 @@ def rank_bo_candidate_predictions(
         raise ValueError("top_k must be at least 1 when provided")
     if beta < 0 or not np.isfinite(beta):
         raise ValueError("beta must be finite and non-negative")
+    if improvement_threshold < 0 or not np.isfinite(improvement_threshold):
+        raise ValueError("improvement_threshold must be finite and non-negative")
 
     mean = _as_prediction_vector(predicted_mean, name="predicted_mean")
     if mean.size == 0:
         raise ValueError("predicted_mean must contain at least one value")
+    uncertainty_available = predicted_std is not None
     std = (
         np.zeros_like(mean, dtype=float)
-        if predicted_std is None
+        if not uncertainty_available
         else _as_prediction_vector(
             predicted_std,
             name="predicted_std",
@@ -1727,11 +1757,19 @@ def rank_bo_candidate_predictions(
     indices = _candidate_prediction_index(candidate_index, expected_length=mean.shape[0])
     ranked = _candidate_prediction_frame(candidate_data, indices)
 
-    preference_score = _objective_preference_score(
+    requested_intent, effective_intent = _resolve_saved_prediction_acquisition(
+        acquisition_intent,
+        objective_spec,
+        uncertainty_available=uncertainty_available,
+    )
+    acquisition_base = _saved_prediction_acquisition_values(
         mean,
         std,
         objective_spec,
+        acquisition_intent=effective_intent,
         beta=beta,
+        incumbent_value=incumbent_value,
+        improvement_threshold=improvement_threshold,
     )
     feasibility_probability, feasible, violations, constraint_columns = (
         _output_constraint_feasibility(
@@ -1740,27 +1778,43 @@ def rank_bo_candidate_predictions(
             constraint_specs,
         )
     )
-    acquisition_component = _preference_acquisition_component(
-        preference_score,
-        objective_spec,
+    acquisition_values, objective_component, effective_name = _apply_saved_prediction_feasibility(
+        acquisition_base,
+        mean,
+        std,
+        objective=objective_spec,
+        constraints=constraint_specs,
+        acquisition_intent=effective_intent,
+        incumbent_value=incumbent_value,
+        improvement_threshold=improvement_threshold,
+        feasibility_probability=feasibility_probability,
     )
 
     ranked["matgpr_predicted_mean"] = mean
     ranked["matgpr_predicted_std"] = std
     ranked["matgpr_objective_name"] = objective_spec.target_name
     ranked["matgpr_objective_mode"] = objective_spec.mode.value
-    ranked["matgpr_preference_score"] = preference_score
-    ranked["matgpr_objective_component"] = acquisition_component
+    ranked["matgpr_requested_acquisition_intent"] = (
+        None if requested_intent is None else requested_intent.value
+    )
+    ranked["matgpr_effective_acquisition"] = effective_name
+    ranked["matgpr_uncertainty_used"] = effective_intent in _UNCERTAINTY_REQUIRED_ACQUISITIONS
+    ranked["matgpr_preference_score"] = acquisition_base
+    ranked["matgpr_objective_component"] = objective_component
     ranked["matgpr_feasibility_probability"] = feasibility_probability
-    ranked["matgpr_acquisition"] = acquisition_component * feasibility_probability
+    ranked["matgpr_acquisition_base"] = acquisition_base
+    ranked["matgpr_acquisition"] = acquisition_values
     if constraint_specs:
         for column, values in constraint_columns.items():
             ranked[column] = values
         ranked["matgpr_feasible"] = feasible
         ranked["matgpr_constraint_violations"] = violations
 
-    ranked = ranked.sort_values("matgpr_acquisition", ascending=False).reset_index(drop=True)
+    ranked = ranked.sort_values("matgpr_acquisition", ascending=False, kind="stable").reset_index(
+        drop=True
+    )
     ranked.insert(0, "matgpr_rank", np.arange(1, ranked.shape[0] + 1))
+    ranked["matgpr_acquisition_rank"] = ranked["matgpr_rank"]
     if top_k is not None:
         return ranked.head(top_k).reset_index(drop=True)
     return ranked
@@ -2528,6 +2582,301 @@ def _objective_preference_score(
     raise ValueError(f"Unsupported objective mode: {objective.mode.value}")
 
 
+_SAVED_PREDICTION_ACQUISITIONS = {
+    BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+    BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
+    BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
+    BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+    BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+    BOAcquisitionIntent.TARGET_PROBABILITY,
+    BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
+}
+_UNCERTAINTY_REQUIRED_ACQUISITIONS = _SAVED_PREDICTION_ACQUISITIONS - {
+    BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+}
+
+
+def _resolve_saved_prediction_acquisition(
+    value: BOAcquisitionIntent | str | None,
+    objective: BOObjectivePreference,
+    *,
+    uncertainty_available: bool,
+) -> tuple[BOAcquisitionIntent | None, BOAcquisitionIntent]:
+    requested = None if value is None else BOAcquisitionIntent(value)
+    if requested is None:
+        if not uncertainty_available:
+            effective = BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE
+        elif objective.mode is BOObjectiveMode.MAXIMIZE:
+            effective = BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND
+        elif objective.mode is BOObjectiveMode.MINIMIZE:
+            effective = BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND
+        else:
+            effective = BOAcquisitionIntent.TARGET_PROBABILITY
+    else:
+        effective = requested
+    if effective not in _SAVED_PREDICTION_ACQUISITIONS:
+        supported = ", ".join(sorted(item.value for item in _SAVED_PREDICTION_ACQUISITIONS))
+        raise ValueError(
+            f"acquisition intent {effective.value!r} is not supported for saved "
+            f"prediction scoring; supported intents: {supported}"
+        )
+    if effective in _UNCERTAINTY_REQUIRED_ACQUISITIONS and not uncertainty_available:
+        raise ValueError(
+            f"predicted_std is required for acquisition intent {effective.value!r}; "
+            "request 'posterior_mean_preference' explicitly for deterministic scoring"
+        )
+    if effective is BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND and (
+        objective.mode is not BOObjectiveMode.MAXIMIZE
+    ):
+        raise ValueError("upper_confidence_bound requires a maximize objective")
+    if effective is BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND and (
+        objective.mode is not BOObjectiveMode.MINIMIZE
+    ):
+        raise ValueError("lower_confidence_bound requires a minimize objective")
+    if effective is BOAcquisitionIntent.TARGET_PROBABILITY and objective.mode not in {
+        BOObjectiveMode.TARGET_VALUE,
+        BOObjectiveMode.TARGET_RANGE,
+    }:
+        raise ValueError("target_probability requires a target_value or target_range objective")
+    if effective in {
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+        BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
+    } and objective.mode not in {BOObjectiveMode.MAXIMIZE, BOObjectiveMode.MINIMIZE}:
+        raise ValueError(f"{effective.value} requires a maximize or minimize objective")
+    return requested, effective
+
+
+def _saved_prediction_acquisition_values(
+    mean: np.ndarray,
+    std: np.ndarray,
+    objective: BOObjectivePreference,
+    *,
+    acquisition_intent: BOAcquisitionIntent,
+    beta: float,
+    incumbent_value: float | None,
+    improvement_threshold: float,
+) -> np.ndarray:
+    if acquisition_intent is BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE:
+        return _posterior_mean_preference(mean, objective)
+    if acquisition_intent is BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND:
+        return mean + beta * std
+    if acquisition_intent is BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND:
+        return -(mean - beta * std)
+    if acquisition_intent in {
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+        BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
+    }:
+        return _normal_expected_improvement(
+            mean,
+            std,
+            objective=objective,
+            incumbent_value=incumbent_value,
+            improvement_threshold=improvement_threshold,
+        )
+    if acquisition_intent is BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT:
+        return _normal_probability_of_improvement(
+            mean,
+            std,
+            objective=objective,
+            incumbent_value=incumbent_value,
+            improvement_threshold=improvement_threshold,
+        )
+    if acquisition_intent is BOAcquisitionIntent.TARGET_PROBABILITY:
+        lower, upper = _objective_event_interval(objective)
+        return _normal_interval_probability(
+            mean,
+            std,
+            lower_bound=lower,
+            upper_bound=upper,
+        )
+    raise ValueError(f"Unsupported saved-prediction acquisition: {acquisition_intent.value}")
+
+
+def _posterior_mean_preference(
+    mean: np.ndarray,
+    objective: BOObjectivePreference,
+) -> np.ndarray:
+    if objective.mode is BOObjectiveMode.MAXIMIZE:
+        return mean.astype(float)
+    if objective.mode is BOObjectiveMode.MINIMIZE:
+        return -mean.astype(float)
+    if objective.mode is BOObjectiveMode.TARGET_VALUE:
+        return -np.abs(mean.astype(float) - float(objective.target_value))
+    lower, upper = _objective_event_interval(objective)
+    below = np.maximum(float(lower) - mean, 0.0)
+    above = np.maximum(mean - float(upper), 0.0)
+    return -(below + above)
+
+
+def _normal_expected_improvement(
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    objective: BOObjectivePreference,
+    incumbent_value: float | None,
+    improvement_threshold: float,
+) -> np.ndarray:
+    incumbent = _required_incumbent_value(incumbent_value)
+    improvement = (
+        mean - incumbent - improvement_threshold
+        if objective.mode is BOObjectiveMode.MAXIMIZE
+        else incumbent - mean - improvement_threshold
+    )
+    deterministic = std <= 1e-12
+    values = np.maximum(improvement, 0.0)
+    active = ~deterministic
+    if np.any(active):
+        z = improvement[active] / std[active]
+        values[active] = improvement[active] * _standard_normal_cdf(z) + std[
+            active
+        ] * _standard_normal_pdf(z)
+    return values
+
+
+def _normal_probability_of_improvement(
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    objective: BOObjectivePreference,
+    incumbent_value: float | None,
+    improvement_threshold: float,
+) -> np.ndarray:
+    incumbent = _required_incumbent_value(incumbent_value)
+    improvement = (
+        mean - incumbent - improvement_threshold
+        if objective.mode is BOObjectiveMode.MAXIMIZE
+        else incumbent - mean - improvement_threshold
+    )
+    deterministic = std <= 1e-12
+    values = (improvement > 0.0).astype(float)
+    active = ~deterministic
+    if np.any(active):
+        values[active] = _standard_normal_cdf(improvement[active] / std[active])
+    return values
+
+
+def _apply_saved_prediction_feasibility(
+    acquisition_base: np.ndarray,
+    mean: np.ndarray,
+    std: np.ndarray,
+    *,
+    objective: BOObjectivePreference,
+    constraints: Sequence[BOOutputConstraintSpec],
+    acquisition_intent: BOAcquisitionIntent,
+    incumbent_value: float | None,
+    improvement_threshold: float,
+    feasibility_probability: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, str]:
+    base_name = (
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT.value
+        if acquisition_intent is BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT
+        else acquisition_intent.value
+    )
+    if not constraints:
+        return acquisition_base, acquisition_base, base_name
+
+    if acquisition_intent in {
+        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+        BOAcquisitionIntent.TARGET_PROBABILITY,
+    }:
+        objective_interval = (
+            _improvement_event_interval(
+                objective,
+                incumbent_value=incumbent_value,
+                improvement_threshold=improvement_threshold,
+            )
+            if acquisition_intent is BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT
+            else _objective_event_interval(objective)
+        )
+        constraint_interval = _constraint_event_interval(constraints)
+        lower, upper = _intersect_intervals(objective_interval, constraint_interval)
+        intersection_probability = _normal_interval_probability(
+            mean,
+            std,
+            lower_bound=lower,
+            upper_bound=upper,
+        )
+        return intersection_probability, acquisition_base, f"intersection_{base_name}"
+
+    objective_component = (
+        _unit_interval_scores(acquisition_base)
+        if acquisition_intent
+        in {
+            BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+            BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
+            BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
+        }
+        else acquisition_base
+    )
+    return (
+        objective_component * feasibility_probability,
+        objective_component,
+        f"feasibility_weighted_{base_name}",
+    )
+
+
+def _objective_event_interval(
+    objective: BOObjectivePreference,
+) -> tuple[float | None, float | None]:
+    if objective.mode is BOObjectiveMode.TARGET_RANGE:
+        return objective.target_lower_bound, objective.target_upper_bound
+    if objective.mode is BOObjectiveMode.TARGET_VALUE:
+        tolerance = _objective_target_tolerance(objective)
+        if tolerance is None or tolerance <= 0.0:
+            raise ValueError(
+                "target_probability with target_value requires a positive target_tolerance"
+            )
+        target = float(objective.target_value)
+        return target - tolerance, target + tolerance
+    raise ValueError("objective does not define a closed target event")
+
+
+def _improvement_event_interval(
+    objective: BOObjectivePreference,
+    *,
+    incumbent_value: float | None,
+    improvement_threshold: float,
+) -> tuple[float | None, float | None]:
+    incumbent = _required_incumbent_value(incumbent_value)
+    if objective.mode is BOObjectiveMode.MAXIMIZE:
+        return incumbent + improvement_threshold, None
+    return None, incumbent - improvement_threshold
+
+
+def _constraint_event_interval(
+    constraints: Sequence[BOOutputConstraintSpec],
+) -> tuple[float | None, float | None]:
+    lower_values = [float(item.lower_bound) for item in constraints if item.lower_bound is not None]
+    upper_values = [float(item.upper_bound) for item in constraints if item.upper_bound is not None]
+    return (
+        max(lower_values) if lower_values else None,
+        min(upper_values) if upper_values else None,
+    )
+
+
+def _intersect_intervals(
+    first: tuple[float | None, float | None],
+    second: tuple[float | None, float | None],
+) -> tuple[float | None, float | None]:
+    lower_values = [value for value in (first[0], second[0]) if value is not None]
+    upper_values = [value for value in (first[1], second[1]) if value is not None]
+    lower = max(lower_values) if lower_values else None
+    upper = min(upper_values) if upper_values else None
+    if lower is not None and upper is not None and lower > upper:
+        return 1.0, 0.0
+    return lower, upper
+
+
+def _required_incumbent_value(value: float | None) -> float:
+    if value is None:
+        raise ValueError("incumbent_value is required for EI/PI acquisition")
+    incumbent = float(value)
+    if not np.isfinite(incumbent):
+        raise ValueError("incumbent_value must be finite")
+    return incumbent
+
+
 def _preference_acquisition_component(
     preference_score: np.ndarray,
     objective: BOObjectivePreference,
@@ -2714,6 +3063,10 @@ def _standard_normal_cdf(values: np.ndarray) -> np.ndarray:
     from scipy.special import ndtr
 
     return ndtr(values)
+
+
+def _standard_normal_pdf(values: np.ndarray) -> np.ndarray:
+    return np.exp(-0.5 * values**2) / np.sqrt(2.0 * np.pi)
 
 
 def _unit_interval_scores(values: np.ndarray) -> np.ndarray:
@@ -3171,7 +3524,7 @@ def _apply_candidate_domain_policies_with_mask(
     if duplicate_policy is not None:
         if not isinstance(duplicate_policy, CandidateDuplicatePolicy):
             raise TypeError("duplicate_policy must be a CandidateDuplicatePolicy")
-        is_duplicate, distances, reasons = _duplicate_policy_annotations(
+        is_duplicate, distances, reasons, matched_ids = _duplicate_policy_annotations(
             result,
             candidate_features,
             duplicate_policy,
@@ -3179,6 +3532,11 @@ def _apply_candidate_domain_policies_with_mask(
         )
         result["matgpr_is_duplicate"] = is_duplicate
         result["matgpr_duplicate_reason"] = reasons
+        result["matgpr_matched_existing_id"] = pd.Series(
+            matched_ids,
+            index=result.index,
+            dtype=object,
+        )
         if distances is not None:
             result["matgpr_duplicate_distance"] = distances
         if duplicate_policy_action == "filter":
@@ -3228,10 +3586,13 @@ def _duplicate_policy_annotations(
     duplicate_policy: CandidateDuplicatePolicy,
     *,
     expected_rows: int | None = None,
-) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray]:
     is_duplicate = np.zeros(candidates.shape[0], dtype=bool)
     reason_parts: list[list[str]] = [[] for _ in range(candidates.shape[0])]
     distances = None
+    matched_ids = np.full(candidates.shape[0], None, dtype=object)
+    existing = duplicate_policy.existing_candidates
+    existing_ids = _existing_candidate_ids(existing, duplicate_policy.existing_id_column)
 
     if duplicate_policy.key_columns is not None:
         if not isinstance(duplicate_policy.existing_candidates, pd.DataFrame):
@@ -3243,18 +3604,21 @@ def _duplicate_policy_annotations(
             duplicate_policy.key_columns,
             label="candidate key columns",
         )
-        existing_keys = set(
-            _candidate_policy_row_keys(
-                duplicate_policy.existing_candidates,
-                duplicate_policy.key_columns,
-                label="existing key columns",
-            )
+        existing_key_rows = _candidate_policy_row_keys(
+            duplicate_policy.existing_candidates,
+            duplicate_policy.key_columns,
+            label="existing key columns",
         )
+        existing_key_to_id = {
+            key: existing_ids[index] for index, key in enumerate(existing_key_rows)
+        }
+        existing_keys = set(existing_key_to_id)
         key_duplicates = np.asarray([key in existing_keys for key in candidate_keys], dtype=bool)
         is_duplicate |= key_duplicates
         for row_index, duplicate in enumerate(key_duplicates):
             if duplicate:
                 reason_parts[row_index].append("key")
+                matched_ids[row_index] = existing_key_to_id[candidate_keys[row_index]]
 
     if duplicate_policy.feature_tolerance is not None:
         candidate_matrix = _policy_feature_matrix(
@@ -3277,7 +3641,7 @@ def _duplicate_policy_annotations(
             existing_matrix,
             name="duplicate_policy.feature_scales",
         )
-        distances = _minimum_scaled_distances(
+        distances, nearest_positions = _minimum_scaled_distance_matches(
             candidate_matrix,
             existing_matrix,
             metric=duplicate_policy.metric,
@@ -3288,9 +3652,11 @@ def _duplicate_policy_annotations(
         for row_index, duplicate in enumerate(feature_duplicates):
             if duplicate:
                 reason_parts[row_index].append("feature")
+                if matched_ids[row_index] is None and nearest_positions[row_index] >= 0:
+                    matched_ids[row_index] = existing_ids[nearest_positions[row_index]]
 
     reasons = np.asarray(["; ".join(parts) for parts in reason_parts], dtype=object)
-    return is_duplicate, distances, reasons
+    return is_duplicate, distances, reasons, matched_ids
 
 
 def _policy_feature_matrix(
@@ -3429,6 +3795,61 @@ def _minimum_scaled_distances(
     else:
         raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
     return distances.min(axis=1)
+
+
+def _minimum_scaled_distance_matches(
+    candidate_matrix: np.ndarray,
+    reference_matrix: np.ndarray,
+    *,
+    metric: str,
+    scales: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    if candidate_matrix.shape[0] == 0:
+        return np.asarray([], dtype=float), np.asarray([], dtype=int)
+    if reference_matrix.shape[0] == 0:
+        return (
+            np.full(candidate_matrix.shape[0], np.inf, dtype=float),
+            np.full(candidate_matrix.shape[0], -1, dtype=int),
+        )
+    scaled_diff = np.abs(
+        (candidate_matrix[:, np.newaxis, :] - reference_matrix[np.newaxis, :, :])
+        / scales.reshape(1, 1, -1)
+    )
+    if metric == "euclidean":
+        pairwise = np.sqrt(np.sum(scaled_diff**2, axis=2))
+    elif metric == "manhattan":
+        pairwise = np.sum(scaled_diff, axis=2)
+    elif metric == "chebyshev":
+        pairwise = np.max(scaled_diff, axis=2)
+    else:
+        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
+    nearest = np.argmin(pairwise, axis=1)
+    return pairwise[np.arange(pairwise.shape[0]), nearest], nearest.astype(int)
+
+
+def _existing_candidate_ids(
+    existing_candidates: Any,
+    id_column: str | None,
+) -> np.ndarray:
+    if isinstance(existing_candidates, pd.DataFrame):
+        if id_column is not None:
+            if id_column not in existing_candidates.columns:
+                raise ValueError(f"existing candidate ID column is missing: {id_column!r}")
+            values = existing_candidates[id_column]
+            if values.isna().any():
+                raise ValueError("existing candidate IDs must not contain missing values")
+            identifiers = np.asarray([str(value).strip() for value in values], dtype=object)
+            if any(not value for value in identifiers):
+                raise ValueError("existing candidate IDs must not contain empty values")
+            if len(set(identifiers.tolist())) != len(identifiers):
+                raise ValueError("existing candidate IDs must be unique")
+            return identifiers
+        return np.asarray([str(value) for value in existing_candidates.index], dtype=object)
+    if id_column is not None:
+        raise TypeError("existing_id_column requires existing_candidates to be a dataframe")
+    values = np.asarray(existing_candidates)
+    row_count = 1 if values.ndim == 1 else values.shape[0]
+    return np.asarray([str(index) for index in range(row_count)], dtype=object)
 
 
 def _candidate_policy_row_keys(
@@ -3681,6 +4102,14 @@ def _candidate_diversity_matrix(
     matrix = feature_frame.to_numpy(dtype=float)
     if not np.all(np.isfinite(matrix)):
         raise ValueError("diversity feature columns contain NaN or infinite values")
+    nonconstant = np.ptp(matrix, axis=0) > 0.0
+    if not np.any(nonconstant):
+        raise ValueError("diversity requires at least one nonconstant numeric feature")
+    if not np.all(nonconstant):
+        matrix = matrix[:, nonconstant]
+        resolved_features = tuple(
+            column for column, keep in zip(resolved_features, nonconstant, strict=True) if keep
+        )
     if standardize_features and matrix.shape[0] > 0:
         means = matrix.mean(axis=0)
         scales = matrix.std(axis=0)

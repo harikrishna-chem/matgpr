@@ -27,6 +27,7 @@ __all__ = [
     "BOOptimizationSpec",
     "BOOutputConstraintSpec",
     "recommend_bo_acquisition_intents",
+    "recommend_saved_prediction_acquisition_intents",
 ]
 
 
@@ -58,6 +59,7 @@ class BOObjectiveMode(str, Enum):
 class BOAcquisitionIntent(str, Enum):
     """Acquisition-function family suitable for a BO request."""
 
+    POSTERIOR_MEAN_PREFERENCE = "posterior_mean_preference"
     EXPECTED_IMPROVEMENT = "expected_improvement"
     NOISY_EXPECTED_IMPROVEMENT = "noisy_expected_improvement"
     UPPER_CONFIDENCE_BOUND = "upper_confidence_bound"
@@ -460,6 +462,52 @@ def recommend_bo_acquisition_intents(
         intents.append(BOAcquisitionIntent.COST_AWARE_EXPECTED_IMPROVEMENT)
 
     return tuple(dict.fromkeys(intents))
+
+
+def recommend_saved_prediction_acquisition_intents(
+    spec: BOOptimizationSpec | Mapping[str, Any],
+) -> tuple[BOAcquisitionIntent, ...]:
+    """Recommend acquisitions supported by saved mean/uncertainty scoring.
+
+    This deliberately excludes acquisitions that require posterior sampling,
+    fantasy models, joint batch optimization, costs, or multi-output models.
+    """
+
+    optimization_spec = _coerce_optimization_spec(spec)
+    if len(optimization_spec.objectives) != 1:
+        return ()
+    requested = optimization_spec.acquisition_intent
+    supported = {
+        BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+        BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
+        BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
+        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+        BOAcquisitionIntent.TARGET_PROBABILITY,
+        BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
+    }
+    if requested is not None:
+        return (requested,) if requested in supported else ()
+
+    objective = optimization_spec.objectives[0]
+    if objective.mode in {BOObjectiveMode.TARGET_VALUE, BOObjectiveMode.TARGET_RANGE}:
+        return (
+            BOAcquisitionIntent.TARGET_PROBABILITY,
+            BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+        )
+    if objective.mode is BOObjectiveMode.MINIMIZE:
+        return (
+            BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
+            BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+            BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+            BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+        )
+    return (
+        BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+        BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
+    )
 
 
 def _coerce_optimization_spec(

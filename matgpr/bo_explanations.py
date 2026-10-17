@@ -35,6 +35,19 @@ _AUTO_IDENTIFIER_COLUMNS = (
     "input_id",
     "sample_id",
 )
+_AUDIT_COLUMN_MAPPINGS = {
+    "acquisition_rank": "matgpr_acquisition_rank",
+    "eligible_rank": "matgpr_eligible_rank",
+    "batch_order": "matgpr_batch_order",
+    "eligible_for_recommendation": "matgpr_eligible_for_recommendation",
+    "selected_for_batch": "matgpr_selected_for_batch",
+    "exclusion_reasons": "matgpr_exclusion_reasons",
+    "duplicate_status": "matgpr_duplicate_status",
+    "duplicate_reason": "matgpr_duplicate_reason",
+    "matched_observed_id": "matgpr_matched_existing_id",
+    "applicability": "matgpr_applicability",
+    "applicability_status": "matgpr_applicability_status",
+}
 
 
 @dataclass(frozen=True)
@@ -99,12 +112,15 @@ def build_bo_explanation_tables(
     """
 
     ranked = _validate_ranked_candidates(ranked_candidates)
-    recommendation_count = _positive_int(top_k, "top_k")
-    recommendation_count = min(recommendation_count, len(ranked))
+    requested_recommendation_count = _positive_int(top_k, "top_k")
     constraints = tuple(_coerce_output_constraint(item) for item in output_constraints)
     identifiers = _resolve_identifier_columns(ranked, identifier_columns)
     labels = _candidate_labels(ranked, identifiers)
-    selected = np.arange(len(ranked)) < recommendation_count
+    selected = _recommendation_selection_mask(
+        ranked,
+        top_k=requested_recommendation_count,
+    )
+    recommendation_count = int(np.count_nonzero(selected))
 
     recommendation_table = _recommendation_table(
         ranked,
@@ -134,6 +150,8 @@ def build_bo_explanation_tables(
         metadata={
             "candidate_count": len(ranked),
             "recommendation_count": recommendation_count,
+            "requested_recommendation_count": requested_recommendation_count,
+            "batch_complete": recommendation_count >= requested_recommendation_count,
             "constraint_count": len(constraints),
             "identifier_columns": list(identifiers),
             **feature_metadata,
@@ -235,7 +253,17 @@ def build_bo_what_if_slice(
     predicted_mean = sliced["matgpr_predicted_mean"].to_numpy(dtype=float)
     predicted_std = sliced["matgpr_predicted_std"].to_numpy(dtype=float)
     ranks = sliced["matgpr_rank"].to_numpy(dtype=int)
-    recommended = ranks <= recommendation_count
+    uses_package_selection = any(
+        column in sliced.columns
+        for column in ("matgpr_selected_for_batch", "matgpr_batch_selected")
+    )
+    if uses_package_selection:
+        recommended = _recommendation_selection_mask(
+            sliced,
+            top_k=recommendation_count,
+        )
+    else:
+        recommended = ranks <= recommendation_count
     constrained = any(
         str(column).startswith("matgpr_constraint_probability_") for column in sliced.columns
     )
@@ -270,6 +298,11 @@ def build_bo_what_if_slice(
             "point_role": np.where(recommended, "recommended", "candidate"),
         }
     )
+    rows = _append_recommendation_audit_columns(
+        rows,
+        sliced,
+        selected=recommended,
+    )
     sort_columns = ["x", "rank"] if y_axis is None else ["y", "x", "rank"]
     rows = rows.sort_values(sort_columns, kind="stable").reset_index(drop=True)
     if y_axis is None:
@@ -292,6 +325,10 @@ def build_bo_what_if_slice(
             "source_candidate_count": len(ranked),
             "matched_candidate_count": len(sliced),
             "recommendation_rank_cutoff": recommendation_count,
+            "recommendation_selection_source": (
+                "package_batch_annotation" if uses_package_selection else "rank_cutoff"
+            ),
+            "selected_candidate_count": int(np.count_nonzero(recommended)),
             "uncertainty_multiplier": multiplier,
             "interpolation_method": "none",
             "identifier_columns": list(identifiers),
@@ -327,7 +364,11 @@ def _recommendation_table(
             ),
         }
     )
-    return frame.loc[selected].reset_index(drop=True)
+    frame = _append_recommendation_audit_columns(frame, ranked, selected=selected)
+    selected_frame = frame.loc[selected].copy()
+    if "batch_order" in selected_frame.columns:
+        selected_frame = selected_frame.sort_values("batch_order", kind="stable")
+    return selected_frame.reset_index(drop=True)
 
 
 def _acquisition_table(
@@ -336,7 +377,7 @@ def _acquisition_table(
     *,
     selected: np.ndarray,
 ) -> pd.DataFrame:
-    return pd.DataFrame(
+    frame = pd.DataFrame(
         {
             "rank": ranked["matgpr_rank"].to_numpy(dtype=int),
             "candidate_or_input_id": labels,
@@ -351,6 +392,55 @@ def _acquisition_table(
             "is_recommended": selected.astype(bool),
         }
     )
+    return _append_recommendation_audit_columns(frame, ranked, selected=selected)
+
+
+def _recommendation_selection_mask(
+    ranked: pd.DataFrame,
+    *,
+    top_k: int,
+) -> np.ndarray:
+    for column in ("matgpr_selected_for_batch", "matgpr_batch_selected"):
+        if column in ranked.columns:
+            return ranked[column].fillna(False).astype(bool).to_numpy()
+    return np.arange(len(ranked)) < min(top_k, len(ranked))
+
+
+def _append_recommendation_audit_columns(
+    frame: pd.DataFrame,
+    ranked: pd.DataFrame,
+    *,
+    selected: np.ndarray,
+) -> pd.DataFrame:
+    result = frame.copy()
+    default_batch_order = []
+    selected_count = 0
+    for is_selected in selected:
+        if is_selected:
+            selected_count += 1
+            default_batch_order.append(selected_count)
+        else:
+            default_batch_order.append(None)
+    defaults = {
+        "acquisition_rank": ranked["matgpr_rank"].tolist(),
+        "eligible_rank": ranked["matgpr_rank"].tolist(),
+        "batch_order": default_batch_order,
+        "eligible_for_recommendation": [True] * len(ranked),
+        "selected_for_batch": selected.astype(bool).tolist(),
+        "exclusion_reasons": [[] for _ in range(len(ranked))],
+        "duplicate_status": ["not_checked"] * len(ranked),
+        "duplicate_reason": [""] * len(ranked),
+        "matched_observed_id": [None] * len(ranked),
+        "applicability": [None] * len(ranked),
+        "applicability_status": ["unknown"] * len(ranked),
+    }
+    for output_column, source_column in _AUDIT_COLUMN_MAPPINGS.items():
+        result[output_column] = (
+            ranked[source_column].tolist()
+            if source_column in ranked.columns
+            else defaults[output_column]
+        )
+    return result
 
 
 def _constraint_table(
@@ -405,7 +495,21 @@ def _constraint_table(
                     "is_recommended": bool(selected[row_index]),
                 }
             )
-    return pd.DataFrame(rows, columns=list(columns))
+    frame = pd.DataFrame(rows, columns=list(columns))
+    if constraints:
+        repeated_ranked = pd.concat(
+            [ranked] * len(constraints),
+            ignore_index=True,
+        )
+        repeated_selected = np.tile(selected, len(constraints))
+    else:
+        repeated_ranked = ranked.iloc[0:0].copy()
+        repeated_selected = np.asarray([], dtype=bool)
+    return _append_recommendation_audit_columns(
+        frame,
+        repeated_ranked,
+        selected=repeated_selected,
+    )
 
 
 def _feature_space_table(
@@ -450,9 +554,9 @@ def _feature_space_table(
     reference_coordinates = coordinates[:reference_count]
     candidate_coordinates = coordinates[reference_count:]
 
-    rows: list[dict[str, Any]] = []
+    reference_rows: list[dict[str, Any]] = []
     for row_index, coordinate in enumerate(reference_coordinates):
-        rows.append(
+        reference_rows.append(
             {
                 "x": float(coordinate[0]),
                 "y": float(coordinate[1]),
@@ -465,8 +569,9 @@ def _feature_space_table(
                 "feature_y": features[1] if len(features) == 2 else _feature_y(method),
             }
         )
+    candidate_rows: list[dict[str, Any]] = []
     for row_index, coordinate in enumerate(candidate_coordinates):
-        rows.append(
+        candidate_rows.append(
             {
                 "x": float(coordinate[0]),
                 "y": float(coordinate[1]),
@@ -479,7 +584,17 @@ def _feature_space_table(
                 "feature_y": features[1] if len(features) == 2 else _feature_y(method),
             }
         )
-    table = pd.DataFrame(rows, columns=list(columns))
+    candidate_audit = _append_recommendation_audit_columns(
+        pd.DataFrame(index=range(len(candidate_rows))),
+        ranked,
+        selected=selected,
+    )
+    table = pd.DataFrame(
+        [*reference_rows, *candidate_rows],
+        columns=list(columns),
+    )
+    for column in candidate_audit.columns:
+        table[column] = [None] * reference_count + candidate_audit[column].tolist()
     if not table.empty:
         table["rank"] = table["rank"].astype("Int64")
     return table, {
@@ -577,7 +692,18 @@ def _resolve_identifier_columns(
 
 def _candidate_labels(ranked: pd.DataFrame, identifiers: Sequence[str]) -> pd.Series:
     if identifiers:
-        return ranked.loc[:, list(identifiers)].astype(str).agg(" | ".join, axis=1)
+        labels = []
+        for values in (
+            ranked.loc[:, list(identifiers)]
+            .astype(str)
+            .itertuples(
+                index=False,
+                name=None,
+            )
+        ):
+            unique_values = list(dict.fromkeys(values))
+            labels.append(" | ".join(unique_values))
+        return pd.Series(labels, index=ranked.index, dtype=object)
     return pd.Series(
         [f"candidate_{int(index)}" for index in ranked["matgpr_candidate_index"]],
         dtype=object,

@@ -24,6 +24,27 @@ iterations.
 BoTorch is a required dependency, so these helpers work in any `matgpr`
 installation. It is imported lazily, only when a BoTorch-backed helper runs.
 
+## Saved-Prediction Scoring
+
+`rank_bo_candidate_predictions(...)` ranks a finite candidate table when a
+saved estimator has already produced posterior means and standard deviations.
+Set `acquisition_intent` explicitly for production workflows. Supported intents
+are posterior-mean preference, UCB, LCB, EI, PI, and target probability. EI and
+PI require an incumbent in the same target units and output space. All
+uncertainty-aware intents require `predicted_std`; deterministic fallback is
+available only by explicitly requesting `posterior_mean_preference`.
+
+The result records the requested and effective acquisition, raw acquisition
+base, feasibility-weighted component, uncertainty-use flag, and acquisition
+rank. Same-target objective/constraint probabilities use their intersected
+event. Sampling-based, noisy, cost-aware, multi-objective, and true joint-batch
+acquisitions require richer model state and are rejected by this utility.
+
+`CandidateDuplicatePolicy(existing_id_column=...)` preserves the matching
+observed candidate ID when duplicate rows are annotated. `select_diverse_batch`
+supports standardized post-ranking diversity over declared nonconstant numeric
+features.
+
 ::: matgpr.bayesian_optimization
 
 ## Explanation And What-If Tables
@@ -32,6 +53,8 @@ installation. It is imported lazily, only when a BoTorch-backed helper runs.
 plot-ready recommendation, acquisition, constraint, and feature-space tables.
 `build_bo_what_if_slice(...)` creates strict one- or two-feature views over
 evaluated candidates, including predictive uncertainty and ranking components,
-without fitting a model or interpolating between candidates.
+without fitting a model or interpolating between candidates. These tables
+preserve acquisition/eligibility/batch ranks, duplicate audit fields, exclusion
+reasons, and nested applicability metadata when present.
 
 ::: matgpr.bo_explanations
