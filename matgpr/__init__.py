@@ -255,6 +255,7 @@ __all__ = [
     "rank_multi_objective_discrete_candidates",
     "rank_multi_objective_candidates",
     "recommend_bo_acquisition_intents",
+    "recommend_saved_prediction_acquisition_intents",
     "regression_metrics",
     "replace_missing_placeholders",
     "resume_bo_campaign",
@@ -614,6 +615,10 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "recommend_bo_acquisition_intents": (
         ".bayesian_optimization_specs",
         "recommend_bo_acquisition_intents",
+    ),
+    "recommend_saved_prediction_acquisition_intents": (
+        ".bayesian_optimization_specs",
+        "recommend_saved_prediction_acquisition_intents",
     ),
     "regression_metrics": (".metrics", "regression_metrics"),
     "replace_missing_placeholders": (".data_cleaning", "replace_missing_placeholders"),

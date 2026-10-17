@@ -96,6 +96,87 @@ def test_build_bo_explanation_tables_rejects_duplicate_ranks() -> None:
         build_bo_explanation_tables(ranked, top_k=1)
 
 
+def test_explanation_tables_use_package_batch_selection_annotations() -> None:
+    ranked = _ranked_candidates()
+    ranked["row_id"] = ranked["candidate_id"]
+    ranked["matgpr_acquisition_rank"] = ranked["matgpr_rank"]
+    ranked["matgpr_eligible_rank"] = [1, 2, 3]
+    ranked["matgpr_selected_for_batch"] = [False, True, False]
+    ranked["matgpr_batch_order"] = [pd.NA, 1, pd.NA]
+    ranked["matgpr_eligible_for_recommendation"] = True
+    ranked["matgpr_duplicate_status"] = "novel_candidate"
+    ranked["matgpr_applicability_status"] = ["inside_domain", "inside_domain", "unknown"]
+    ranked["matgpr_applicability"] = [
+        {"status": "inside_domain"},
+        {"status": "inside_domain"},
+        None,
+    ]
+
+    result = build_bo_explanation_tables(
+        ranked,
+        top_k=2,
+        output_constraints=(
+            {
+                "target_name": "density",
+                "lower_bound": 0.97,
+                "probability_threshold": 0.6,
+            },
+        ),
+    )
+
+    assert result.recommendation_table["candidate_or_input_id"].tolist() == ["candidate-a"]
+    assert result.recommendation_table["batch_order"].tolist() == [1]
+    assert result.acquisition_table["selected_for_batch"].tolist() == [
+        False,
+        True,
+        False,
+    ]
+    assert result.recommendation_table["candidate_or_input_id"].tolist() == ["candidate-a"]
+    candidate_feature_rows = result.feature_space_table.loc[
+        result.feature_space_table["point_role"] != "reference"
+    ]
+    assert candidate_feature_rows["applicability_status"].tolist() == [
+        "inside_domain",
+        "inside_domain",
+        "unknown",
+    ]
+    assert result.constraint_table["duplicate_status"].tolist() == [
+        "novel_candidate",
+        "novel_candidate",
+        "novel_candidate",
+    ]
+    assert result.metadata["batch_complete"] is False
+
+
+def test_what_if_slice_preserves_package_batch_and_applicability_annotations() -> None:
+    ranked = _what_if_candidates()
+    ranked["matgpr_selected_for_batch"] = [False, False, True, False]
+    ranked["matgpr_batch_order"] = [pd.NA, pd.NA, 1, pd.NA]
+    ranked["matgpr_applicability_status"] = ["inside_domain"] * 4
+    ranked["matgpr_applicability"] = [
+        {"status": "inside_domain", "nearest_neighbor_distance": float(index)} for index in range(4)
+    ]
+
+    result = build_bo_what_if_slice(
+        ranked,
+        x_feature="laser_power_W",
+        fixed_feature_values={"scan_speed_mm_s": 500.0},
+        top_k=2,
+    )
+
+    assert result.rows["candidate_or_input_id"].tolist() == [
+        "candidate-3",
+        "candidate-1",
+    ]
+    assert result.rows["is_recommended"].tolist() == [True, False]
+    assert result.rows["batch_order"].iloc[0] == 1
+    assert pd.isna(result.rows["batch_order"].iloc[1])
+    assert result.rows["applicability_status"].tolist() == [
+        "inside_domain",
+        "inside_domain",
+    ]
+
+
 def test_build_bo_what_if_slice_returns_conditioned_one_feature_rows() -> None:
     result = build_bo_what_if_slice(
         _what_if_candidates(),

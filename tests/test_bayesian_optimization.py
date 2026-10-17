@@ -249,6 +249,29 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertEqual(annotated["matgpr_duplicate_reason"].tolist(), ["feature", ""])
         self.assertEqual(filtered["material_id"].tolist(), ["far_candidate"])
 
+    def test_candidate_duplicate_policy_reports_matched_existing_id(self):
+        candidates = pd.DataFrame({"composition": ["Ni", "Fe"]})
+        observed = pd.DataFrame(
+            {
+                "experiment_id": ["exp-17"],
+                "composition": ["Ni"],
+            }
+        )
+        annotated = apply_candidate_duplicate_policy(
+            candidates,
+            CandidateDuplicatePolicy(
+                existing_candidates=observed,
+                key_columns=("composition",),
+                existing_id_column="experiment_id",
+            ),
+            policy="annotate",
+        )
+
+        self.assertEqual(
+            annotated["matgpr_matched_existing_id"].tolist(),
+            ["exp-17", None],
+        )
+
     def test_candidate_domain_policy_validation_errors_are_explicit(self):
         candidates = pd.DataFrame({"material_id": ["a"], "descriptor_x": [0.0]})
 
@@ -445,6 +468,91 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         self.assertEqual(ranked["matgpr_feasibility_probability"].iloc[0], 0.0)
         self.assertFalse(bool(ranked["matgpr_feasible"].iloc[0]))
 
+    def test_saved_prediction_acquisition_intent_is_operational(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(1.0, 0.9),
+            predicted_std=(0.0, 1.0),
+            objective={"target_name": "strength", "mode": "maximize"},
+            acquisition_intent="upper_confidence_bound",
+            beta=2.0,
+            candidate_data=pd.DataFrame({"candidate_id": ["exploit", "explore"]}),
+        )
+
+        self.assertEqual(ranked["candidate_id"].tolist(), ["explore", "exploit"])
+        self.assertEqual(
+            ranked["matgpr_effective_acquisition"].unique().tolist(),
+            ["upper_confidence_bound"],
+        )
+        self.assertTrue(ranked["matgpr_uncertainty_used"].all())
+
+    def test_saved_prediction_ei_requires_incumbent_and_uncertainty(self):
+        with self.assertRaisesRegex(ValueError, "incumbent_value"):
+            rank_bo_candidate_predictions(
+                predicted_mean=(1.0,),
+                predicted_std=(0.1,),
+                objective={"target_name": "strength", "mode": "maximize"},
+                acquisition_intent="expected_improvement",
+            )
+        with self.assertRaisesRegex(ValueError, "predicted_std is required"):
+            rank_bo_candidate_predictions(
+                predicted_mean=(1.0,),
+                objective={"target_name": "strength", "mode": "maximize"},
+                acquisition_intent="expected_improvement",
+                incumbent_value=0.8,
+            )
+        with self.assertRaisesRegex(ValueError, "not supported"):
+            rank_bo_candidate_predictions(
+                predicted_mean=(1.0,),
+                predicted_std=(0.1,),
+                objective={"target_name": "strength", "mode": "maximize"},
+                acquisition_intent="noisy_expected_improvement",
+            )
+
+    def test_target_probability_intersects_same_target_constraints(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(0.0,),
+            predicted_std=(1.0,),
+            objective={
+                "target_name": "density",
+                "mode": "target_range",
+                "target_lower_bound": -1.0,
+                "target_upper_bound": 1.0,
+            },
+            output_constraints=({"target_name": "density", "lower_bound": 0.0},),
+            acquisition_intent="target_probability",
+        )
+
+        self.assertAlmostEqual(ranked["matgpr_acquisition"].iloc[0], 0.341344746, places=7)
+        self.assertEqual(
+            ranked["matgpr_effective_acquisition"].iloc[0],
+            "intersection_target_probability",
+        )
+
+    def test_signed_acquisition_uses_nonnegative_feasibility_component(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(-10.0, -11.0),
+            predicted_std=(0.0, 0.0),
+            objective={"target_name": "energy", "mode": "maximize"},
+            output_constraints=({"target_name": "energy", "lower_bound": -10.5},),
+            acquisition_intent="upper_confidence_bound",
+            candidate_data=pd.DataFrame({"candidate_id": ["feasible", "infeasible"]}),
+        )
+
+        self.assertEqual(ranked["candidate_id"].tolist(), ["feasible", "infeasible"])
+        self.assertEqual(ranked["matgpr_acquisition_base"].tolist(), [-10.0, -11.0])
+        self.assertEqual(ranked["matgpr_objective_component"].tolist(), [1.0, 0.0])
+        self.assertEqual(ranked["matgpr_acquisition"].tolist(), [1.0, 0.0])
+
+    def test_posterior_mean_reports_uncertainty_as_unused(self):
+        ranked = rank_bo_candidate_predictions(
+            predicted_mean=(1.0, 0.9),
+            predicted_std=(0.2, 0.3),
+            objective={"target_name": "strength", "mode": "maximize"},
+            acquisition_intent="posterior_mean_preference",
+        )
+
+        self.assertFalse(ranked["matgpr_uncertainty_used"].any())
+
     def test_select_diverse_batch_can_return_score_only_top_k(self):
         candidates = pd.DataFrame(
             {
@@ -519,6 +627,21 @@ class BayesianOptimizationApiTests(unittest.TestCase):
 
         self.assertEqual(annotated["matgpr_batch_selected"].tolist(), [True, True, False])
         self.assertEqual(annotated["material_id"].tolist(), ["a", "b", "c"])
+
+    def test_select_diverse_batch_rejects_only_constant_features(self):
+        with self.assertRaisesRegex(ValueError, "nonconstant numeric feature"):
+            select_diverse_batch(
+                pd.DataFrame(
+                    {
+                        "candidate_id": ["a", "b"],
+                        "x": [1.0, 1.0],
+                        "matgpr_acquisition": [1.0, 0.9],
+                    }
+                ),
+                top_k=2,
+                feature_columns=("x",),
+                diversity_weight=0.25,
+            )
 
     def test_summarize_bo_recommendation_audit_reports_scores_and_policies(self):
         ranked = pd.DataFrame(

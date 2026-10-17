@@ -14,6 +14,7 @@ from matgpr import (
     BOOptimizationSpec,
     BOOutputConstraintSpec,
     recommend_bo_acquisition_intents,
+    recommend_saved_prediction_acquisition_intents,
 )
 
 
@@ -91,6 +92,32 @@ def test_bo_acquisition_recommendations_include_constraints_and_cost() -> None:
         BOAcquisitionIntent.CONSTRAINED_NOISY_EXPECTED_IMPROVEMENT,
         BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
         BOAcquisitionIntent.COST_AWARE_EXPECTED_IMPROVEMENT,
+    )
+
+
+def test_saved_prediction_recommendations_exclude_unimplemented_semantics() -> None:
+    spec = BOOptimizationSpec(
+        mode="finite_pool_ranking",
+        objectives=({"target_name": "strength", "mode": "maximize"},),
+        features=(
+            {
+                "name": "temperature",
+                "variable_type": "continuous",
+                "lower_bound": 300.0,
+                "upper_bound": 900.0,
+            },
+        ),
+        batch_size=4,
+        cost_column="cost",
+    )
+
+    intents = recommend_saved_prediction_acquisition_intents(spec)
+
+    assert intents == (
+        BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
+        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
+        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
+        BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
     )
 
 
