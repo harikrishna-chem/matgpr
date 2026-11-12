@@ -7,6 +7,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ._validation import (
+    cached_float,
+    validate_nonnegative_int,
+    validate_nonstring_iterable,
+    validate_positive_int,
+)
 from .fingerprint_cache import (
     fingerprint_cache_key,
     read_fingerprint_cache_record,
@@ -35,7 +41,15 @@ DEFAULT_RDKIT_DESCRIPTORS: tuple[str, ...] = (
     "HeavyAtomCount",
     "MolMR",
 )
-from ._validation import cached_float
+
+_SUPPORTED_FINGERPRINT_PARTS = frozenset(
+    {
+        "morgan",
+        "rdkit",
+        "maccs",
+        "descriptors",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -85,6 +99,7 @@ def canonicalize_polymer_smiles(
     the trimer is closed into a loop, and the dummy atoms are removed before
     RDKit canonicalization.
     """
+    repeat_units = validate_positive_int(repeat_units, name="repeat_units")
     molecule = _mol_from_smiles(smiles)
     endpoint_info = _polymer_endpoint_info(molecule)
 
@@ -116,9 +131,9 @@ def fingerprint_smiles(
     smiles_type
         ``"molecule"`` or ``"polymer"``.
     fingerprint_type
-        ``"morgan"``, ``"rdkit"``, ``"maccs"``, ``"descriptors"``, or one of
-        ``"morgan+descriptors"``, ``"rdkit+descriptors"``, and
-        ``"maccs+descriptors"``.
+        ``"morgan"``, ``"rdkit"``, ``"maccs"``, ``"descriptors"``, or a
+        plus-separated combination of unique supported components. Component
+        order determines feature-column order.
     n_bits
         Fingerprint length for Morgan and RDKit fingerprints.
     radius
@@ -126,9 +141,15 @@ def fingerprint_smiles(
     descriptors
         RDKit descriptor names to include for descriptor-based features.
     """
+    smiles_type, fingerprint_type, n_bits, radius, descriptors = _validate_configuration(
+        smiles_type=smiles_type,
+        fingerprint_type=fingerprint_type,
+        n_bits=n_bits,
+        radius=radius,
+        descriptors=descriptors,
+    )
     canonical_smiles = _canonicalize_by_type(smiles, smiles_type)
     molecule = _mol_from_smiles(canonical_smiles)
-    fingerprint_type = fingerprint_type.lower()
 
     if "+" in fingerprint_type:
         parts = [part.strip() for part in fingerprint_type.split("+")]
@@ -169,6 +190,14 @@ def featurize_smiles(
     cache_dir: str | Path | None = None,
 ) -> SmilesFingerprintResult:
     """Featurize a sequence of molecule or polymer SMILES strings."""
+    smiles_values = validate_nonstring_iterable(smiles_values, name="smiles_values")
+    smiles_type, fingerprint_type, n_bits, radius, descriptors = _validate_configuration(
+        smiles_type=smiles_type,
+        fingerprint_type=fingerprint_type,
+        n_bits=n_bits,
+        radius=radius,
+        descriptors=descriptors,
+    )
     if errors not in {"raise", "coerce"}:
         raise ValueError("errors must be either 'raise' or 'coerce'")
 
@@ -334,6 +363,9 @@ def _canonicalize_by_type(smiles: object, smiles_type: str) -> str:
 
 
 def _polymer_endpoint_info(molecule) -> dict[str, tuple[int, int, object]]:
+    if len(_chem().GetMolFrags(molecule)) != 1:
+        raise ValueError("Polymer repeat-unit SMILES must contain a single connected fragment")
+
     dummy_atoms = sorted(
         [atom for atom in molecule.GetAtoms() if atom.GetAtomicNum() == 0],
         key=lambda atom: atom.GetIdx(),
@@ -363,8 +395,7 @@ def _make_cyclic_polymer_oligomer(
     endpoint_info: dict[str, tuple[int, int, object]],
     repeat_units: int,
 ):
-    if repeat_units < 1:
-        raise ValueError("repeat_units must be at least 1")
+    repeat_units = validate_positive_int(repeat_units, name="repeat_units")
 
     chem = _chem()
     monomer_atom_count = molecule.GetNumAtoms()
@@ -462,6 +493,54 @@ def _feature_names(
         else:
             raise ValueError(f"Unsupported fingerprint type '{fingerprint_type}'")
     return [f"{prefix}_{name}" for name in names]
+
+
+def _validate_configuration(
+    *,
+    smiles_type: str,
+    fingerprint_type: str,
+    n_bits: int,
+    radius: int,
+    descriptors: Sequence[str],
+) -> tuple[str, str, int, int, tuple[str, ...]]:
+    normalized_smiles_type = str(smiles_type).strip().lower()
+    if normalized_smiles_type not in {"molecule", "polymer"}:
+        raise ValueError("smiles_type must be either 'molecule' or 'polymer'")
+
+    normalized_fingerprint_type = str(fingerprint_type).strip().lower()
+    fingerprint_parts = tuple(part.strip() for part in normalized_fingerprint_type.split("+"))
+    unsupported = sorted(set(fingerprint_parts) - _SUPPORTED_FINGERPRINT_PARTS)
+    if unsupported:
+        supported = ", ".join(sorted(_SUPPORTED_FINGERPRINT_PARTS))
+        raise ValueError("fingerprint_type components must be selected from: " + supported)
+    if len(set(fingerprint_parts)) != len(fingerprint_parts):
+        raise ValueError("fingerprint_type must not contain duplicate components")
+    normalized_fingerprint_type = "+".join(fingerprint_parts)
+
+    n_bits = validate_positive_int(n_bits, name="n_bits")
+    radius = validate_nonnegative_int(radius, name="radius")
+    if isinstance(descriptors, (str, bytes, bytearray)):
+        raise TypeError("descriptors must be a non-string sequence")
+    descriptor_names = tuple(str(name).strip() for name in descriptors)
+    if any(not name for name in descriptor_names):
+        raise ValueError("descriptors must contain non-empty names")
+    if len(set(descriptor_names)) != len(descriptor_names):
+        raise ValueError("descriptors must not contain duplicate names")
+    if "descriptors" in normalized_fingerprint_type:
+        if not descriptor_names:
+            raise ValueError("descriptors must contain at least one descriptor name")
+        descriptor_lookup = dict(_descriptors().descList)
+        unsupported = sorted(set(descriptor_names) - set(descriptor_lookup))
+        if unsupported:
+            raise ValueError(f"Unsupported RDKit descriptors: {', '.join(unsupported)}")
+
+    return (
+        normalized_smiles_type,
+        normalized_fingerprint_type,
+        n_bits,
+        radius,
+        descriptor_names,
+    )
 
 
 def _default_prefix(smiles_type: str, fingerprint_type: str) -> str:

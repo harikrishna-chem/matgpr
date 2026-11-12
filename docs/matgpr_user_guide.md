@@ -262,6 +262,11 @@ composition-only baseline for inorganic materials, but they add an optional
 dependency and can create a larger feature space than the lightweight built-in
 composition descriptors.
 
+Built-in composition statistics and element-fraction vectors are invariant to
+formula ordering and proportional formula scaling. Property, statistic, and
+element selections must be non-empty and unique so the generated feature
+schema remains unambiguous.
+
 ### 3.2 Crystal Structure Fingerprints
 
 For crystal structures, `matgpr` accepts `pymatgen.Structure` objects,
@@ -294,6 +299,10 @@ are not a replacement for local-environment descriptors such as SOAP or MBTR,
 but they provide a fast structure-aware baseline without extra heavy
 dependencies.
 
+Site order does not affect these global descriptors. Density, angle cosines,
+and volume per atom are also invariant to equivalent supercell expansion;
+absolute lattice lengths intentionally remain cell-dependent.
+
 Useful functions:
 
 | Function | Purpose |
@@ -308,8 +317,8 @@ Useful functions:
 For organic molecules and polymers, `matgpr` uses RDKit.
 
 Molecule SMILES are canonicalized directly before fingerprinting. Polymer
-repeat-unit SMILES must contain exactly two `[*]` dummy atoms. By default,
-`matgpr` builds a cyclic trimer surrogate:
+repeat-unit SMILES must contain exactly two `[*]` dummy atoms and one connected
+repeat-unit fragment. By default, `matgpr` builds a cyclic trimer surrogate:
 
 1. Repeat the unit three times.
 2. Connect adjacent repeat units through the two `[*]` neighbors.
@@ -374,6 +383,12 @@ Useful functions:
 | `featurize_smiles(smiles_values, errors="raise")` | Featurizes many SMILES strings and records failures. |
 | `append_smiles_features(data, smiles_column=...)` | Appends RDKit features to an existing dataframe. |
 
+Plural batch APIs require a non-string collection. For one formula, structure,
+or SMILES value, use its singular fingerprint helper or wrap the value in a
+list. Integer controls such as fingerprint size, Morgan radius, and polymer
+repeat count reject Boolean, fractional, zero, or negative values according to
+their documented domain.
+
 For scikit-learn-style workflows:
 
 ```python
@@ -432,7 +447,14 @@ preprocessor = build_preprocessor(
 ```
 
 Important rule: fit preprocessors only on training data. Reuse the fitted
-preprocessor for validation, test, and prediction data.
+preprocessor for validation, test, and prediction data. This prevents test-set
+statistics from leaking into imputation, scaling, or categorical encoding.
+
+Feature dataframes must have unique string column names. The numeric and
+categorical feature groups must also contain unique names and cannot overlap.
+`build_preprocessor` accepts one column name, any iterable of names, or `None`
+for each group; unseen categorical values are ignored during transformation so
+the fitted output shape remains stable.
 
 ## 5. Standard GPR Models
 

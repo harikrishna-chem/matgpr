@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ._validation import validate_nonstring_iterable
 from .fingerprint_cache import (
     fingerprint_cache_key,
     read_fingerprint_cache_record,
@@ -102,6 +103,7 @@ def featurize_structures(
     cache_dir
         Optional directory for persistent row-level JSON cache files.
     """
+    structures = validate_nonstring_iterable(structures, name="structures")
     if errors not in {"raise", "coerce"}:
         raise ValueError("errors must be either 'raise' or 'coerce'")
 
@@ -245,11 +247,15 @@ def _structure_feature_values(structure) -> dict[str, float]:
 
 
 def _validate_structure_feature_names(features: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(features, (str, bytes, bytearray)):
+        raise TypeError("features must be a non-string sequence")
     names = tuple(str(name).strip() for name in features)
     if not names:
         raise ValueError("features must contain at least one descriptor name")
     if any(not name for name in names):
         raise ValueError("features must contain non-empty descriptor names")
+    if len(set(names)) != len(names):
+        raise ValueError("features must not contain duplicate descriptor names")
     allowed = set(_structure_feature_values(_reference_structure()).keys())
     unsupported = sorted(set(names) - allowed)
     if unsupported:

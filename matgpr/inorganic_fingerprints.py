@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from ._validation import cached_float, validate_nonstring_iterable, validate_positive_int
 from .fingerprint_cache import (
     fingerprint_cache_key,
     read_fingerprint_cache_record,
@@ -49,7 +50,6 @@ DEFAULT_COMPOSITION_STATISTICS: tuple[str, ...] = (
     "ad",
     "std",
 )
-from ._validation import cached_float
 
 _ORBITAL_PATTERN = re.compile(r"(\d+)([spdf])(\d+)")
 
@@ -109,6 +109,7 @@ def composition_fingerprint(
     statistics
         Summary statistics to compute for each property.
     """
+    properties, statistics = _validate_composition_features(properties, statistics)
     composition = _parse_composition(formula)
     element_amounts = composition.get_el_amt_dict()
     total_amount = float(sum(element_amounts.values()))
@@ -137,8 +138,7 @@ def composition_fingerprint(
 
 def default_element_symbols(max_atomic_number: int = 118) -> tuple[str, ...]:
     """Return periodic-table element symbols up to ``max_atomic_number``."""
-    if not isinstance(max_atomic_number, int) or max_atomic_number < 1:
-        raise ValueError("max_atomic_number must be a positive integer")
+    max_atomic_number = validate_positive_int(max_atomic_number, name="max_atomic_number")
     if max_atomic_number > 118:
         raise ValueError("max_atomic_number must be less than or equal to 118")
     return tuple(_element_from_atomic_number(z).symbol for z in range(1, max_atomic_number + 1))
@@ -173,6 +173,7 @@ def featurize_element_fractions(
     :class:`matgpr.ElementFractionKernel`. They preserve direct compositional
     information, unlike statistical elemental-property descriptors.
     """
+    formulas = validate_nonstring_iterable(formulas, name="formulas")
     if errors not in {"raise", "coerce"}:
         raise ValueError("errors must be either 'raise' or 'coerce'")
 
@@ -265,6 +266,8 @@ def featurize_compositions(
         are deterministic hashes of the normalized formula and descriptor
         settings.
     """
+    formulas = validate_nonstring_iterable(formulas, name="formulas")
+    properties, statistics = _validate_composition_features(properties, statistics)
     if errors not in {"raise", "coerce"}:
         raise ValueError("errors must be either 'raise' or 'coerce'")
 
@@ -465,6 +468,8 @@ def _element(symbol: str):
 
 
 def _validate_element_symbols(elements: Sequence[str]) -> tuple[str, ...]:
+    if isinstance(elements, (str, bytes, bytearray)):
+        raise TypeError("elements must be a non-string sequence")
     symbols = tuple(str(symbol).strip() for symbol in elements)
     if not symbols:
         raise ValueError("elements must contain at least one element symbol")
@@ -475,6 +480,44 @@ def _validate_element_symbols(elements: Sequence[str]) -> tuple[str, ...]:
     for symbol in symbols:
         _element(symbol)
     return symbols
+
+
+def _validate_composition_features(
+    properties: Sequence[str],
+    statistics: Sequence[str],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    property_names = _validate_unique_names(
+        properties,
+        name="properties",
+        supported=DEFAULT_ELEMENTAL_PROPERTIES,
+    )
+    statistic_names = _validate_unique_names(
+        statistics,
+        name="statistics",
+        supported=DEFAULT_COMPOSITION_STATISTICS,
+    )
+    return property_names, statistic_names
+
+
+def _validate_unique_names(
+    values: Sequence[str],
+    *,
+    name: str,
+    supported: Sequence[str],
+) -> tuple[str, ...]:
+    if isinstance(values, (str, bytes, bytearray)):
+        raise TypeError(f"{name} must be a non-string sequence")
+    names = tuple(str(value).strip() for value in values)
+    if not names:
+        raise ValueError(f"{name} must contain at least one name")
+    if any(not value for value in names):
+        raise ValueError(f"{name} must contain non-empty names")
+    if len(set(names)) != len(names):
+        raise ValueError(f"{name} must not contain duplicate names")
+    unsupported = sorted(set(names) - set(supported))
+    if unsupported:
+        raise ValueError(f"Unsupported {name}: {', '.join(unsupported)}")
+    return names
 
 
 def _element_fraction_values(formula: object, symbols: Sequence[str]) -> dict[str, float]:
