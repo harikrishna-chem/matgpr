@@ -3235,6 +3235,8 @@ def _as_noise_variance_matrix(
 
 
 def _to_tensor(torch_module: Any, array: np.ndarray, *, device: Any | None = None) -> Any:
+    if not array.flags.writeable:
+        array = array.copy()
     return torch_module.as_tensor(array, dtype=torch_module.double, device=device)
 
 

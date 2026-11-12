@@ -62,6 +62,12 @@ phase.
 
 ### Fixed
 
+- BoTorch surrogate construction now copies read-only NumPy inputs at the
+  Torch boundary, preventing undefined-behavior warnings while preserving
+  zero-copy conversion for writable arrays.
+- Bounded target transforms now compute logistic-normal variance from centered
+  quadrature samples, improving numerical stability for very small predictive
+  uncertainties.
 - `preview_safe_equation` now returns `physics_mean_values` for every outcome,
   using an empty list for invalid or incomplete previews. MCP clients can
   therefore rely on one stable top-level response shape instead of branching

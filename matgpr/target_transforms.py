@@ -287,8 +287,8 @@ class BoundedTargetTransform:
         original_samples = self.lower_bound + self._width * _sigmoid(samples)
         normalized_weights = weights / np.sqrt(np.pi)
         original_mean = original_samples @ normalized_weights
-        second_moment = (original_samples * original_samples) @ normalized_weights
-        variance = np.maximum(second_moment - original_mean * original_mean, 0.0)
+        centered_samples = original_samples - original_mean[:, None]
+        variance = (centered_samples * centered_samples) @ normalized_weights
         return original_mean, np.sqrt(variance)
 
 
