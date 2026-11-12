@@ -10,6 +10,7 @@ from sklearn.base import clone
 from sklearn.model_selection import KFold, ShuffleSplit, train_test_split
 
 from ._validation import normalize_fidelity_label
+from ._validation import to_1d_finite as _to_1d_float
 from .metrics import regression_metrics, train_test_regression_metrics
 from .reporting import decompose_multifidelity_prediction
 from .uncertainty import prediction_interval_bounds, uncertainty_diagnostics
@@ -2983,15 +2984,6 @@ def _to_2d_float_allow_nan(values, name: str) -> np.ndarray:
         raise ValueError(f"{name} must contain at least one value")
     if np.isinf(array).any():
         raise ValueError(f"{name} must not contain infinite values")
-    return array
-
-
-def _to_1d_float(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
     return array
 
 

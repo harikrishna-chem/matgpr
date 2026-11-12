@@ -9,9 +9,11 @@ import pandas as pd
 from matplotlib.axes import Axes
 
 try:
+    from ._validation import to_1d_finite as _to_1d_float_array
     from .metrics import regression_metrics
     from .uncertainty import calibration_curve, uncertainty_diagnostics
 except ImportError:
+    from _validation import to_1d_finite as _to_1d_float_array
     from metrics import regression_metrics
     from uncertainty import calibration_curve, uncertainty_diagnostics
 
@@ -1150,15 +1152,6 @@ def plot_uncertainty_vs_error(
 
 def _to_1d_array(values) -> np.ndarray:
     return np.asarray(values).ravel()
-
-
-def _to_1d_float_array(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
 
 
 def _resolve_axes(ax: Axes | None, figsize: tuple[float, float]) -> tuple[plt.Figure, Axes]:

@@ -47,6 +47,12 @@ PI-GPR does not automatically guarantee:
   constraints are encoded separately,
 - automatic discovery of the right physics equation from data.
 
+Learnable equation parameters are optimized jointly with the residual GP.
+Because the residual can explain some of the same trend as the mean function,
+parameter identifiability is not guaranteed. Validate parameter recovery on
+synthetic data and stability across initializations or splits before assigning
+a physical interpretation to fitted values.
+
 A physics-informed mean can hurt performance when the equation has the wrong
 trend, uses weak features, leaks information from test data, or is too complex
 for the available dataset.

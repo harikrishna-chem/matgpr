@@ -651,6 +651,20 @@ metrics = regression_metrics(y_test, prediction.mean)
 | `std` | Predictive standard deviation in original target units. |
 | `lower`, `upper` | Confidence bounds when `confidence_level` is supplied. |
 
+`X_train` and prediction inputs must be finite two-dimensional feature
+matrices with the same number of columns. `y_train` must be a finite target
+vector or an `(n_samples, 1)` single-column array; genuine multi-column targets
+belong in a multitask workflow. At least two training rows and one feature are
+required. A constant target is rejected when `standardize_y=True` because its
+standard deviation is zero; use `standardize_y=False` only when fitting that
+case is scientifically meaningful.
+
+By default, `prediction.std` includes the fitted Gaussian likelihood noise and
+therefore describes a future noisy observation. Pass
+`include_observation_noise=False` to obtain latent-function uncertainty. Both
+forms, including confidence bounds, are returned in the original target units
+when target standardization is enabled.
+
 ### 5.4 Multitask GPyTorch GPR
 
 Use `MultitaskGPRRegressor` or `fit_multitask_gpytorch_gpr` when the same
@@ -1102,6 +1116,11 @@ baseline.
 - `inverse_transform(y_transformed)` maps point values back to original units.
 - `inverse_prediction(prediction, ...)` maps predictive means, standard
   deviations, and confidence bounds back to original units.
+
+Inverse-uncertainty methods require one transformed-space standard deviation
+per predictive mean. Log-transform offsets must be finite, and uncertainty
+should always be inverted through `inverse_prediction` or `inverse_std` rather
+than by applying only the point-value inverse.
 
 ### 7.1 Log Targets
 
@@ -1777,7 +1796,10 @@ learned_parameters = result.model.mean_module.current_parameter_values()
 Why pass `feature_means` and `feature_stds`? The model receives scaled
 features, but the Arrhenius equation should use temperature in Kelvin.
 `PhysicsInformedMean` converts selected scaled columns back to original units
-before evaluating the equation.
+before evaluating the equation. Scaling metadata keys must exactly match keys
+in `feature_indices`; unknown keys are rejected so a column-name typo cannot
+silently evaluate the equation in the wrong units. Parameters, scaling values,
+target scaling, and equation outputs must all be finite.
 
 ### 9.3 Example 2: Degeneracy and Binding Mean Function
 
@@ -1978,6 +2000,14 @@ After training, inspect learned values:
 ```python
 result.model.mean_module.current_parameter_values()
 ```
+
+Learnable physics parameters are optimized jointly with the residual kernel
+and observation noise. A flexible residual GP can partially absorb an
+incorrect mean, so a fitted value is not automatically a uniquely identified
+physical constant. Before interpreting parameters physically, verify recovery
+on synthetic data with known parameters, check sensitivity to initialization,
+and report stability across repeated training splits. Fixed parameters are
+passed to the equation but are not registered as trainable torch parameters.
 
 ### 9.6 Practical Guidance for Physics Equations
 

@@ -212,6 +212,6 @@ def _normalize_kernel_name(name: str) -> str:
 def _validate_n_features(n_features: int | None, *, name: str) -> int:
     if n_features is None:
         raise ValueError(f"n_features is required for {name}")
-    if not isinstance(n_features, int) or n_features <= 0:
+    if isinstance(n_features, bool) or not isinstance(n_features, int) or n_features <= 0:
         raise ValueError("n_features must be a positive integer")
     return n_features

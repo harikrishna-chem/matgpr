@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import FrozenInstanceError
 
 import numpy as np
 import pytest
@@ -15,6 +16,7 @@ from matgpr import (
     available_target_transform_specs,
     describe_target_transform_spec,
     get_target_transform_spec,
+    list_target_transform_specs,
     make_materials_target_transform,
     make_target_transform,
     search_target_transform_specs,
@@ -160,6 +162,58 @@ class TargetTransformTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             PhysicsResidualTransform().transform([1.0, 2.0], baseline=[1.0])
 
+    def test_factory_supports_every_documented_low_level_alias(self):
+        cases = (
+            (("identity", "none", "passthrough"), IdentityTargetTransform, {}),
+            (
+                ("standard", "standardized", "zscore", "z-score"),
+                StandardizedTargetTransform,
+                {},
+            ),
+            (
+                ("log", "logarithmic", "positive", "positivity"),
+                LogTargetTransform,
+                {"offset": 0.25},
+            ),
+            (
+                ("bounded", "bound", "logit"),
+                BoundedTargetTransform,
+                {"lower_bound": -1.0, "upper_bound": 2.0},
+            ),
+            (
+                ("residual", "physics-residual"),
+                PhysicsResidualTransform,
+                {"baseline_name": "mechanistic_baseline"},
+            ),
+        )
+
+        for aliases, expected_type, kwargs in cases:
+            for alias in aliases:
+                with self.subTest(alias=alias):
+                    transform = make_target_transform(alias, **kwargs)
+                    self.assertIsInstance(transform, expected_type)
+                    for key, value in kwargs.items():
+                        self.assertEqual(getattr(transform, key), value)
+
+    def test_factory_unknown_error_preserves_input_and_available_choices(self):
+        with self.assertRaises(ValueError) as context:
+            make_target_transform("not-a-transform")
+
+        prefix = "Unknown target transform 'not-a-transform'. Available transforms: "
+        message = str(context.exception)
+        self.assertTrue(message.startswith(prefix))
+        self.assertEqual(
+            tuple(message.removeprefix(prefix).split(", ")),
+            (
+                "identity",
+                "standard",
+                "log",
+                "bounded",
+                "residual",
+                *available_target_transform_specs(include_aliases=True),
+            ),
+        )
+
     def test_materials_target_transform_presets_build_expected_transforms(self):
         pce_transform = make_materials_target_transform("pce")
         diffusivity_transform = make_materials_target_transform("diffusion-coefficient")
@@ -200,6 +254,234 @@ class TargetTransformTests(unittest.TestCase):
         self.assertTrue(any(item.name == "strength" for item in mechanical_specs))
         self.assertIn("transform_name", summary.columns)
         self.assertIn("efficiency_percent", set(summary["name"]))
+
+    def test_target_transform_spec_normalizes_inputs_and_is_frozen(self):
+        kwargs = {"offset": 0.5}
+        aliases = ["alias_a", "alias_b"]
+        examples = ["example"]
+        assumptions = ["assumption"]
+        notes = ["note"]
+        tags = ["tag"]
+        spec = TargetTransformSpec(
+            name=123,  # type: ignore[arg-type]
+            transform_name=456,  # type: ignore[arg-type]
+            transform_kwargs=kwargs,
+            aliases=aliases,
+            category="category",
+            description="description",
+            target_units="unit",
+            examples=examples,
+            assumptions=assumptions,
+            notes=notes,
+            tags=tags,
+        )
+
+        kwargs["offset"] = 2.0
+        aliases.append("late_alias")
+        examples.append("late_example")
+        assumptions.append("late_assumption")
+        notes.append("late_note")
+        tags.append("late_tag")
+
+        self.assertEqual(spec.name, "123")
+        self.assertEqual(spec.transform_name, "456")
+        self.assertEqual(spec.transform_kwargs, {"offset": 0.5})
+        self.assertEqual(spec.aliases, ("alias_a", "alias_b"))
+        self.assertEqual(spec.examples, ("example",))
+        self.assertEqual(spec.assumptions, ("assumption",))
+        self.assertEqual(spec.notes, ("note",))
+        self.assertEqual(spec.tags, ("tag",))
+        with self.assertRaises(FrozenInstanceError):
+            spec.name = "replacement"  # type: ignore[misc]
+
+    def test_target_transform_spec_rejects_empty_required_names(self):
+        with self.assertRaisesRegex(ValueError, "^name must be non-empty$"):
+            TargetTransformSpec(name="  ", transform_name="log")
+        with self.assertRaisesRegex(ValueError, "^transform_name must be non-empty$"):
+            TargetTransformSpec(name="valid", transform_name="\t")
+
+    def test_target_transform_spec_records_have_exact_public_shape(self):
+        spec = TargetTransformSpec(
+            name="custom",
+            transform_name="log",
+            transform_kwargs={"offset": 0.5},
+            aliases=("custom_alias",),
+            category="positive_property",
+            description="Custom positive property.",
+            target_units="arb.",
+            examples=("example value",),
+            assumptions=("Values are positive.",),
+            notes=("Report original units.",),
+            tags=("positive", "custom"),
+        )
+        expected_summary = {
+            "name": "custom",
+            "aliases": ["custom_alias"],
+            "category": "positive_property",
+            "transform_name": "log",
+            "transform_kwargs": {"offset": 0.5},
+            "description": "Custom positive property.",
+            "target_units": "arb.",
+            "examples": ["example value"],
+            "assumptions": ["Values are positive."],
+            "tags": ["positive", "custom"],
+        }
+
+        self.assertEqual(spec.summary(), expected_summary)
+        self.assertEqual(
+            spec.discovery_record(),
+            {**expected_summary, "notes": ["Report original units."]},
+        )
+
+    def test_available_registry_names_preserve_default_and_alias_order(self):
+        specs = list_target_transform_specs()
+        expected_names = tuple(spec.name for spec in specs)
+        expected_with_aliases = expected_names + tuple(
+            alias for spec in specs for alias in spec.aliases
+        )
+
+        self.assertEqual(available_target_transform_specs(), expected_names)
+        self.assertEqual(
+            available_target_transform_specs(include_aliases=True),
+            expected_with_aliases,
+        )
+
+    def test_registry_search_applies_each_filter_and_normalizes_text(self):
+        self.assertEqual(
+            tuple(spec.name for spec in search_target_transform_specs(query="solar cell")),
+            ("efficiency_percent",),
+        )
+        self.assertEqual(
+            tuple(spec.name for spec in search_target_transform_specs(category="SIGNED-ENERGY")),
+            ("formation_energy", "binding_energy"),
+        )
+        self.assertEqual(
+            tuple(spec.name for spec in search_target_transform_specs(tag="MECHANICAL")),
+            ("modulus", "strength", "hardness"),
+        )
+        self.assertEqual(
+            tuple(
+                spec.name
+                for spec in search_target_transform_specs(
+                    query="strength",
+                    category="positive mechanical property",
+                    tag="mechanical",
+                    transform_name="LOG",
+                )
+            ),
+            ("strength",),
+        )
+        self.assertEqual(
+            tuple(spec.name for spec in search_target_transform_specs(transform_name="STANDARD")),
+            ("formation_energy", "binding_energy"),
+        )
+        self.assertEqual(search_target_transform_specs(query="no such property"), ())
+
+    def test_registry_dataframe_has_stable_columns_and_alias_policy(self):
+        expected_columns = [
+            "name",
+            "aliases",
+            "category",
+            "transform_name",
+            "transform_kwargs",
+            "description",
+            "target_units",
+            "examples",
+            "assumptions",
+            "tags",
+        ]
+        with_aliases = summarize_target_transform_specs()
+        without_aliases = summarize_target_transform_specs(include_aliases=False)
+
+        self.assertEqual(list(with_aliases.columns), expected_columns)
+        self.assertEqual(len(with_aliases), len(list_target_transform_specs()))
+        efficiency = with_aliases.loc[with_aliases["name"] == "efficiency_percent"].iloc[0]
+        self.assertEqual(
+            efficiency["aliases"],
+            "efficiency, pce, power_conversion_efficiency, percent_efficiency",
+        )
+        self.assertEqual(efficiency["transform_name"], "bounded")
+        self.assertEqual(
+            efficiency["transform_kwargs"],
+            {"lower_bound": 0.0, "upper_bound": 100.0},
+        )
+        self.assertEqual(
+            efficiency["examples"],
+            "solar-cell PCE, catalyst conversion percent, yield percent",
+        )
+        self.assertEqual(
+            efficiency["assumptions"],
+            "Values are strictly between 0 and 100 before the logit transform.",
+        )
+        self.assertEqual(
+            efficiency["tags"],
+            "bounded, efficiency, percentage, opv, photovoltaics",
+        )
+        self.assertTrue((without_aliases["aliases"] == "").all())
+
+    def test_bounded_constructor_errors_are_explicit(self):
+        for lower, upper in ((np.nan, 1.0), (0.0, np.inf)):
+            with self.subTest(lower=lower, upper=upper):
+                with self.assertRaisesRegex(ValueError, "^Bounds must be finite$"):
+                    BoundedTargetTransform(lower, upper)
+        with self.assertRaisesRegex(
+            ValueError,
+            "^upper_bound must be greater than lower_bound$",
+        ):
+            BoundedTargetTransform(2.0, 1.0)
+        for points in (2, 3.0):
+            with self.subTest(points=points):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "^n_quadrature_points must be an integer greater than or equal to 3$",
+                ):
+                    BoundedTargetTransform(
+                        0.0,
+                        1.0,
+                        n_quadrature_points=points,  # type: ignore[arg-type]
+                    )
+        self.assertEqual(
+            BoundedTargetTransform(0.0, 1.0, n_quadrature_points=3).n_quadrature_points,
+            3,
+        )
+
+    def test_validation_messages_preserve_public_array_names(self):
+        with self.assertRaisesRegex(ValueError, "^y must contain only finite values$"):
+            StandardizedTargetTransform().fit([np.nan])
+        with self.assertRaisesRegex(ValueError, "^Cannot standardize a constant target$"):
+            StandardizedTargetTransform().fit([1.0, 1.0])
+        with self.assertRaisesRegex(
+            ValueError,
+            r"^y \+ offset must contain only positive values$",
+        ):
+            LogTargetTransform(offset=0.5).fit([-0.5])
+        residual = PhysicsResidualTransform(baseline_name="physics_prediction")
+        with self.assertRaisesRegex(
+            ValueError,
+            "^physics_prediction must contain only finite values$",
+        ):
+            residual.transform([1.0], baseline=[np.nan])
+
+    def test_standardized_transform_rejects_either_missing_fitted_statistic(self):
+        missing_scale = StandardizedTargetTransform()
+        missing_scale.mean_ = 0.0
+        missing_mean = StandardizedTargetTransform()
+        missing_mean.scale_ = 1.0
+
+        for transform in (missing_scale, missing_mean):
+            with self.subTest(transform=transform):
+                with self.assertRaisesRegex(ValueError, "must be fitted before use"):
+                    transform.transform([0.0])
+
+    def test_bounded_mean_only_prediction_preserves_absent_uncertainty(self):
+        transform = BoundedTargetTransform(10.0, 30.0)
+
+        prediction = transform.inverse_prediction(GPyTorchPrediction(mean=np.array([0.0])))
+
+        self.assertTrue(np.allclose(prediction.mean, [20.0]))
+        self.assertIsNone(prediction.std)
+        self.assertIsNone(prediction.lower)
+        self.assertIsNone(prediction.upper)
 
 
 if __name__ == "__main__":

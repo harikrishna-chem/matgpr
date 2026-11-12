@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from numbers import Integral, Real
 from statistics import NormalDist
 
 import gpytorch
@@ -145,19 +146,35 @@ class PhysicsInformedMean(gpytorch.means.Mean):
         )
         self.feature_means = _validate_numeric_mapping(feature_means or {}, "feature_means")
         self.feature_stds = _validate_positive_mapping(feature_stds or {}, "feature_stds")
+        _validate_feature_metadata_keys(
+            self.feature_indices,
+            self.feature_means,
+            "feature_means",
+        )
+        _validate_feature_metadata_keys(
+            self.feature_indices,
+            self.feature_stds,
+            "feature_stds",
+        )
         self.positive_parameters = set(positive_parameters)
 
-        learnable_parameters = _resolve_learnable_parameters(
-            learnable_parameters,
-            parameter_initial_values,
+        learnable_parameters = _validate_numeric_mapping(
+            _resolve_learnable_parameters(
+                learnable_parameters,
+                parameter_initial_values,
+            ),
+            "learnable_parameters",
         )
         self._learnable_parameter_names = tuple(learnable_parameters)
         self._validate_physics_parameter_names(learnable_parameters)
 
+        target_mean = float(target_mean)
         target_std = float(target_std)
-        if target_std <= 0:
-            raise ValueError("target_std must be positive")
-        self.register_buffer("target_mean", torch.tensor(float(target_mean)))
+        if not np.isfinite(target_mean):
+            raise ValueError("target_mean must be finite")
+        if not np.isfinite(target_std) or target_std <= 0:
+            raise ValueError("target_std must be finite and positive")
+        self.register_buffer("target_mean", torch.tensor(target_mean))
         self.register_buffer("target_std", torch.tensor(target_std))
 
         for name, initial_value in learnable_parameters.items():
@@ -194,14 +211,16 @@ class PhysicsInformedMean(gpytorch.means.Mean):
             dtype=self.target_std.dtype,
             device=self.target_std.device,
         )
-        if torch.any(std_value <= 0):
-            raise ValueError("std must be positive")
+        if not torch.isfinite(std_value).all() or torch.any(std_value <= 0):
+            raise ValueError("std must be finite and positive")
 
         mean_value = torch.as_tensor(
             mean,
             dtype=self.target_mean.dtype,
             device=self.target_mean.device,
         )
+        if not torch.isfinite(mean_value).all():
+            raise ValueError("mean must be finite")
         self.target_mean.copy_(mean_value)
         self.target_std.copy_(std_value)
 
@@ -239,6 +258,8 @@ class PhysicsInformedMean(gpytorch.means.Mean):
                 "Physics equation must return one mean value per sample; "
                 f"received shape {tuple(mean.shape)} for {x.shape[0]} samples"
             )
+        if not torch.isfinite(mean).all():
+            raise ValueError("Physics equation must return only finite values")
 
         return (mean - self.target_mean.to(dtype=x.dtype, device=x.device)) / self.target_std.to(
             dtype=x.dtype,
@@ -379,10 +400,16 @@ def fit_gpytorch_gpr(
         Iteration interval between printed training-loss lines when
         ``verbose`` is ``True``.
     """
-    _validate_training_options(lr=lr, training_iter=training_iter, log_every=log_every)
+    lr, training_iter, log_every = _validate_training_options(
+        lr=lr,
+        training_iter=training_iter,
+        log_every=log_every,
+    )
     device_object = torch.device(device)
     train_x = _to_tensor(X_train, device=device_object, dtype=dtype)
-    train_y = _to_tensor(y_train, device=device_object, dtype=dtype).reshape(-1)
+    train_y = _to_tensor(y_train, device=device_object, dtype=dtype)
+    if train_y.ndim == 2 and train_y.shape[1] == 1:
+        train_y = train_y[:, 0]
     _validate_training_arrays(train_x, train_y)
     _validate_mean_module_feature_width(mean_module, train_x.shape[1])
 
@@ -399,8 +426,7 @@ def fit_gpytorch_gpr(
 
     likelihood = gpytorch.likelihoods.GaussianLikelihood().to(device=device_object, dtype=dtype)
     if initial_noise is not None:
-        if initial_noise <= 0:
-            raise ValueError("initial_noise must be positive")
+        initial_noise = _validate_positive_float(initial_noise, "initial_noise")
         likelihood.noise_covar.initialize(noise=initial_noise)
 
     mean_module = _prepare_mean_module(
@@ -552,6 +578,7 @@ def _predict_gpytorch_gpr(
     model.eval()
     likelihood.eval()
     test_x = _to_tensor(X, device=torch.device(device), dtype=dtype)
+    _validate_prediction_features(test_x, model)
 
     with torch.no_grad(), gpytorch.settings.fast_pred_var():
         latent_distribution = model(test_x)
@@ -648,9 +675,20 @@ def _resolve_feature_indices(
     resolved = dict(feature_indices if feature_indices is not None else column_indices or {})
 
     for name, index in resolved.items():
-        if not isinstance(index, int) or index < 0:
+        if isinstance(index, bool) or not isinstance(index, Integral) or index < 0:
             raise ValueError(f"Feature index for '{name}' must be a non-negative integer")
+        resolved[name] = int(index)
     return resolved
+
+
+def _validate_feature_metadata_keys(
+    feature_indices: Mapping[str, int],
+    values: Mapping[str, float],
+    mapping_name: str,
+) -> None:
+    unknown = sorted(set(values).difference(feature_indices))
+    if unknown:
+        raise ValueError(f"{mapping_name} contains unknown physics features: {unknown}")
 
 
 def _resolve_learnable_parameters(
@@ -673,6 +711,8 @@ def _validate_numeric_mapping(values: Mapping[str, float], mapping_name: str) ->
             raise ValueError(
                 f"{mapping_name} values must be numeric; got {name}={value!r}"
             ) from error
+        if not np.isfinite(validated[name]):
+            raise ValueError(f"{mapping_name} values must be finite; got {name}={value!r}")
     return validated
 
 
@@ -703,13 +743,35 @@ def _inverse_softplus(value: float) -> torch.Tensor:
     return torch.log(torch.expm1(value_tensor).clamp_min(tiny))
 
 
-def _validate_training_options(*, lr: float, training_iter: int, log_every: int) -> None:
-    if lr <= 0:
-        raise ValueError("lr must be positive")
-    if training_iter <= 0:
-        raise ValueError("training_iter must be positive")
-    if log_every <= 0:
-        raise ValueError("log_every must be positive")
+def _validate_training_options(
+    *,
+    lr: float,
+    training_iter: int,
+    log_every: int,
+) -> tuple[float, int, int]:
+    return (
+        _validate_positive_float(lr, "lr"),
+        _validate_positive_integer(training_iter, "training_iter"),
+        _validate_positive_integer(log_every, "log_every"),
+    )
+
+
+def _validate_positive_float(value: float, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a real number")
+    normalized = float(value)
+    if not np.isfinite(normalized) or normalized <= 0:
+        raise ValueError(f"{name} must be finite and positive")
+    return normalized
+
+
+def _validate_positive_integer(value: int, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise TypeError(f"{name} must be an integer")
+    normalized = int(value)
+    if normalized <= 0:
+        raise ValueError(f"{name} must be positive")
+    return normalized
 
 
 def _validate_training_arrays(train_x: torch.Tensor, train_y: torch.Tensor) -> None:
@@ -723,10 +785,27 @@ def _validate_training_arrays(train_x: torch.Tensor, train_y: torch.Tensor) -> N
         raise ValueError(
             f"At least two training samples are required; got n_samples = {train_x.shape[0]}"
         )
+    if train_x.shape[1] < 1:
+        raise ValueError("X_train must contain at least one feature")
     if not torch.isfinite(train_x).all():
         raise ValueError("X_train must contain only finite values")
     if not torch.isfinite(train_y).all():
         raise ValueError("y_train must contain only finite values")
+
+
+def _validate_prediction_features(test_x: torch.Tensor, model: ExactGPRModel) -> None:
+    if test_x.ndim != 2:
+        raise ValueError("X must be a 2D feature matrix")
+    if test_x.shape[0] < 1:
+        raise ValueError("X must contain at least one sample")
+    train_x = model.train_inputs[0]
+    if test_x.shape[1] != train_x.shape[1]:
+        raise ValueError(
+            f"X has {test_x.shape[1]} features, but the model was fitted with "
+            f"{train_x.shape[1]} features"
+        )
+    if not torch.isfinite(test_x).all():
+        raise ValueError("X must contain only finite values")
 
 
 def _validate_mean_module_feature_width(
@@ -759,10 +838,13 @@ def _require_target_standardization(
             "predictions in original target units. Use a model fitted by matgpr, or "
             "register both buffers before predicting."
         )
-    return (
-        target_mean.to(dtype=dtype, device=device),
-        target_std.to(dtype=dtype, device=device),
-    )
+    target_mean = target_mean.to(dtype=dtype, device=device)
+    target_std = target_std.to(dtype=dtype, device=device)
+    if not torch.isfinite(target_mean).all():
+        raise ValueError("model target_mean must be finite")
+    if not torch.isfinite(target_std).all() or torch.any(target_std <= 0):
+        raise ValueError("model target_std must be finite and positive")
+    return target_mean, target_std
 
 
 def _should_log_iteration(iteration: int, training_iter: int, log_every: int) -> bool:

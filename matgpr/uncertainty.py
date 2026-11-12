@@ -7,6 +7,7 @@ import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
 from ._validation import (
+    finite_scalar,
     to_1d_finite,
     validate_confidence_level,
     validate_same_length,
@@ -124,6 +125,7 @@ def gaussian_nlpd(
     distributions. ``reduction="none"`` returns one NLPD value per sample.
     """
     y_true, y_pred, y_std = _validate_prediction_arrays(y_true, y_pred, y_std)
+    min_std = finite_scalar(min_std, "min_std")
     if min_std <= 0:
         raise ValueError("min_std must be positive")
     if reduction not in {"mean", "sum", "none"}:
