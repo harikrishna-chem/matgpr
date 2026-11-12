@@ -2751,6 +2751,13 @@ degradation rate, diffusion barrier, cost, or toxicity. Use
 `constraint_policy="annotate"` when you want to keep infeasible candidates in
 the ranked table for auditing rather than filtering them out.
 
+For saved-prediction scoring, UCB uses `mean + beta * std`; LCB ranks the lower
+confidence bound `mean - beta * std` for minimization; and EI/PI use the
+Gaussian closed forms with the incumbent and improvement threshold in the same
+target units as the predictions. Equal acquisition scores preserve candidate
+input order, making tie behavior deterministic. `top_k` must be a positive
+integer, and numeric `CandidateConstraint` bounds must be finite.
+
 Use trust regions when a BO campaign should stay near known feasible chemistry,
 composition, or processing space. Use duplicate policies when candidates may
 already be measured, selected in a previous batch, or queued in a lab workflow:

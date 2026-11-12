@@ -9,6 +9,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from . import _bo_acquisition as _acquisition_policy
+from . import _bo_batch_selection as _batch_selection_policy
+from . import _bo_candidate_domain as _candidate_domain_policy
+from . import _bo_saved_prediction as _saved_prediction_policy
+from ._validation import validate_positive_int
 from .bayesian_optimization_specs import (
     BOAcquisitionIntent,
     BOObjectiveMode,
@@ -17,26 +22,63 @@ from .bayesian_optimization_specs import (
 )
 from .multi_objective import ObjectiveSpec, pareto_front_mask
 
-_OUTPUT_COLUMNS = (
-    "matgpr_candidate_index",
-    "matgpr_rank",
-    "matgpr_feasible",
-    "matgpr_constraint_violations",
-    "matgpr_batch_selected",
-    "matgpr_batch_order",
-    "matgpr_batch_score",
-    "matgpr_diversity_distance",
-    "matgpr_predicted_mean",
-    "matgpr_predicted_std",
-    "matgpr_preference_score",
-    "matgpr_objective_component",
-    "matgpr_feasibility_probability",
-    "matgpr_acquisition_base",
-    "matgpr_acquisition",
-    "matgpr_acquisition_rank",
-    "matgpr_eligible_rank",
-    "matgpr_eligible_for_recommendation",
-    "matgpr_selected_for_batch",
+_build_acquisition_function = _acquisition_policy._build_acquisition_function
+_build_multi_objective_acquisition_function = (
+    _acquisition_policy._build_multi_objective_acquisition_function
+)
+_normalize_acquisition_name = _acquisition_policy._normalize_acquisition_name
+_normalize_multi_objective_acquisition_name = (
+    _acquisition_policy._normalize_multi_objective_acquisition_name
+)
+
+_OUTPUT_COLUMNS = _batch_selection_policy._OUTPUT_COLUMNS
+_argmax_stable = _batch_selection_policy._argmax_stable
+_as_finite_numeric_vector = _batch_selection_policy._as_finite_numeric_vector
+_candidate_diversity_matrix = _batch_selection_policy._candidate_diversity_matrix
+_greedy_diverse_positions = _batch_selection_policy._greedy_diverse_positions
+_normalize_vector = _batch_selection_policy._normalize_vector
+_rank_descending = _batch_selection_policy._rank_descending
+_resolve_diversity_feature_columns = _batch_selection_policy._resolve_diversity_feature_columns
+_top_score_positions = _batch_selection_policy._top_score_positions
+
+_candidate_policy_row_keys = _candidate_domain_policy._candidate_policy_row_keys
+_duplicate_policy_annotations = _candidate_domain_policy._duplicate_policy_annotations
+_existing_candidate_ids = _candidate_domain_policy._existing_candidate_ids
+_minimum_scaled_distance_matches = _candidate_domain_policy._minimum_scaled_distance_matches
+_minimum_scaled_distances = _candidate_domain_policy._minimum_scaled_distances
+_normalize_distance_metric = _candidate_domain_policy._normalize_distance_metric
+_policy_feature_matrix = _candidate_domain_policy._policy_feature_matrix
+_resolve_policy_feature_columns = _candidate_domain_policy._resolve_policy_feature_columns
+_resolve_policy_feature_scales = _candidate_domain_policy._resolve_policy_feature_scales
+_trust_region_annotations = _candidate_domain_policy._trust_region_annotations
+_validate_candidate_policy = _candidate_domain_policy._validate_candidate_policy
+_validate_distinct_names = _candidate_domain_policy._validate_distinct_names
+_validate_output_name = _candidate_domain_policy._validate_output_name
+
+_SAVED_PREDICTION_ACQUISITIONS = _saved_prediction_policy._SAVED_PREDICTION_ACQUISITIONS
+_UNCERTAINTY_REQUIRED_ACQUISITIONS = _saved_prediction_policy._UNCERTAINTY_REQUIRED_ACQUISITIONS
+_apply_saved_prediction_feasibility = _saved_prediction_policy._apply_saved_prediction_feasibility
+_constraint_event_interval = _saved_prediction_policy._constraint_event_interval
+_improvement_event_interval = _saved_prediction_policy._improvement_event_interval
+_intersect_intervals = _saved_prediction_policy._intersect_intervals
+_joint_output_constraint_probability = _saved_prediction_policy._joint_output_constraint_probability
+_normal_expected_improvement = _saved_prediction_policy._normal_expected_improvement
+_normal_interval_probability = _saved_prediction_policy._normal_interval_probability
+_normal_probability_of_improvement = _saved_prediction_policy._normal_probability_of_improvement
+_normal_target_closeness = _saved_prediction_policy._normal_target_closeness
+_objective_event_interval = _saved_prediction_policy._objective_event_interval
+_objective_target_tolerance = _saved_prediction_policy._objective_target_tolerance
+_posterior_mean_preference = _saved_prediction_policy._posterior_mean_preference
+_required_incumbent_value = _saved_prediction_policy._required_incumbent_value
+_resolve_saved_prediction_acquisition = (
+    _saved_prediction_policy._resolve_saved_prediction_acquisition
+)
+_saved_prediction_acquisition_values = _saved_prediction_policy._saved_prediction_acquisition_values
+_standard_normal_cdf = _saved_prediction_policy._standard_normal_cdf
+_standard_normal_pdf = _saved_prediction_policy._standard_normal_pdf
+_unit_interval_scores = _saved_prediction_policy._unit_interval_scores
+_validate_single_target_output_constraints = (
+    _saved_prediction_policy._validate_single_target_output_constraints
 )
 
 __all__ = [
@@ -471,11 +513,22 @@ class CandidateConstraint:
             )
         if self.allowed_values is not None and len(self.allowed_values) == 0:
             raise ValueError("allowed_values must not be empty when provided")
-        if (
-            self.lower_bound is not None
-            and self.upper_bound is not None
-            and self.lower_bound > self.upper_bound
-        ):
+
+        lower_bound = self.lower_bound
+        if lower_bound is not None:
+            lower_bound = float(lower_bound)
+            if not np.isfinite(lower_bound):
+                raise ValueError("lower_bound must be finite when provided")
+            object.__setattr__(self, "lower_bound", lower_bound)
+
+        upper_bound = self.upper_bound
+        if upper_bound is not None:
+            upper_bound = float(upper_bound)
+            if not np.isfinite(upper_bound):
+                raise ValueError("upper_bound must be finite when provided")
+            object.__setattr__(self, "upper_bound", upper_bound)
+
+        if lower_bound is not None and upper_bound is not None and lower_bound > upper_bound:
             raise ValueError("lower_bound must be <= upper_bound")
 
     def evaluate(self, candidates: pd.DataFrame) -> pd.Series:
@@ -699,8 +752,7 @@ def select_diverse_batch(
     """
     if not isinstance(candidates, pd.DataFrame):
         raise TypeError("candidates must be a pandas DataFrame")
-    if top_k < 1:
-        raise ValueError("top_k must be at least 1")
+    top_k = validate_positive_int(top_k, name="top_k")
     if diversity_weight < 0.0:
         raise ValueError("diversity_weight must be non-negative")
     if min_distance is not None and min_distance < 0.0:
@@ -708,7 +760,7 @@ def select_diverse_batch(
     if score_column not in candidates.columns:
         raise ValueError(f"score_column {score_column!r} is missing")
 
-    result = candidates.copy()
+    result = candidates.reset_index(drop=True).copy()
     result["matgpr_batch_selected"] = False
     result["matgpr_batch_order"] = pd.Series(pd.NA, index=result.index, dtype="Int64")
     result["matgpr_batch_score"] = np.nan
@@ -1133,8 +1185,8 @@ def rank_discrete_candidates(
         `"filter"` removes duplicate candidates. `"annotate"` keeps all
         candidates and adds duplicate-audit columns.
     """
-    if top_k is not None and top_k < 1:
-        raise ValueError("top_k must be at least 1 when provided")
+    if top_k is not None:
+        top_k = validate_positive_int(top_k, name="top_k")
     constraint_policy = _validate_constraint_policy(constraint_policy)
 
     import torch
@@ -1224,8 +1276,8 @@ def rank_multi_objective_discrete_candidates(
     Acquisition functions operate in BoTorch maximization space, so
     minimize-type objectives are handled by the fitted surrogate.
     """
-    if top_k is not None and top_k < 1:
-        raise ValueError("top_k must be at least 1 when provided")
+    if top_k is not None:
+        top_k = validate_positive_int(top_k, name="top_k")
     constraint_policy = _validate_constraint_policy(constraint_policy)
     mc_samples = _validate_mc_samples(mc_samples)
 
@@ -1367,8 +1419,7 @@ def select_sequential_multi_objective_batch(
         If `True`, return the full annotated candidate table. Otherwise return
         only selected candidates in sequential batch order.
     """
-    if top_k < 1:
-        raise ValueError("top_k must be at least 1")
+    top_k = validate_positive_int(top_k, name="top_k")
     constraint_policy = _validate_constraint_policy(constraint_policy)
     mc_samples = _validate_mc_samples(mc_samples)
 
@@ -1571,8 +1622,7 @@ def suggest_next_experiments(
         Optional minimum descriptor-space distance between selected batch
         members when `batch_selection="diverse"`.
     """
-    if top_k < 1:
-        raise ValueError("top_k must be at least 1")
+    top_k = validate_positive_int(top_k, name="top_k")
     constraint_policy = _validate_constraint_policy(constraint_policy)
     batch_selection = _validate_batch_selection(batch_selection)
 
@@ -1653,8 +1703,8 @@ def rank_bo_candidate_pool(
     objective_spec = _coerce_bo_objective_preference(objective)
     constraint_specs = tuple(_coerce_bo_output_constraint(item) for item in output_constraints)
     _validate_single_target_output_constraints(objective_spec, constraint_specs)
-    if top_k is not None and top_k < 1:
-        raise ValueError("top_k must be at least 1 when provided")
+    if top_k is not None:
+        top_k = validate_positive_int(top_k, name="top_k")
     if beta < 0 or not np.isfinite(beta):
         raise ValueError("beta must be finite and non-negative")
 
@@ -1733,8 +1783,8 @@ def rank_bo_candidate_predictions(
     objective_spec = _coerce_bo_objective_preference(objective)
     constraint_specs = tuple(_coerce_bo_output_constraint(item) for item in output_constraints)
     _validate_single_target_output_constraints(objective_spec, constraint_specs)
-    if top_k is not None and top_k < 1:
-        raise ValueError("top_k must be at least 1 when provided")
+    if top_k is not None:
+        top_k = validate_positive_int(top_k, name="top_k")
     if beta < 0 or not np.isfinite(beta):
         raise ValueError("beta must be finite and non-negative")
     if improvement_threshold < 0 or not np.isfinite(improvement_threshold):
@@ -1858,8 +1908,7 @@ def suggest_multi_objective_next_experiments(
     objectives, such as maximizing conductivity while minimizing degradation
     rate, toxicity, synthesis cost, or processing burden.
     """
-    if top_k < 1:
-        raise ValueError("top_k must be at least 1")
+    top_k = validate_positive_int(top_k, name="top_k")
     constraint_policy = _validate_constraint_policy(constraint_policy)
     batch_selection = _validate_batch_selection(batch_selection, allow_sequential=True)
 
@@ -2582,301 +2631,6 @@ def _objective_preference_score(
     raise ValueError(f"Unsupported objective mode: {objective.mode.value}")
 
 
-_SAVED_PREDICTION_ACQUISITIONS = {
-    BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
-    BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
-    BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
-    BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
-    BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
-    BOAcquisitionIntent.TARGET_PROBABILITY,
-    BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
-}
-_UNCERTAINTY_REQUIRED_ACQUISITIONS = _SAVED_PREDICTION_ACQUISITIONS - {
-    BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
-}
-
-
-def _resolve_saved_prediction_acquisition(
-    value: BOAcquisitionIntent | str | None,
-    objective: BOObjectivePreference,
-    *,
-    uncertainty_available: bool,
-) -> tuple[BOAcquisitionIntent | None, BOAcquisitionIntent]:
-    requested = None if value is None else BOAcquisitionIntent(value)
-    if requested is None:
-        if not uncertainty_available:
-            effective = BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE
-        elif objective.mode is BOObjectiveMode.MAXIMIZE:
-            effective = BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND
-        elif objective.mode is BOObjectiveMode.MINIMIZE:
-            effective = BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND
-        else:
-            effective = BOAcquisitionIntent.TARGET_PROBABILITY
-    else:
-        effective = requested
-    if effective not in _SAVED_PREDICTION_ACQUISITIONS:
-        supported = ", ".join(sorted(item.value for item in _SAVED_PREDICTION_ACQUISITIONS))
-        raise ValueError(
-            f"acquisition intent {effective.value!r} is not supported for saved "
-            f"prediction scoring; supported intents: {supported}"
-        )
-    if effective in _UNCERTAINTY_REQUIRED_ACQUISITIONS and not uncertainty_available:
-        raise ValueError(
-            f"predicted_std is required for acquisition intent {effective.value!r}; "
-            "request 'posterior_mean_preference' explicitly for deterministic scoring"
-        )
-    if effective is BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND and (
-        objective.mode is not BOObjectiveMode.MAXIMIZE
-    ):
-        raise ValueError("upper_confidence_bound requires a maximize objective")
-    if effective is BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND and (
-        objective.mode is not BOObjectiveMode.MINIMIZE
-    ):
-        raise ValueError("lower_confidence_bound requires a minimize objective")
-    if effective is BOAcquisitionIntent.TARGET_PROBABILITY and objective.mode not in {
-        BOObjectiveMode.TARGET_VALUE,
-        BOObjectiveMode.TARGET_RANGE,
-    }:
-        raise ValueError("target_probability requires a target_value or target_range objective")
-    if effective in {
-        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
-        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
-        BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
-    } and objective.mode not in {BOObjectiveMode.MAXIMIZE, BOObjectiveMode.MINIMIZE}:
-        raise ValueError(f"{effective.value} requires a maximize or minimize objective")
-    return requested, effective
-
-
-def _saved_prediction_acquisition_values(
-    mean: np.ndarray,
-    std: np.ndarray,
-    objective: BOObjectivePreference,
-    *,
-    acquisition_intent: BOAcquisitionIntent,
-    beta: float,
-    incumbent_value: float | None,
-    improvement_threshold: float,
-) -> np.ndarray:
-    if acquisition_intent is BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE:
-        return _posterior_mean_preference(mean, objective)
-    if acquisition_intent is BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND:
-        return mean + beta * std
-    if acquisition_intent is BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND:
-        return -(mean - beta * std)
-    if acquisition_intent in {
-        BOAcquisitionIntent.EXPECTED_IMPROVEMENT,
-        BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT,
-    }:
-        return _normal_expected_improvement(
-            mean,
-            std,
-            objective=objective,
-            incumbent_value=incumbent_value,
-            improvement_threshold=improvement_threshold,
-        )
-    if acquisition_intent is BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT:
-        return _normal_probability_of_improvement(
-            mean,
-            std,
-            objective=objective,
-            incumbent_value=incumbent_value,
-            improvement_threshold=improvement_threshold,
-        )
-    if acquisition_intent is BOAcquisitionIntent.TARGET_PROBABILITY:
-        lower, upper = _objective_event_interval(objective)
-        return _normal_interval_probability(
-            mean,
-            std,
-            lower_bound=lower,
-            upper_bound=upper,
-        )
-    raise ValueError(f"Unsupported saved-prediction acquisition: {acquisition_intent.value}")
-
-
-def _posterior_mean_preference(
-    mean: np.ndarray,
-    objective: BOObjectivePreference,
-) -> np.ndarray:
-    if objective.mode is BOObjectiveMode.MAXIMIZE:
-        return mean.astype(float)
-    if objective.mode is BOObjectiveMode.MINIMIZE:
-        return -mean.astype(float)
-    if objective.mode is BOObjectiveMode.TARGET_VALUE:
-        return -np.abs(mean.astype(float) - float(objective.target_value))
-    lower, upper = _objective_event_interval(objective)
-    below = np.maximum(float(lower) - mean, 0.0)
-    above = np.maximum(mean - float(upper), 0.0)
-    return -(below + above)
-
-
-def _normal_expected_improvement(
-    mean: np.ndarray,
-    std: np.ndarray,
-    *,
-    objective: BOObjectivePreference,
-    incumbent_value: float | None,
-    improvement_threshold: float,
-) -> np.ndarray:
-    incumbent = _required_incumbent_value(incumbent_value)
-    improvement = (
-        mean - incumbent - improvement_threshold
-        if objective.mode is BOObjectiveMode.MAXIMIZE
-        else incumbent - mean - improvement_threshold
-    )
-    deterministic = std <= 1e-12
-    values = np.maximum(improvement, 0.0)
-    active = ~deterministic
-    if np.any(active):
-        z = improvement[active] / std[active]
-        values[active] = improvement[active] * _standard_normal_cdf(z) + std[
-            active
-        ] * _standard_normal_pdf(z)
-    return values
-
-
-def _normal_probability_of_improvement(
-    mean: np.ndarray,
-    std: np.ndarray,
-    *,
-    objective: BOObjectivePreference,
-    incumbent_value: float | None,
-    improvement_threshold: float,
-) -> np.ndarray:
-    incumbent = _required_incumbent_value(incumbent_value)
-    improvement = (
-        mean - incumbent - improvement_threshold
-        if objective.mode is BOObjectiveMode.MAXIMIZE
-        else incumbent - mean - improvement_threshold
-    )
-    deterministic = std <= 1e-12
-    values = (improvement > 0.0).astype(float)
-    active = ~deterministic
-    if np.any(active):
-        values[active] = _standard_normal_cdf(improvement[active] / std[active])
-    return values
-
-
-def _apply_saved_prediction_feasibility(
-    acquisition_base: np.ndarray,
-    mean: np.ndarray,
-    std: np.ndarray,
-    *,
-    objective: BOObjectivePreference,
-    constraints: Sequence[BOOutputConstraintSpec],
-    acquisition_intent: BOAcquisitionIntent,
-    incumbent_value: float | None,
-    improvement_threshold: float,
-    feasibility_probability: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, str]:
-    base_name = (
-        BOAcquisitionIntent.EXPECTED_IMPROVEMENT.value
-        if acquisition_intent is BOAcquisitionIntent.CONSTRAINED_EXPECTED_IMPROVEMENT
-        else acquisition_intent.value
-    )
-    if not constraints:
-        return acquisition_base, acquisition_base, base_name
-
-    if acquisition_intent in {
-        BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT,
-        BOAcquisitionIntent.TARGET_PROBABILITY,
-    }:
-        objective_interval = (
-            _improvement_event_interval(
-                objective,
-                incumbent_value=incumbent_value,
-                improvement_threshold=improvement_threshold,
-            )
-            if acquisition_intent is BOAcquisitionIntent.PROBABILITY_OF_IMPROVEMENT
-            else _objective_event_interval(objective)
-        )
-        constraint_interval = _constraint_event_interval(constraints)
-        lower, upper = _intersect_intervals(objective_interval, constraint_interval)
-        intersection_probability = _normal_interval_probability(
-            mean,
-            std,
-            lower_bound=lower,
-            upper_bound=upper,
-        )
-        return intersection_probability, acquisition_base, f"intersection_{base_name}"
-
-    objective_component = (
-        _unit_interval_scores(acquisition_base)
-        if acquisition_intent
-        in {
-            BOAcquisitionIntent.POSTERIOR_MEAN_PREFERENCE,
-            BOAcquisitionIntent.UPPER_CONFIDENCE_BOUND,
-            BOAcquisitionIntent.LOWER_CONFIDENCE_BOUND,
-        }
-        else acquisition_base
-    )
-    return (
-        objective_component * feasibility_probability,
-        objective_component,
-        f"feasibility_weighted_{base_name}",
-    )
-
-
-def _objective_event_interval(
-    objective: BOObjectivePreference,
-) -> tuple[float | None, float | None]:
-    if objective.mode is BOObjectiveMode.TARGET_RANGE:
-        return objective.target_lower_bound, objective.target_upper_bound
-    if objective.mode is BOObjectiveMode.TARGET_VALUE:
-        tolerance = _objective_target_tolerance(objective)
-        if tolerance is None or tolerance <= 0.0:
-            raise ValueError(
-                "target_probability with target_value requires a positive target_tolerance"
-            )
-        target = float(objective.target_value)
-        return target - tolerance, target + tolerance
-    raise ValueError("objective does not define a closed target event")
-
-
-def _improvement_event_interval(
-    objective: BOObjectivePreference,
-    *,
-    incumbent_value: float | None,
-    improvement_threshold: float,
-) -> tuple[float | None, float | None]:
-    incumbent = _required_incumbent_value(incumbent_value)
-    if objective.mode is BOObjectiveMode.MAXIMIZE:
-        return incumbent + improvement_threshold, None
-    return None, incumbent - improvement_threshold
-
-
-def _constraint_event_interval(
-    constraints: Sequence[BOOutputConstraintSpec],
-) -> tuple[float | None, float | None]:
-    lower_values = [float(item.lower_bound) for item in constraints if item.lower_bound is not None]
-    upper_values = [float(item.upper_bound) for item in constraints if item.upper_bound is not None]
-    return (
-        max(lower_values) if lower_values else None,
-        min(upper_values) if upper_values else None,
-    )
-
-
-def _intersect_intervals(
-    first: tuple[float | None, float | None],
-    second: tuple[float | None, float | None],
-) -> tuple[float | None, float | None]:
-    lower_values = [value for value in (first[0], second[0]) if value is not None]
-    upper_values = [value for value in (first[1], second[1]) if value is not None]
-    lower = max(lower_values) if lower_values else None
-    upper = min(upper_values) if upper_values else None
-    if lower is not None and upper is not None and lower > upper:
-        return 1.0, 0.0
-    return lower, upper
-
-
-def _required_incumbent_value(value: float | None) -> float:
-    if value is None:
-        raise ValueError("incumbent_value is required for EI/PI acquisition")
-    incumbent = float(value)
-    if not np.isfinite(incumbent):
-        raise ValueError("incumbent_value must be finite")
-    return incumbent
-
-
 def _preference_acquisition_component(
     preference_score: np.ndarray,
     objective: BOObjectivePreference,
@@ -2939,160 +2693,6 @@ def _output_constraint_feasibility(
     return feasibility_probability, feasible, violations, columns
 
 
-def _normal_interval_probability(
-    mean: np.ndarray,
-    std: np.ndarray,
-    *,
-    lower_bound: float | None,
-    upper_bound: float | None,
-    inclusive: bool = True,
-    lower_inclusive: bool | None = None,
-    upper_inclusive: bool | None = None,
-) -> np.ndarray:
-    if lower_bound is None and upper_bound is None:
-        return np.ones(mean.shape[0], dtype=float)
-
-    mean = mean.astype(float)
-    std = np.maximum(std.astype(float), 0.0)
-    lower_closed = inclusive if lower_inclusive is None else lower_inclusive
-    upper_closed = inclusive if upper_inclusive is None else upper_inclusive
-    deterministic = std <= 1e-12
-    probability = np.zeros(mean.shape[0], dtype=float)
-
-    if np.any(~deterministic):
-        active_mean = mean[~deterministic]
-        active_std = std[~deterministic]
-        lower_probability = (
-            0.0
-            if lower_bound is None
-            else _standard_normal_cdf((float(lower_bound) - active_mean) / active_std)
-        )
-        upper_probability = (
-            1.0
-            if upper_bound is None
-            else _standard_normal_cdf((float(upper_bound) - active_mean) / active_std)
-        )
-        probability[~deterministic] = np.clip(
-            upper_probability - lower_probability,
-            0.0,
-            1.0,
-        )
-
-    if np.any(deterministic):
-        lower_ok = (
-            np.ones(np.count_nonzero(deterministic), dtype=bool)
-            if lower_bound is None
-            else (
-                mean[deterministic] >= float(lower_bound)
-                if lower_closed
-                else mean[deterministic] > float(lower_bound)
-            )
-        )
-        upper_ok = (
-            np.ones(np.count_nonzero(deterministic), dtype=bool)
-            if upper_bound is None
-            else (
-                mean[deterministic] <= float(upper_bound)
-                if upper_closed
-                else mean[deterministic] < float(upper_bound)
-            )
-        )
-        probability[deterministic] = (lower_ok & upper_ok).astype(float)
-    return probability
-
-
-def _joint_output_constraint_probability(
-    mean: np.ndarray,
-    std: np.ndarray,
-    constraints: Sequence[BOOutputConstraintSpec],
-) -> np.ndarray:
-    lower_bounds = [
-        float(constraint.lower_bound)
-        for constraint in constraints
-        if constraint.lower_bound is not None
-    ]
-    upper_bounds = [
-        float(constraint.upper_bound)
-        for constraint in constraints
-        if constraint.upper_bound is not None
-    ]
-    lower_bound = max(lower_bounds) if lower_bounds else None
-    upper_bound = min(upper_bounds) if upper_bounds else None
-    if lower_bound is not None and upper_bound is not None and lower_bound > upper_bound:
-        return np.zeros(mean.shape[0], dtype=float)
-
-    lower_inclusive = all(
-        constraint.inclusive
-        for constraint in constraints
-        if constraint.lower_bound is not None and float(constraint.lower_bound) == lower_bound
-    )
-    upper_inclusive = all(
-        constraint.inclusive
-        for constraint in constraints
-        if constraint.upper_bound is not None and float(constraint.upper_bound) == upper_bound
-    )
-    return _normal_interval_probability(
-        mean,
-        std,
-        lower_bound=lower_bound,
-        upper_bound=upper_bound,
-        lower_inclusive=lower_inclusive,
-        upper_inclusive=upper_inclusive,
-    )
-
-
-def _normal_target_closeness(
-    mean: np.ndarray,
-    std: np.ndarray,
-    *,
-    target: float,
-) -> np.ndarray:
-    mean = mean.astype(float)
-    std = np.maximum(std.astype(float), 0.0)
-    deterministic = std <= 1e-12
-    score = np.zeros(mean.shape[0], dtype=float)
-    if np.any(~deterministic):
-        z = (mean[~deterministic] - target) / std[~deterministic]
-        score[~deterministic] = np.exp(-0.5 * z**2)
-    if np.any(deterministic):
-        score[deterministic] = np.isclose(mean[deterministic], target).astype(float)
-    return score
-
-
-def _standard_normal_cdf(values: np.ndarray) -> np.ndarray:
-    from scipy.special import ndtr
-
-    return ndtr(values)
-
-
-def _standard_normal_pdf(values: np.ndarray) -> np.ndarray:
-    return np.exp(-0.5 * values**2) / np.sqrt(2.0 * np.pi)
-
-
-def _unit_interval_scores(values: np.ndarray) -> np.ndarray:
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        return np.zeros_like(values, dtype=float)
-    min_value = float(np.min(finite))
-    max_value = float(np.max(finite))
-    if np.isclose(min_value, max_value):
-        return np.ones_like(values, dtype=float)
-    scaled = (values - min_value) / (max_value - min_value)
-    return np.clip(scaled, 0.0, 1.0)
-
-
-def _objective_target_tolerance(objective: BOObjectivePreference) -> float | None:
-    if objective.target_tolerance is not None:
-        return float(objective.target_tolerance)
-    for key in ("tolerance", "target_tolerance", "absolute_tolerance"):
-        if key in objective.metadata:
-            tolerance = float(objective.metadata[key])
-            if not np.isfinite(tolerance) or tolerance < 0.0:
-                raise ValueError("objective target tolerance must be finite and non-negative")
-            return tolerance
-    return None
-
-
 def _coerce_bo_objective_preference(
     objective: BOObjectivePreference | dict[str, Any],
 ) -> BOObjectivePreference:
@@ -3111,163 +2711,6 @@ def _coerce_bo_output_constraint(
     if isinstance(constraint, dict):
         return BOOutputConstraintSpec(**constraint)
     raise TypeError("output_constraints must contain BOOutputConstraintSpec or mappings")
-
-
-def _validate_single_target_output_constraints(
-    objective: BOObjectivePreference,
-    constraints: Sequence[BOOutputConstraintSpec],
-) -> None:
-    mismatched = [
-        constraint.target_name
-        for constraint in constraints
-        if constraint.target_name != objective.target_name
-    ]
-    if mismatched:
-        raise ValueError(
-            "single-target BO preference scoring only supports output constraints "
-            f"on the modeled objective {objective.target_name!r}; got {mismatched}"
-        )
-
-
-def _build_acquisition_function(
-    name: str,
-    *,
-    surrogate: BoTorchSurrogate,
-    beta: float,
-) -> Any:
-    normalized = _normalize_acquisition_name(name)
-    if normalized == "log_expected_improvement":
-        from botorch.acquisition.analytic import LogExpectedImprovement
-
-        return LogExpectedImprovement(
-            model=surrogate.model,
-            best_f=surrogate.best_observed_objective,
-        )
-    if normalized == "log_noisy_expected_improvement":
-        from botorch.acquisition.logei import qLogNoisyExpectedImprovement
-
-        return qLogNoisyExpectedImprovement(
-            model=surrogate.model,
-            X_baseline=surrogate.train_X,
-        )
-    if normalized == "expected_improvement":
-        from botorch.acquisition.analytic import ExpectedImprovement
-
-        return ExpectedImprovement(
-            model=surrogate.model,
-            best_f=surrogate.best_observed_objective,
-        )
-    if normalized == "noisy_expected_improvement":
-        from botorch.acquisition.monte_carlo import qNoisyExpectedImprovement
-
-        return qNoisyExpectedImprovement(
-            model=surrogate.model,
-            X_baseline=surrogate.train_X,
-        )
-    if normalized == "probability_of_improvement":
-        from botorch.acquisition.analytic import ProbabilityOfImprovement
-
-        return ProbabilityOfImprovement(
-            model=surrogate.model,
-            best_f=surrogate.best_observed_objective,
-        )
-    if normalized == "upper_confidence_bound":
-        from botorch.acquisition.analytic import UpperConfidenceBound
-
-        return UpperConfidenceBound(model=surrogate.model, beta=beta)
-    raise ValueError(
-        "acquisition_function must be one of "
-        "'log_expected_improvement', 'log_noisy_expected_improvement', "
-        "'expected_improvement', 'noisy_expected_improvement', "
-        "'probability_of_improvement', or 'upper_confidence_bound'"
-    )
-
-
-def _build_multi_objective_acquisition_function(
-    name: str,
-    *,
-    surrogate: MultiObjectiveBoTorchSurrogate,
-    mc_samples: int,
-    sampler_seed: int | None,
-    x_pending: Any | None = None,
-) -> Any:
-    normalized = _normalize_multi_objective_acquisition_name(name)
-    import torch
-    from botorch.sampling.normal import SobolQMCNormalSampler
-
-    sampler = SobolQMCNormalSampler(
-        sample_shape=torch.Size([mc_samples]),
-        seed=sampler_seed,
-    )
-    if normalized == "q_log_expected_hypervolume_improvement":
-        from botorch.acquisition.multi_objective.logei import (
-            qLogExpectedHypervolumeImprovement,
-        )
-        from botorch.utils.multi_objective.box_decompositions.non_dominated import (
-            NondominatedPartitioning,
-        )
-
-        partitioning = NondominatedPartitioning(
-            ref_point=surrogate.reference_point,
-            Y=surrogate.objective_y,
-        )
-        return qLogExpectedHypervolumeImprovement(
-            model=surrogate.model,
-            ref_point=surrogate.reference_point,
-            partitioning=partitioning,
-            sampler=sampler,
-            X_pending=x_pending,
-        )
-    if normalized == "q_log_noisy_expected_hypervolume_improvement":
-        from botorch.acquisition.multi_objective.logei import (
-            qLogNoisyExpectedHypervolumeImprovement,
-        )
-
-        return qLogNoisyExpectedHypervolumeImprovement(
-            model=surrogate.model,
-            ref_point=surrogate.reference_point,
-            X_baseline=surrogate.train_X,
-            sampler=sampler,
-            X_pending=x_pending,
-        )
-    if normalized == "q_expected_hypervolume_improvement":
-        from botorch.acquisition.multi_objective.monte_carlo import (
-            qExpectedHypervolumeImprovement,
-        )
-        from botorch.utils.multi_objective.box_decompositions.non_dominated import (
-            NondominatedPartitioning,
-        )
-
-        partitioning = NondominatedPartitioning(
-            ref_point=surrogate.reference_point,
-            Y=surrogate.objective_y,
-        )
-        return qExpectedHypervolumeImprovement(
-            model=surrogate.model,
-            ref_point=surrogate.reference_point,
-            partitioning=partitioning,
-            sampler=sampler,
-            X_pending=x_pending,
-        )
-    if normalized == "q_noisy_expected_hypervolume_improvement":
-        from botorch.acquisition.multi_objective.monte_carlo import (
-            qNoisyExpectedHypervolumeImprovement,
-        )
-
-        return qNoisyExpectedHypervolumeImprovement(
-            model=surrogate.model,
-            ref_point=surrogate.reference_point,
-            X_baseline=surrogate.train_X,
-            sampler=sampler,
-            X_pending=x_pending,
-        )
-    raise ValueError(
-        "acquisition_function must be one of "
-        "'q_log_expected_hypervolume_improvement', "
-        "'q_log_noisy_expected_hypervolume_improvement', "
-        "'q_expected_hypervolume_improvement', or "
-        "'q_noisy_expected_hypervolume_improvement'"
-    )
 
 
 def _multi_objective_scores_and_predictions(
@@ -3356,119 +2799,11 @@ def _greedy_multi_objective_batch_positions(
     )
 
 
-def _normalize_acquisition_name(name: str) -> str:
-    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "logei": "log_expected_improvement",
-        "log_ei": "log_expected_improvement",
-        "log_expected_improvement": "log_expected_improvement",
-        "lognei": "log_noisy_expected_improvement",
-        "log_noisy_ei": "log_noisy_expected_improvement",
-        "log_nei": "log_noisy_expected_improvement",
-        "log_noisy_expected_improvement": "log_noisy_expected_improvement",
-        "q_log_nei": "log_noisy_expected_improvement",
-        "q_log_noisy_expected_improvement": "log_noisy_expected_improvement",
-        "qlognoisyexpectedimprovement": "log_noisy_expected_improvement",
-        "qlognei": "log_noisy_expected_improvement",
-        "qlog_noisy_expected_improvement": "log_noisy_expected_improvement",
-        "ei": "expected_improvement",
-        "expected_improvement": "expected_improvement",
-        "nei": "noisy_expected_improvement",
-        "noisy_ei": "noisy_expected_improvement",
-        "noisy_expected_improvement": "noisy_expected_improvement",
-        "q_nei": "noisy_expected_improvement",
-        "qnoisyexpectedimprovement": "noisy_expected_improvement",
-        "qnei": "noisy_expected_improvement",
-        "q_noisy_expected_improvement": "noisy_expected_improvement",
-        "pi": "probability_of_improvement",
-        "probability_improvement": "probability_of_improvement",
-        "probability_of_improvement": "probability_of_improvement",
-        "ucb": "upper_confidence_bound",
-        "upper_confidence_bound": "upper_confidence_bound",
-    }
-    if normalized not in aliases:
-        raise ValueError(f"Unsupported acquisition_function: {name!r}")
-    return aliases[normalized]
-
-
-def _normalize_multi_objective_acquisition_name(name: str) -> str:
-    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "ehvi": "q_expected_hypervolume_improvement",
-        "qehvi": "q_expected_hypervolume_improvement",
-        "q_ehvi": "q_expected_hypervolume_improvement",
-        "expected_hypervolume_improvement": "q_expected_hypervolume_improvement",
-        "q_expected_hypervolume_improvement": "q_expected_hypervolume_improvement",
-        "nehvi": "q_noisy_expected_hypervolume_improvement",
-        "qnehvi": "q_noisy_expected_hypervolume_improvement",
-        "q_nehvi": "q_noisy_expected_hypervolume_improvement",
-        "noisy_expected_hypervolume_improvement": ("q_noisy_expected_hypervolume_improvement"),
-        "q_noisy_expected_hypervolume_improvement": ("q_noisy_expected_hypervolume_improvement"),
-        "log_ehvi": "q_log_expected_hypervolume_improvement",
-        "logehvi": "q_log_expected_hypervolume_improvement",
-        "qlogehvi": "q_log_expected_hypervolume_improvement",
-        "q_log_ehvi": "q_log_expected_hypervolume_improvement",
-        "log_expected_hypervolume_improvement": ("q_log_expected_hypervolume_improvement"),
-        "q_log_expected_hypervolume_improvement": ("q_log_expected_hypervolume_improvement"),
-        "log_nehvi": "q_log_noisy_expected_hypervolume_improvement",
-        "lognehvi": "q_log_noisy_expected_hypervolume_improvement",
-        "qlognehvi": "q_log_noisy_expected_hypervolume_improvement",
-        "q_log_nehvi": "q_log_noisy_expected_hypervolume_improvement",
-        "log_noisy_expected_hypervolume_improvement": (
-            "q_log_noisy_expected_hypervolume_improvement"
-        ),
-        "q_log_noisy_expected_hypervolume_improvement": (
-            "q_log_noisy_expected_hypervolume_improvement"
-        ),
-    }
-    if normalized not in aliases:
-        raise ValueError(f"Unsupported multi-objective acquisition_function: {name!r}")
-    return aliases[normalized]
-
-
 def _validate_constraint_policy(policy: str) -> str:
     normalized = policy.strip().lower()
     if normalized not in {"filter", "annotate"}:
         raise ValueError("constraint_policy must be 'filter' or 'annotate'")
     return normalized
-
-
-def _validate_candidate_policy(policy: str) -> str:
-    normalized = str(policy).strip().lower()
-    if normalized not in {"filter", "annotate"}:
-        raise ValueError("candidate policy must be 'filter' or 'annotate'")
-    return normalized
-
-
-def _validate_output_name(value: str, *, name: str) -> str:
-    output_name = str(value).strip()
-    if not output_name:
-        raise ValueError(f"{name} must be a non-empty column name")
-    return output_name
-
-
-def _validate_distinct_names(*names: str) -> None:
-    normalized = tuple(str(name) for name in names)
-    if len(set(normalized)) != len(normalized):
-        raise ValueError("output column names must be distinct")
-
-
-def _normalize_distance_metric(metric: str) -> str:
-    normalized = str(metric).strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "euclidean": "euclidean",
-        "l2": "euclidean",
-        "manhattan": "manhattan",
-        "cityblock": "manhattan",
-        "l1": "manhattan",
-        "chebyshev": "chebyshev",
-        "linf": "chebyshev",
-        "l_inf": "chebyshev",
-        "max": "chebyshev",
-    }
-    if normalized not in aliases:
-        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
-    return aliases[normalized]
 
 
 def _apply_candidate_domain_policies(
@@ -3543,330 +2878,6 @@ def _apply_candidate_domain_policies_with_mask(
             keep_mask &= ~is_duplicate
 
     return result.loc[keep_mask].reset_index(drop=True), keep_mask
-
-
-def _trust_region_annotations(
-    candidate_features: pd.DataFrame | np.ndarray,
-    trust_region: CandidateTrustRegion,
-    *,
-    expected_rows: int | None = None,
-) -> tuple[np.ndarray, np.ndarray]:
-    candidate_matrix = _policy_feature_matrix(
-        candidate_features,
-        feature_columns=trust_region.feature_columns,
-        expected_rows=expected_rows,
-        allow_empty_rows=True,
-        name="candidate_features",
-    )
-    center_matrix = _policy_feature_matrix(
-        trust_region.centers,
-        feature_columns=trust_region.feature_columns,
-        expected_features=candidate_matrix.shape[1],
-        allow_empty_rows=False,
-        name="trust_region.centers",
-    )
-    scales = _resolve_policy_feature_scales(
-        trust_region.feature_scales,
-        candidate_matrix,
-        center_matrix,
-        name="trust_region.feature_scales",
-    )
-    distances = _minimum_scaled_distances(
-        candidate_matrix,
-        center_matrix,
-        metric=trust_region.metric,
-        scales=scales,
-    )
-    return distances, distances <= trust_region.radius
-
-
-def _duplicate_policy_annotations(
-    candidates: pd.DataFrame,
-    candidate_features: pd.DataFrame | np.ndarray,
-    duplicate_policy: CandidateDuplicatePolicy,
-    *,
-    expected_rows: int | None = None,
-) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, np.ndarray]:
-    is_duplicate = np.zeros(candidates.shape[0], dtype=bool)
-    reason_parts: list[list[str]] = [[] for _ in range(candidates.shape[0])]
-    distances = None
-    matched_ids = np.full(candidates.shape[0], None, dtype=object)
-    existing = duplicate_policy.existing_candidates
-    existing_ids = _existing_candidate_ids(existing, duplicate_policy.existing_id_column)
-
-    if duplicate_policy.key_columns is not None:
-        if not isinstance(duplicate_policy.existing_candidates, pd.DataFrame):
-            raise TypeError(
-                "existing_candidates must be a pandas DataFrame when key_columns are used"
-            )
-        candidate_keys = _candidate_policy_row_keys(
-            candidates,
-            duplicate_policy.key_columns,
-            label="candidate key columns",
-        )
-        existing_key_rows = _candidate_policy_row_keys(
-            duplicate_policy.existing_candidates,
-            duplicate_policy.key_columns,
-            label="existing key columns",
-        )
-        existing_key_to_id = {
-            key: existing_ids[index] for index, key in enumerate(existing_key_rows)
-        }
-        existing_keys = set(existing_key_to_id)
-        key_duplicates = np.asarray([key in existing_keys for key in candidate_keys], dtype=bool)
-        is_duplicate |= key_duplicates
-        for row_index, duplicate in enumerate(key_duplicates):
-            if duplicate:
-                reason_parts[row_index].append("key")
-                matched_ids[row_index] = existing_key_to_id[candidate_keys[row_index]]
-
-    if duplicate_policy.feature_tolerance is not None:
-        candidate_matrix = _policy_feature_matrix(
-            candidate_features,
-            feature_columns=duplicate_policy.feature_columns,
-            expected_rows=expected_rows,
-            allow_empty_rows=True,
-            name="candidate_features",
-        )
-        existing_matrix = _policy_feature_matrix(
-            duplicate_policy.existing_candidates,
-            feature_columns=duplicate_policy.feature_columns,
-            expected_features=candidate_matrix.shape[1],
-            allow_empty_rows=True,
-            name="duplicate_policy.existing_candidates",
-        )
-        scales = _resolve_policy_feature_scales(
-            duplicate_policy.feature_scales,
-            candidate_matrix,
-            existing_matrix,
-            name="duplicate_policy.feature_scales",
-        )
-        distances, nearest_positions = _minimum_scaled_distance_matches(
-            candidate_matrix,
-            existing_matrix,
-            metric=duplicate_policy.metric,
-            scales=scales,
-        )
-        feature_duplicates = distances <= duplicate_policy.feature_tolerance
-        is_duplicate |= feature_duplicates
-        for row_index, duplicate in enumerate(feature_duplicates):
-            if duplicate:
-                reason_parts[row_index].append("feature")
-                if matched_ids[row_index] is None and nearest_positions[row_index] >= 0:
-                    matched_ids[row_index] = existing_ids[nearest_positions[row_index]]
-
-    reasons = np.asarray(["; ".join(parts) for parts in reason_parts], dtype=object)
-    return is_duplicate, distances, reasons, matched_ids
-
-
-def _policy_feature_matrix(
-    values: pd.DataFrame | np.ndarray,
-    *,
-    feature_columns: tuple[str, ...] | None,
-    expected_features: int | None = None,
-    expected_rows: int | None = None,
-    allow_empty_rows: bool,
-    name: str,
-) -> np.ndarray:
-    if isinstance(values, pd.DataFrame):
-        columns = _resolve_policy_feature_columns(values, feature_columns, name=name)
-        matrix = values.loc[:, list(columns)].to_numpy(dtype=float)
-    else:
-        matrix = np.asarray(values, dtype=float)
-        if matrix.ndim == 1:
-            matrix = matrix.reshape(1, -1)
-        if (
-            feature_columns is not None
-            and matrix.ndim == 2
-            and len(feature_columns) != matrix.shape[1]
-        ):
-            raise ValueError(
-                f"{name} feature_columns length must match feature count "
-                f"({len(feature_columns)} != {matrix.shape[1]})"
-            )
-
-    if matrix.ndim != 2:
-        raise ValueError(f"{name} must be a 2D numeric array or dataframe")
-    if matrix.shape[0] == 0 and not allow_empty_rows:
-        raise ValueError(f"{name} must contain at least one row")
-    if matrix.shape[1] == 0:
-        raise ValueError(f"{name} must contain at least one feature")
-    if expected_features is not None and matrix.shape[1] != expected_features:
-        raise ValueError(
-            f"{name} feature count must match candidate features "
-            f"({matrix.shape[1]} != {expected_features})"
-        )
-    if expected_rows is not None and matrix.shape[0] != expected_rows:
-        raise ValueError(
-            f"{name} rows must match candidate rows ({matrix.shape[0]} != {expected_rows})"
-        )
-    if not np.all(np.isfinite(matrix)):
-        raise ValueError(f"{name} contains NaN or infinite values")
-    return matrix
-
-
-def _resolve_policy_feature_columns(
-    data: pd.DataFrame,
-    feature_columns: tuple[str, ...] | None,
-    *,
-    name: str,
-) -> tuple[Any, ...]:
-    if feature_columns is not None:
-        column_lookup = {str(column): column for column in data.columns}
-        columns = tuple(
-            column if column in data.columns else column_lookup.get(str(column))
-            for column in feature_columns
-        )
-        missing = [
-            requested for requested, resolved in zip(feature_columns, columns) if resolved is None
-        ]
-        if missing:
-            raise ValueError(f"{name} feature columns are missing: {missing}")
-    else:
-        columns = tuple(
-            column for column in data.columns if pd.api.types.is_numeric_dtype(data[column])
-        )
-        if not columns:
-            raise ValueError(
-                f"No numeric columns could be inferred from {name}; provide feature_columns"
-            )
-
-    non_numeric = [column for column in columns if not pd.api.types.is_numeric_dtype(data[column])]
-    if non_numeric:
-        raise ValueError(f"{name} feature columns must be numeric: {non_numeric}")
-    return columns
-
-
-def _resolve_policy_feature_scales(
-    feature_scales: Any | None,
-    candidate_matrix: np.ndarray,
-    reference_matrix: np.ndarray,
-    *,
-    name: str,
-) -> np.ndarray:
-    n_features = candidate_matrix.shape[1]
-    if feature_scales is None:
-        scales = np.ones(n_features, dtype=float)
-    elif isinstance(feature_scales, str):
-        normalized = feature_scales.strip().lower().replace("-", "_").replace(" ", "_")
-        if normalized not in {"std", "standard_deviation", "standardize"}:
-            raise ValueError(f"{name} must be None, 'std', or one positive scale per feature")
-        if reference_matrix.shape[0] == 0:
-            combined = candidate_matrix
-        elif candidate_matrix.shape[0] == 0:
-            combined = reference_matrix
-        else:
-            combined = np.vstack([candidate_matrix, reference_matrix])
-        scales = combined.std(axis=0)
-        scales[~np.isfinite(scales) | (scales <= 0.0)] = 1.0
-    else:
-        scales = np.asarray(feature_scales, dtype=float).reshape(-1)
-        if scales.shape[0] != n_features:
-            raise ValueError(
-                f"{name} length must match feature count ({scales.shape[0]} != {n_features})"
-            )
-        if not np.all(np.isfinite(scales)) or np.any(scales <= 0.0):
-            raise ValueError(f"{name} must contain finite positive values")
-    return scales.astype(float)
-
-
-def _minimum_scaled_distances(
-    candidate_matrix: np.ndarray,
-    reference_matrix: np.ndarray,
-    *,
-    metric: str,
-    scales: np.ndarray,
-) -> np.ndarray:
-    if candidate_matrix.shape[0] == 0:
-        return np.asarray([], dtype=float)
-    if reference_matrix.shape[0] == 0:
-        return np.full(candidate_matrix.shape[0], np.inf, dtype=float)
-
-    scaled_diff = np.abs(
-        (candidate_matrix[:, np.newaxis, :] - reference_matrix[np.newaxis, :, :])
-        / scales.reshape(1, 1, -1)
-    )
-    if metric == "euclidean":
-        distances = np.sqrt(np.sum(scaled_diff**2, axis=2))
-    elif metric == "manhattan":
-        distances = np.sum(scaled_diff, axis=2)
-    elif metric == "chebyshev":
-        distances = np.max(scaled_diff, axis=2)
-    else:
-        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
-    return distances.min(axis=1)
-
-
-def _minimum_scaled_distance_matches(
-    candidate_matrix: np.ndarray,
-    reference_matrix: np.ndarray,
-    *,
-    metric: str,
-    scales: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray]:
-    if candidate_matrix.shape[0] == 0:
-        return np.asarray([], dtype=float), np.asarray([], dtype=int)
-    if reference_matrix.shape[0] == 0:
-        return (
-            np.full(candidate_matrix.shape[0], np.inf, dtype=float),
-            np.full(candidate_matrix.shape[0], -1, dtype=int),
-        )
-    scaled_diff = np.abs(
-        (candidate_matrix[:, np.newaxis, :] - reference_matrix[np.newaxis, :, :])
-        / scales.reshape(1, 1, -1)
-    )
-    if metric == "euclidean":
-        pairwise = np.sqrt(np.sum(scaled_diff**2, axis=2))
-    elif metric == "manhattan":
-        pairwise = np.sum(scaled_diff, axis=2)
-    elif metric == "chebyshev":
-        pairwise = np.max(scaled_diff, axis=2)
-    else:
-        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev'")
-    nearest = np.argmin(pairwise, axis=1)
-    return pairwise[np.arange(pairwise.shape[0]), nearest], nearest.astype(int)
-
-
-def _existing_candidate_ids(
-    existing_candidates: Any,
-    id_column: str | None,
-) -> np.ndarray:
-    if isinstance(existing_candidates, pd.DataFrame):
-        if id_column is not None:
-            if id_column not in existing_candidates.columns:
-                raise ValueError(f"existing candidate ID column is missing: {id_column!r}")
-            values = existing_candidates[id_column]
-            if values.isna().any():
-                raise ValueError("existing candidate IDs must not contain missing values")
-            identifiers = np.asarray([str(value).strip() for value in values], dtype=object)
-            if any(not value for value in identifiers):
-                raise ValueError("existing candidate IDs must not contain empty values")
-            if len(set(identifiers.tolist())) != len(identifiers):
-                raise ValueError("existing candidate IDs must be unique")
-            return identifiers
-        return np.asarray([str(value) for value in existing_candidates.index], dtype=object)
-    if id_column is not None:
-        raise TypeError("existing_id_column requires existing_candidates to be a dataframe")
-    values = np.asarray(existing_candidates)
-    row_count = 1 if values.ndim == 1 else values.shape[0]
-    return np.asarray([str(index) for index in range(row_count)], dtype=object)
-
-
-def _candidate_policy_row_keys(
-    data: pd.DataFrame,
-    columns: tuple[str, ...],
-    *,
-    label: str,
-) -> list[tuple[Any, ...]]:
-    missing = [column for column in columns if column not in data.columns]
-    if missing:
-        raise ValueError(f"{label} are missing: {missing}")
-
-    missing_sentinel = ("__matgpr_missing_key__",)
-    return [
-        tuple(missing_sentinel if pd.isna(value) else value for value in row)
-        for row in data.loc[:, list(columns)].itertuples(index=False, name=None)
-    ]
 
 
 def _validate_batch_selection(
@@ -3977,184 +2988,6 @@ def _replicate_group_variance(
 
     fallback_variance = float(np.mean(replicate_variances)) if replicate_variances else min_variance
     return pd.Series(variance_values, index=data.index, dtype=float).fillna(fallback_variance)
-
-
-def _as_finite_numeric_vector(values: pd.Series, *, name: str) -> np.ndarray:
-    numeric = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
-    if numeric.ndim != 1:
-        raise ValueError(f"{name} must be one-dimensional")
-    if not np.all(np.isfinite(numeric)):
-        raise ValueError(f"{name} contains NaN or infinite values")
-    return numeric
-
-
-def _normalize_vector(values: np.ndarray) -> np.ndarray:
-    value_range = float(np.max(values) - np.min(values))
-    if value_range == 0.0:
-        return np.ones_like(values, dtype=float)
-    return (values - np.min(values)) / value_range
-
-
-def _top_score_positions(effective_scores: np.ndarray, top_k: int) -> np.ndarray:
-    positions = np.arange(effective_scores.shape[0])
-    order = np.lexsort((positions, -effective_scores))
-    return order[: min(top_k, effective_scores.shape[0])]
-
-
-def _rank_descending(values: pd.Series) -> np.ndarray:
-    scores = _as_finite_numeric_vector(values, name=str(values.name or "scores"))
-    positions = np.arange(scores.shape[0])
-    order = np.lexsort((positions, -scores))
-    ranks = np.empty(scores.shape[0], dtype=int)
-    ranks[order] = np.arange(1, scores.shape[0] + 1)
-    return ranks
-
-
-def _greedy_diverse_positions(
-    candidates: pd.DataFrame,
-    *,
-    top_k: int,
-    score_column: str,
-    feature_columns: list[str] | tuple[str, ...] | None,
-    normalized_scores: np.ndarray,
-    diversity_weight: float,
-    min_distance: float | None,
-    standardize_features: bool,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    feature_matrix, resolved_features = _candidate_diversity_matrix(
-        candidates,
-        score_column=score_column,
-        feature_columns=feature_columns,
-        standardize_features=standardize_features,
-    )
-    if feature_matrix.shape[0] != normalized_scores.shape[0]:
-        raise ValueError("feature matrix rows must match candidates")
-    if len(resolved_features) == 0:
-        raise ValueError("at least one diversity feature is required")
-
-    selected: list[int] = []
-    selection_scores: list[float] = []
-    diversity_distances: list[float] = []
-    remaining = np.ones(feature_matrix.shape[0], dtype=bool)
-    min_distances = np.full(feature_matrix.shape[0], np.inf, dtype=float)
-
-    while len(selected) < top_k and np.any(remaining):
-        eligible = remaining.copy()
-        if selected and min_distance is not None:
-            eligible &= min_distances >= min_distance
-        if not np.any(eligible):
-            break
-
-        if selected:
-            finite_distances = np.where(np.isfinite(min_distances), min_distances, 0.0)
-            distance_scale = float(np.max(finite_distances[eligible]))
-            if distance_scale > 0.0:
-                normalized_distances = finite_distances / distance_scale
-            else:
-                normalized_distances = np.zeros_like(finite_distances)
-            candidate_scores = normalized_scores + diversity_weight * normalized_distances
-        else:
-            candidate_scores = normalized_scores.copy()
-
-        candidate_scores[~eligible] = -np.inf
-        chosen = _argmax_stable(candidate_scores)
-        if chosen is None:
-            break
-
-        selected.append(chosen)
-        selection_scores.append(float(candidate_scores[chosen]))
-        if len(selected) == 1:
-            diversity_distances.append(np.nan)
-        else:
-            diversity_distances.append(float(min_distances[chosen]))
-
-        remaining[chosen] = False
-        distances = np.linalg.norm(feature_matrix - feature_matrix[chosen], axis=1)
-        min_distances = np.minimum(min_distances, distances)
-
-    return (
-        np.asarray(selected, dtype=int),
-        np.asarray(selection_scores, dtype=float),
-        np.asarray(diversity_distances, dtype=float),
-    )
-
-
-def _candidate_diversity_matrix(
-    candidates: pd.DataFrame,
-    *,
-    score_column: str,
-    feature_columns: list[str] | tuple[str, ...] | None,
-    standardize_features: bool,
-) -> tuple[np.ndarray, tuple[str, ...]]:
-    resolved_features = _resolve_diversity_feature_columns(
-        candidates,
-        score_column=score_column,
-        feature_columns=feature_columns,
-    )
-    feature_frame = candidates.loc[:, list(resolved_features)]
-    non_numeric = [
-        str(column)
-        for column in resolved_features
-        if not pd.api.types.is_numeric_dtype(feature_frame[column])
-    ]
-    if non_numeric:
-        raise ValueError(f"diversity feature columns must be numeric: {non_numeric}")
-    matrix = feature_frame.to_numpy(dtype=float)
-    if not np.all(np.isfinite(matrix)):
-        raise ValueError("diversity feature columns contain NaN or infinite values")
-    nonconstant = np.ptp(matrix, axis=0) > 0.0
-    if not np.any(nonconstant):
-        raise ValueError("diversity requires at least one nonconstant numeric feature")
-    if not np.all(nonconstant):
-        matrix = matrix[:, nonconstant]
-        resolved_features = tuple(
-            column for column, keep in zip(resolved_features, nonconstant, strict=True) if keep
-        )
-    if standardize_features and matrix.shape[0] > 0:
-        means = matrix.mean(axis=0)
-        scales = matrix.std(axis=0)
-        scales[scales == 0.0] = 1.0
-        matrix = (matrix - means) / scales
-    return matrix, resolved_features
-
-
-def _resolve_diversity_feature_columns(
-    candidates: pd.DataFrame,
-    *,
-    score_column: str,
-    feature_columns: list[str] | tuple[str, ...] | None,
-) -> tuple[str, ...]:
-    if feature_columns is not None:
-        resolved = tuple(str(column) for column in feature_columns)
-        missing = [column for column in resolved if column not in candidates.columns]
-        if missing:
-            raise ValueError(f"diversity feature columns are missing: {missing}")
-        if len(resolved) == 0:
-            raise ValueError("feature_columns must contain at least one column")
-        return resolved
-
-    excluded = set(_OUTPUT_COLUMNS)
-    excluded.add(score_column)
-    inferred = tuple(
-        str(column)
-        for column in candidates.columns
-        if str(column) not in excluded and pd.api.types.is_numeric_dtype(candidates[column])
-    )
-    if not inferred:
-        raise ValueError(
-            "No numeric diversity feature columns could be inferred. Provide "
-            "feature_columns explicitly or include numeric candidate descriptors."
-        )
-    return inferred
-
-
-def _argmax_stable(values: np.ndarray) -> int | None:
-    finite = np.isfinite(values)
-    if not np.any(finite):
-        return None
-    positions = np.arange(values.shape[0])
-    order = np.lexsort((positions, -values))
-    return int(order[0])
 
 
 def _as_numeric_matrix(

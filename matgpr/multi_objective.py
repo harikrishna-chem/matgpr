@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from ._validation import validate_positive_int
+
 __all__ = [
     "ObjectiveSpec",
     "pareto_front_mask",
@@ -127,8 +129,8 @@ def rank_multi_objective_candidates(
     The result keeps original candidate columns, adds the scalarized score,
     marks Pareto-front candidates, and sorts from most to least desirable.
     """
-    if top_k is not None and top_k < 1:
-        raise ValueError("top_k must be at least 1 when provided")
+    if top_k is not None:
+        top_k = validate_positive_int(top_k, name="top_k")
     objective_tuple = _as_objective_tuple(objectives)
     score_column = str(score_column).strip()
     rank_column = str(rank_column).strip()
