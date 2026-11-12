@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     CoKrigingGPRPrediction,
@@ -11,6 +12,8 @@ from matgpr import (
     decompose_multifidelity_prediction,
     summarize_multifidelity_components,
 )
+
+pytestmark = pytest.mark.component
 
 
 class MultiFidelityReportingTests(unittest.TestCase):

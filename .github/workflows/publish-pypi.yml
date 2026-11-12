@@ -27,6 +27,7 @@ jobs:
   build:
     name: Build distributions
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -106,6 +107,7 @@ jobs:
     if: ${{ inputs.target == 'testpypi' }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: testpypi
       url: https://test.pypi.org/p/matgpr
@@ -131,6 +133,7 @@ jobs:
     if: ${{ inputs.target == 'pypi' }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: pypi
       url: https://pypi.org/p/matgpr

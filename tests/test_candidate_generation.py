@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     BOFeatureSpec,
@@ -19,6 +20,8 @@ from matgpr import (
     summarize_candidate_feature_coverage,
     summarize_candidate_pool,
 )
+
+pytestmark = pytest.mark.component
 
 
 class CandidateGenerationTests(unittest.TestCase):

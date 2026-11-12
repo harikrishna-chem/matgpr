@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import unittest
 
+import pytest
+
 from matgpr.mcp_tools import (
     get_matgpr_info,
     get_physics_equation,
@@ -14,6 +16,8 @@ from matgpr.mcp_tools import (
     suggest_validation_workflow,
     validate_safe_equation,
 )
+
+pytestmark = pytest.mark.component
 
 
 class MCPToolsTests(unittest.TestCase):

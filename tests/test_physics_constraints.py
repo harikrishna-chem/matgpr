@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     KnownLimitConstraint,
@@ -12,6 +13,8 @@ from matgpr import (
     append_virtual_observations,
     combine_virtual_observations,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class PhysicsConstraintTests(unittest.TestCase):

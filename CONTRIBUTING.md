@@ -38,9 +38,42 @@ Run these before proposing changes:
 ```bash
 python -m ruff check matgpr tests scripts
 python -m ruff format --check matgpr tests scripts
-python -m pytest
+python -m pytest --cov=matgpr --cov-branch --cov-report=term-missing --cov-fail-under=79
 python -m build
 ```
+
+The suite registers `unit`, `contract`, `component`, `integration`,
+`scientific`, `smoke`, `slow`, and `optional` markers. Every test must have
+exactly one primary marker from the first five; collection fails for missing
+or conflicting ownership. The `smoke`, `slow`, and `optional` markers are
+orthogonal modifiers. The unfiltered command above remains the authoritative
+full-suite gate. Select focused tiers with:
+
+```bash
+python -m pytest -m unit
+python -m pytest -m contract
+python -m pytest -m component
+python -m pytest -m integration
+python -m pytest -m scientific
+python -m pytest -m smoke
+python -m pytest -m optional
+```
+
+CI runs the complete branch-coverage suite on Python 3.11 and the focused
+`unit or contract` compatibility selection on Python 3.10 and 3.12. A separate
+package-quality job owns lint, formatting, distribution build, Twine metadata
+validation, and isolated wheel smoke. The minimum-dependency job still runs
+the full suite at the declared lower bounds.
+
+A dedicated `MCP integration smoke` job installs `matgpr[mcp]`, validates the
+optional dependency graph, and runs the packaged MCP client against the
+packaged stdio server. Keep MCP-specific dependencies out of core and ordinary
+test jobs.
+
+CI also installs the built wheel without dependencies in a fresh virtual
+environment and runs `scripts/smoke_wheel_install.py` from outside the source
+tree. This ensures editable installs cannot hide missing package files or
+incorrect package metadata.
 
 For notebook integration smoke checks:
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
+import pytest
 
 from matgpr import (
     BoundedTargetTransform,
@@ -20,6 +21,8 @@ from matgpr import (
     summarize_target_transform_specs,
 )
 from matgpr.gpytorch_gpr import GPyTorchPrediction
+
+pytestmark = pytest.mark.unit
 
 
 class TargetTransformTests(unittest.TestCase):

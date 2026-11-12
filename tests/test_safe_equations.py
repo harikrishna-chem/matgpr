@@ -5,6 +5,7 @@ import math
 import unittest
 
 import numpy as np
+import pytest
 import torch
 
 from matgpr import (
@@ -29,6 +30,8 @@ from matgpr import (
     safe_equation_schema_snapshot,
     validate_safe_equation_spec,
 )
+
+pytestmark = pytest.mark.component
 
 
 def _arrhenius_like_spec() -> SafeEquationSpec:

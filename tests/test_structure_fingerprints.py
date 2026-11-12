@@ -5,6 +5,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 from pymatgen.core import Lattice, Structure
 
 from matgpr.structure_fingerprints import (
@@ -14,6 +15,8 @@ from matgpr.structure_fingerprints import (
     structure_feature_names,
     structure_fingerprint,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def _diamond_structure() -> Structure:

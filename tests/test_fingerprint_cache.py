@@ -8,10 +8,13 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
+import pytest
 
 from matgpr import fingerprint_cache_key
 from matgpr.inorganic_fingerprints import featurize_compositions
 from matgpr.organic_fingerprints import featurize_smiles
+
+pytestmark = pytest.mark.unit
 
 
 class FingerprintCacheTests(unittest.TestCase):

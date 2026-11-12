@@ -4,6 +4,7 @@ import inspect
 import unittest
 
 import matplotlib
+import pytest
 
 matplotlib.use("Agg", force=True)
 
@@ -20,6 +21,8 @@ from matgpr import (
     plot_learning_curve,
     plot_parity,
 )
+
+pytestmark = pytest.mark.component
 
 
 class LearningCurvePlotTests(unittest.TestCase):

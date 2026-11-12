@@ -4,6 +4,7 @@ import json
 import unittest
 
 import numpy as np
+import pytest
 
 from matgpr import (
     json_safe_metrics,
@@ -11,6 +12,8 @@ from matgpr import (
     json_safe_train_test_regression_metrics,
     regression_metrics,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class MetricTests(unittest.TestCase):

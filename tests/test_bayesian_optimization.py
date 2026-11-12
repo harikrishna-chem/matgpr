@@ -5,6 +5,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     BayesianOptimizationResult,
@@ -30,6 +31,8 @@ from matgpr import (
     suggest_next_experiments,
     summarize_bo_recommendation_audit,
 )
+
+pytestmark = pytest.mark.component
 
 
 class BayesianOptimizationApiTests(unittest.TestCase):

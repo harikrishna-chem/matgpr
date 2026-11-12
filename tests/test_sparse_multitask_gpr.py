@@ -9,6 +9,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr.sparse_multitask_gpr import (
     SparseMultitaskGPyTorchResult,
@@ -17,6 +18,8 @@ from matgpr.sparse_multitask_gpr import (
     prepare_sparse_multitask_observations,
     train_sparse_multitask_gpytorch_gpr,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class SparseMultitaskGPyTorchTests(unittest.TestCase):

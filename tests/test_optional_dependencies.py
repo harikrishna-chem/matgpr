@@ -4,6 +4,8 @@ import types
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from matgpr import (
     OPTIONAL_DEPENDENCIES,
     OptionalDependency,
@@ -11,6 +13,8 @@ from matgpr import (
     list_optional_dependencies,
     require_optional_dependency,
 )
+
+pytestmark = pytest.mark.contract
 
 
 class OptionalDependencyTests(unittest.TestCase):

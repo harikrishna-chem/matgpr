@@ -8,11 +8,14 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
+import pytest
 
 from matgpr.heteroscedastic_gpr import (
     HeteroscedasticGPRResult,
     fit_heteroscedastic_gpr,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class HeteroscedasticGPRTests(unittest.TestCase):

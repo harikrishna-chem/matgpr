@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 from sklearn.base import BaseEstimator, RegressorMixin
 
 from matgpr import (
@@ -25,6 +26,8 @@ from matgpr import (
     summarize_multitask_predictions,
     summarize_sparse_multitask_predictions,
 )
+
+pytestmark = pytest.mark.component
 
 
 class LinearMeanStdRegressor(RegressorMixin, BaseEstimator):

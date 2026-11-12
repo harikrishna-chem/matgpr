@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     BOBenchmarkComparison,
@@ -13,6 +14,8 @@ from matgpr import (
     simulate_bo_strategy,
     summarize_bo_benchmark,
 )
+
+pytestmark = pytest.mark.component
 
 
 class BayesianOptimizationBenchmarkTests(unittest.TestCase):

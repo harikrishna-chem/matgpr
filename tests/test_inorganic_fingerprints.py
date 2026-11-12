@@ -8,6 +8,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr.inorganic_fingerprints import (
     DEFAULT_COMPOSITION_STATISTICS,
@@ -21,6 +22,8 @@ from matgpr.inorganic_fingerprints import (
     featurize_compositions,
     featurize_element_fractions,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class InorganicFingerprintTests(unittest.TestCase):

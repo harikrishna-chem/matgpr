@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     DerivativeObservationSet,
@@ -11,6 +12,8 @@ from matgpr import (
     combine_derivative_observations,
     fit_derivative_constrained_gpr,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class DerivativeGPRTests(unittest.TestCase):

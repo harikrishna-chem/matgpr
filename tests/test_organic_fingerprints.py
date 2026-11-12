@@ -7,6 +7,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import pandas as pd
+import pytest
 from rdkit import Chem
 
 from matgpr.organic_fingerprints import (
@@ -16,6 +17,8 @@ from matgpr.organic_fingerprints import (
     featurize_smiles,
     fingerprint_smiles,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class OrganicFingerprintTests(unittest.TestCase):

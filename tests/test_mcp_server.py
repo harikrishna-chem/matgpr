@@ -5,6 +5,8 @@ import types
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from matgpr._version import __version__
 from matgpr.mcp_server import (
     MCP_PROMPT_REGISTRATIONS,
@@ -14,6 +16,8 @@ from matgpr.mcp_server import (
     create_server,
     main,
 )
+
+pytestmark = pytest.mark.contract
 
 
 class FakeFastMCP:
