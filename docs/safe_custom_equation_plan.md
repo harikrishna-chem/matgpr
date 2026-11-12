@@ -151,11 +151,21 @@ until the first safe core is stable.
    - Clear note that GenMatics app should use `genmatics-matgpr` wrappers, not
      call lower-level evaluators directly.
 
+9. Harden untrusted-input boundaries.
+   - Bound expression length, AST node count, and AST depth.
+   - Reject malformed Unicode and oversized numeric literals with structured
+     validation errors.
+   - Reject cyclic, excessively nested, or oversized numeric metadata.
+   - Require finite torch outputs before PI-GPR fitting.
+   - Status: implemented and characterized in the 2026-11-05 security review.
+
 ## Acceptance Checks
 
 - No user-provided expression can execute Python code.
 - Valid specs can be serialized with `json.dumps(..., allow_nan=False)`.
 - Invalid specs return structured errors before fitting.
+- Expression and metadata complexity are bounded against resource-exhaustion
+  inputs.
 - NumPy and torch evaluators agree on representative examples.
 - Non-finite physics-mean outputs are detected before training.
 - A validated safe equation can be converted into a PI-GPR mean-function path.

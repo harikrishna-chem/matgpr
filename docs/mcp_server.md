@@ -130,6 +130,30 @@ The initial server exposes read-only helper tools.
 | `suggest_validation_workflow` | Recommends learning-curve, train/test, cross-validation, and uncertainty-diagnostic protocols. |
 | `suggest_bo_workflow` | Recommends a finite-pool Bayesian-optimization setup without executing BO. |
 
+### Tool Contract
+
+All tool responses are strict-JSON-safe and include
+`schema_version: "0.1"`. The registered tool names and top-level payload keys
+are protected by contract tests. `preview_safe_equation` keeps the same
+top-level keys for successful, invalid, and incomplete previews;
+`physics_mean_values` is an empty list when no values are available.
+
+Input validation is deliberately strict at the MCP boundary:
+
+- collection arguments must be JSON arrays, not scalar strings;
+- column, metric, feature, and duplicate-key names must be non-empty and
+  unique;
+- row and batch counts must be non-Boolean integers in their documented range;
+- BO objective direction must be `maximize` or `minimize`;
+- Boolean settings must be JSON Boolean values, not strings such as `"false"`;
+- schema previews use at most five rows, even if a larger limit is requested;
+- column-oriented sample arrays must have equal lengths.
+
+Malformed workflow inputs produce an MCP tool error rather than a plausible
+but incorrect recommendation. Invalid safe-equation specifications are the
+exception: they return structured validation diagnostics because reporting
+those diagnostics is the purpose of the tool.
+
 ## Prompt Overview
 
 The server also exposes prompt templates that help AI agents follow documented
@@ -373,6 +397,11 @@ python -m build
 python -m pip install -e ".[mcp]"
 matgpr-mcp-smoke
 ```
+
+Public CI runs this packaged client/server handshake in a dedicated Python
+3.11 job after installing `matgpr[mcp]` and checking the resolved dependency
+graph. The ordinary test jobs keep MCP optional and use focused fake-process
+tests for deterministic error coverage.
 
 For package-upload readiness, also run `twine check` on the generated
 distribution files.
