@@ -5,6 +5,8 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
+from ._validation import to_1d_finite as _to_1d_numeric
+
 __all__ = [
     "decompose_multifidelity_prediction",
     "summarize_multifidelity_components",
@@ -357,15 +359,6 @@ def _optional_1d_numeric(values, name: str) -> np.ndarray | None:
     if values is None:
         return None
     return _to_1d_numeric(values, name)
-
-
-def _to_1d_numeric(values, name: str) -> np.ndarray:
-    array = np.asarray(values, dtype=float).ravel()
-    if array.size == 0:
-        raise ValueError(f"{name} must contain at least one value")
-    if not np.all(np.isfinite(array)):
-        raise ValueError(f"{name} must contain only finite values")
-    return array
 
 
 def _resolve_sample_labels(sample_labels: Sequence[object] | None, n_samples: int) -> np.ndarray:

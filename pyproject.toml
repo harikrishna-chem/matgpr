@@ -71,6 +71,7 @@ matgpr-mcp-smoke = "matgpr.mcp_smoke:main"
 bo = []
 dev = [
     "build",
+    "hypothesis>=6.100",
     "ipykernel",
     "nbconvert",
     "nbformat",
@@ -78,6 +79,9 @@ dev = [
     "pytest-cov",
     "ruff",
     "twine",
+]
+mutation = [
+    "mutmut>=3.8,<4",
 ]
 examples = [
     "shap",
@@ -130,6 +134,38 @@ addopts = [
     "--strict-markers",
     "--strict-config",
 ]
+markers = [
+    "unit: focused tests for one function or class without workflow orchestration",
+    "contract: public API, schema, serialization, or compatibility contract tests",
+    "component: in-memory tests spanning one package workflow or service component",
+    "integration: tests spanning multiple modules or an external package boundary",
+    "scientific: numerical or physical correctness and regression tests",
+    "smoke: lightweight executable workflow and installation checks",
+    "slow: intentionally higher-cost numerical or convergence tests",
+    "optional: tests requiring an optional dependency or external executable",
+]
+filterwarnings = [
+    'error::Warning:matgpr(\..*)?$',
+]
+
+[tool.coverage.run]
+branch = true
+source = ["matgpr"]
+
+[tool.coverage.report]
+fail_under = 79
+precision = 1
+show_missing = true
+
+[tool.mutmut]
+source_paths = ["matgpr/"]
+only_mutate = ["matgpr/target_transforms.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/test_target_transforms.py",
+    "tests/test_target_transform_scientific.py",
+    "tests/test_target_transform_properties.py",
+]
+mutate_only_covered_lines = true
 
 [tool.ruff]
 line-length = 100

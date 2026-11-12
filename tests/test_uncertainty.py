@@ -10,6 +10,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pytest
 
 from matgpr import (
     calibration_curve,
@@ -23,6 +24,8 @@ from matgpr import (
     uncertainty_diagnostics,
     uncertainty_error_correlation,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class UncertaintyMetricTests(unittest.TestCase):

@@ -8,6 +8,7 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib-matgpr")
 os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
+import pytest
 
 from matgpr.multitask_gpr import (
     MultitaskGPyTorchResult,
@@ -15,6 +16,8 @@ from matgpr.multitask_gpr import (
     predict_multitask_gpytorch_gpr,
     train_multitask_gpytorch_gpr,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class MultitaskGPyTorchTests(unittest.TestCase):

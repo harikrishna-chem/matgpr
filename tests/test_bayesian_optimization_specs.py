@@ -17,6 +17,8 @@ from matgpr import (
     recommend_saved_prediction_acquisition_intents,
 )
 
+pytestmark = pytest.mark.contract
+
 
 def test_bo_optimization_spec_serializes_feature_optimization_request() -> None:
     spec = BOOptimizationSpec(

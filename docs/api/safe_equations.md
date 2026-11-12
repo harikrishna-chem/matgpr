@@ -82,4 +82,21 @@ The returned `SafeEquationMeanFunction` is compatible with
 parameters, stores adapter metadata with `to_dict()`, and evaluates the safe
 equation through the torch interpreter during training.
 
+## Safety Limits
+
+The parser accepts only the documented arithmetic grammar and direct calls to
+allowlisted functions. Attribute access, indexing, imports, lambdas,
+comprehensions, comparisons, conditionals, assignments, and indirect function
+calls are rejected before evaluation.
+
+To prevent resource-exhaustion inputs, one expression is limited to 4,096
+characters, 256 AST nodes, and an AST depth of 32. Spec metadata must be
+strict-JSON-safe, acyclic, and no more than 32 levels deep. These limits are
+available programmatically through `safe_equation_schema_snapshot()`.
+
+NumPy evaluation reports non-finite outputs as `None` in its JSON-safe result.
+Torch evaluation raises `ValueError` for non-finite outputs while preserving
+gradients for valid outputs. Consequently, a custom physics mean cannot pass a
+non-finite tensor into GPR fitting silently.
+
 ::: matgpr.safe_equations

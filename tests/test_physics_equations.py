@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import pytest
 import torch
 
 from matgpr import (
@@ -25,6 +26,8 @@ from matgpr import (
     search_physics_equation_templates,
     summarize_physics_equation_templates,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class PhysicsEquationTemplateTests(unittest.TestCase):

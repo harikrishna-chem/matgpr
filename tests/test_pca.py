@@ -4,8 +4,11 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import fit_pca, summarize_pca, transform_pca
+
+pytestmark = pytest.mark.unit
 
 
 def sample_frame() -> pd.DataFrame:

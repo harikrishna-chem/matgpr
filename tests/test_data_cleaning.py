@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     drop_columns_by_missing_fraction,
@@ -12,6 +13,8 @@ from matgpr import (
     impute_missing_values,
     replace_missing_placeholders,
 )
+
+pytestmark = pytest.mark.unit
 
 
 class DataCleaningTests(unittest.TestCase):

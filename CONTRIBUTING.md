@@ -38,9 +38,85 @@ Run these before proposing changes:
 ```bash
 python -m ruff check matgpr tests scripts
 python -m ruff format --check matgpr tests scripts
-python -m pytest
+python -m pytest --cov=matgpr --cov-branch --cov-report=term-missing --cov-fail-under=79
 python -m build
 ```
+
+The suite registers `unit`, `contract`, `component`, `integration`,
+`scientific`, `smoke`, `slow`, and `optional` markers. Every test must have
+exactly one primary marker from the first five; collection fails for missing
+or conflicting ownership. The `smoke`, `slow`, and `optional` markers are
+orthogonal modifiers. The unfiltered command above remains the authoritative
+full-suite gate. Select focused tiers with:
+
+```bash
+python -m pytest -m unit
+python -m pytest -m contract
+python -m pytest -m component
+python -m pytest -m integration
+python -m pytest -m scientific
+python -m pytest -m smoke
+python -m pytest -m optional
+```
+
+CI runs the complete branch-coverage suite on Python 3.11 and the focused
+`unit or contract` compatibility selection on Python 3.10 and 3.12. A separate
+package-quality job owns lint, formatting, distribution build, Twine metadata
+validation, and isolated wheel smoke. The minimum-dependency job still runs
+the full suite at the declared lower bounds.
+
+A dedicated `MCP integration smoke` job installs `matgpr[mcp]`, validates the
+optional dependency graph, and runs the packaged MCP client against the
+packaged stdio server. Keep MCP-specific dependencies out of core and ordinary
+test jobs.
+
+### Property-Based Tests
+
+Hypothesis is included in the `dev` extra. The shared `matgpr` test profile
+uses 50 deterministic examples per property, disables timing deadlines, and
+keeps generated inputs bounded for reliable pull-request execution. Run the
+current property-test pilot with:
+
+```bash
+python -m pytest tests/test_target_transform_properties.py
+```
+
+Mutation testing is a manual diagnostic, not a pull-request CI gate. Install
+the dedicated extra and run the current module-scoped pilot with:
+
+```bash
+python -m pip install -e ".[mutation]"
+python -m mutmut run
+python -m mutmut results
+```
+
+The checked-in configuration mutates only `matgpr/target_transforms.py` and
+selects its example, scientific, and property tests. Review meaningful
+survivors before adding tests; raw mutation-score increases are not a reason to
+encode implementation details as behavior.
+
+### Scientific Convergence
+
+Longer numerical checks remain outside ordinary pull-request testing. The
+`Scientific convergence` workflow runs the current physics-informed GPR pilot
+every Monday at 17:23 UTC and supports manual dispatch. Run the same check
+locally with:
+
+```bash
+python scripts/check_pi_gpr_convergence.py
+```
+
+The pilot learns a thermal-expansion slope while holding the reference lattice
+parameter fixed, then reports loss, parameter error, extrapolation error,
+latent uncertainty, interval coverage, and runtime across optimizer budgets up
+to 1,600 iterations. Its assertions protect scientifically meaningful endpoint
+behavior; intermediate RMSE values are allowed to vary. Runtime is diagnostic
+evidence, not a pass/fail threshold.
+
+CI also installs the built wheel without dependencies in a fresh virtual
+environment and runs `scripts/smoke_wheel_install.py` from outside the source
+tree. This ensures editable installs cannot hide missing package files or
+incorrect package metadata.
 
 For notebook integration smoke checks:
 

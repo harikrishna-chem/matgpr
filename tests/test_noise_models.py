@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     FeatureNoiseModel,
@@ -13,6 +14,8 @@ from matgpr import (
     combine_noise_profiles,
     constant_noise_profile,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class NoiseModelTests(unittest.TestCase):

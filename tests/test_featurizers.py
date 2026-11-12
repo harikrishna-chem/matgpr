@@ -10,6 +10,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+import pytest
 from pymatgen.core import Lattice, Structure
 from sklearn.base import clone
 from sklearn.pipeline import Pipeline
@@ -25,6 +26,8 @@ from matgpr import (
     featurize_magpie_compositions,
     is_optional_dependency_available,
 )
+
+pytestmark = pytest.mark.component
 
 
 def _diamond_structure() -> Structure:
@@ -120,6 +123,7 @@ class MagpieCompositionFeaturizerTests(unittest.TestCase):
             with self.assertRaisesRegex(ImportError, "materials-extra"):
                 MagpieCompositionFeaturizer().fit(["B4C"])
 
+    @pytest.mark.optional
     @unittest.skipUnless(
         is_optional_dependency_available("matminer"),
         "matminer is not installed",
@@ -150,6 +154,7 @@ class MagpieCompositionFeaturizerTests(unittest.TestCase):
         self.assertTrue(np.isfinite(features.to_numpy()).all())
         self.assertEqual(featurizer.failed_.shape[0], 0)
 
+    @pytest.mark.optional
     @unittest.skipUnless(
         is_optional_dependency_available("matminer"),
         "matminer is not installed",

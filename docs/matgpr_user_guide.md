@@ -262,6 +262,11 @@ composition-only baseline for inorganic materials, but they add an optional
 dependency and can create a larger feature space than the lightweight built-in
 composition descriptors.
 
+Built-in composition statistics and element-fraction vectors are invariant to
+formula ordering and proportional formula scaling. Property, statistic, and
+element selections must be non-empty and unique so the generated feature
+schema remains unambiguous.
+
 ### 3.2 Crystal Structure Fingerprints
 
 For crystal structures, `matgpr` accepts `pymatgen.Structure` objects,
@@ -294,6 +299,10 @@ are not a replacement for local-environment descriptors such as SOAP or MBTR,
 but they provide a fast structure-aware baseline without extra heavy
 dependencies.
 
+Site order does not affect these global descriptors. Density, angle cosines,
+and volume per atom are also invariant to equivalent supercell expansion;
+absolute lattice lengths intentionally remain cell-dependent.
+
 Useful functions:
 
 | Function | Purpose |
@@ -308,8 +317,8 @@ Useful functions:
 For organic molecules and polymers, `matgpr` uses RDKit.
 
 Molecule SMILES are canonicalized directly before fingerprinting. Polymer
-repeat-unit SMILES must contain exactly two `[*]` dummy atoms. By default,
-`matgpr` builds a cyclic trimer surrogate:
+repeat-unit SMILES must contain exactly two `[*]` dummy atoms and one connected
+repeat-unit fragment. By default, `matgpr` builds a cyclic trimer surrogate:
 
 1. Repeat the unit three times.
 2. Connect adjacent repeat units through the two `[*]` neighbors.
@@ -374,6 +383,12 @@ Useful functions:
 | `featurize_smiles(smiles_values, errors="raise")` | Featurizes many SMILES strings and records failures. |
 | `append_smiles_features(data, smiles_column=...)` | Appends RDKit features to an existing dataframe. |
 
+Plural batch APIs require a non-string collection. For one formula, structure,
+or SMILES value, use its singular fingerprint helper or wrap the value in a
+list. Integer controls such as fingerprint size, Morgan radius, and polymer
+repeat count reject Boolean, fractional, zero, or negative values according to
+their documented domain.
+
 For scikit-learn-style workflows:
 
 ```python
@@ -432,7 +447,14 @@ preprocessor = build_preprocessor(
 ```
 
 Important rule: fit preprocessors only on training data. Reuse the fitted
-preprocessor for validation, test, and prediction data.
+preprocessor for validation, test, and prediction data. This prevents test-set
+statistics from leaking into imputation, scaling, or categorical encoding.
+
+Feature dataframes must have unique string column names. The numeric and
+categorical feature groups must also contain unique names and cannot overlap.
+`build_preprocessor` accepts one column name, any iterable of names, or `None`
+for each group; unseen categorical values are ignored during transformation so
+the fitted output shape remains stable.
 
 ## 5. Standard GPR Models
 
@@ -628,6 +650,20 @@ metrics = regression_metrics(y_test, prediction.mean)
 | `mean` | Predictive mean in original target units. |
 | `std` | Predictive standard deviation in original target units. |
 | `lower`, `upper` | Confidence bounds when `confidence_level` is supplied. |
+
+`X_train` and prediction inputs must be finite two-dimensional feature
+matrices with the same number of columns. `y_train` must be a finite target
+vector or an `(n_samples, 1)` single-column array; genuine multi-column targets
+belong in a multitask workflow. At least two training rows and one feature are
+required. A constant target is rejected when `standardize_y=True` because its
+standard deviation is zero; use `standardize_y=False` only when fitting that
+case is scientifically meaningful.
+
+By default, `prediction.std` includes the fitted Gaussian likelihood noise and
+therefore describes a future noisy observation. Pass
+`include_observation_noise=False` to obtain latent-function uncertainty. Both
+forms, including confidence bounds, are returned in the original target units
+when target standardization is enabled.
 
 ### 5.4 Multitask GPyTorch GPR
 
@@ -1080,6 +1116,11 @@ baseline.
 - `inverse_transform(y_transformed)` maps point values back to original units.
 - `inverse_prediction(prediction, ...)` maps predictive means, standard
   deviations, and confidence bounds back to original units.
+
+Inverse-uncertainty methods require one transformed-space standard deviation
+per predictive mean. Log-transform offsets must be finite, and uncertainty
+should always be inverted through `inverse_prediction` or `inverse_std` rather
+than by applying only the point-value inverse.
 
 ### 7.1 Log Targets
 
@@ -1755,7 +1796,10 @@ learned_parameters = result.model.mean_module.current_parameter_values()
 Why pass `feature_means` and `feature_stds`? The model receives scaled
 features, but the Arrhenius equation should use temperature in Kelvin.
 `PhysicsInformedMean` converts selected scaled columns back to original units
-before evaluating the equation.
+before evaluating the equation. Scaling metadata keys must exactly match keys
+in `feature_indices`; unknown keys are rejected so a column-name typo cannot
+silently evaluate the equation in the wrong units. Parameters, scaling values,
+target scaling, and equation outputs must all be finite.
 
 ### 9.3 Example 2: Degeneracy and Binding Mean Function
 
@@ -1956,6 +2000,14 @@ After training, inspect learned values:
 ```python
 result.model.mean_module.current_parameter_values()
 ```
+
+Learnable physics parameters are optimized jointly with the residual kernel
+and observation noise. A flexible residual GP can partially absorb an
+incorrect mean, so a fitted value is not automatically a uniquely identified
+physical constant. Before interpreting parameters physically, verify recovery
+on synthetic data with known parameters, check sensitivity to initialization,
+and report stability across repeated training splits. Fixed parameters are
+passed to the equation but are not registered as trainable torch parameters.
 
 ### 9.6 Practical Guidance for Physics Equations
 
@@ -2698,6 +2750,13 @@ Use `maximize=False` for targets where lower values are better, such as
 degradation rate, diffusion barrier, cost, or toxicity. Use
 `constraint_policy="annotate"` when you want to keep infeasible candidates in
 the ranked table for auditing rather than filtering them out.
+
+For saved-prediction scoring, UCB uses `mean + beta * std`; LCB ranks the lower
+confidence bound `mean - beta * std` for minimization; and EI/PI use the
+Gaussian closed forms with the incumbent and improvement threshold in the same
+target units as the predictions. Equal acquisition scores preserve candidate
+input order, making tie behavior deterministic. `top_k` must be a positive
+integer, and numeric `CandidateConstraint` bounds must be finite.
 
 Use trust regions when a BO campaign should stay near known feasible chemistry,
 composition, or processing space. Use duplicate policies when candidates may

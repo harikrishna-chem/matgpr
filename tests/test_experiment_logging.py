@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     BOCampaignState,
@@ -20,6 +21,8 @@ from matgpr import (
     resume_bo_campaign,
     summarize_closed_loop_log,
 )
+
+pytestmark = pytest.mark.component
 
 
 class ExperimentLoggingTests(unittest.TestCase):

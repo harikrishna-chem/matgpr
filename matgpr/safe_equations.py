@@ -79,6 +79,10 @@ _ALLOWED_FUNCTION_ARITY: dict[str, tuple[int, int | None]] = {
     "min": (2, None),
     "max": (2, None),
 }
+_MAX_SAFE_EQUATION_EXPRESSION_LENGTH = 4_096
+_MAX_SAFE_EQUATION_AST_NODES = 256
+_MAX_SAFE_EQUATION_AST_DEPTH = 32
+_MAX_SAFE_EQUATION_METADATA_DEPTH = 32
 
 
 @dataclass(frozen=True)
@@ -810,7 +814,12 @@ def evaluate_safe_equation_torch(
         result = result.to(dtype=dtype, device=device)
     if result.ndim == 0:
         result = result.reshape(()).expand(row_count)
-    return result.reshape(-1)
+    result = result.reshape(-1)
+    finite_mask = torch.isfinite(result.detach())
+    if not bool(finite_mask.all()):
+        nonfinite_count = int(torch.count_nonzero(~finite_mask).item())
+        raise ValueError(f"equation produced {nonfinite_count} non-finite output value(s)")
+    return result
 
 
 def initialize_safe_equation_torch_parameters(
@@ -921,6 +930,14 @@ def safe_equation_schema_snapshot() -> dict[str, object]:
         "allowed_functions": list(ALLOWED_SAFE_EQUATION_FUNCTIONS),
         "allowed_operators": list(ALLOWED_SAFE_EQUATION_OPERATORS),
         "identifier_rule": _IDENTIFIER_PATTERN.pattern,
+        "expression_limits": {
+            "max_characters": _MAX_SAFE_EQUATION_EXPRESSION_LENGTH,
+            "max_ast_nodes": _MAX_SAFE_EQUATION_AST_NODES,
+            "max_ast_depth": _MAX_SAFE_EQUATION_AST_DEPTH,
+        },
+        "metadata_limits": {
+            "max_nesting_depth": _MAX_SAFE_EQUATION_METADATA_DEPTH,
+        },
         "records": {
             "SafeEquationSpec": {
                 "required_fields": ["name", "expression", "variables"],
@@ -953,12 +970,14 @@ def safe_equation_schema_snapshot() -> dict[str, object]:
             "No arbitrary Python execution.",
             "Only declared variables, parameters, constants, and allowlisted functions are valid.",
             "Expression parsing is performed with ast.parse(..., mode='eval') and a manual allowlist.",
+            "Expression length, AST node count, and AST depth are bounded before evaluation.",
             "All numeric defaults and bounds must be finite.",
-            "All payload metadata must be strict-JSON-safe.",
+            "All payload metadata must be finite, acyclic, bounded-depth, and strict-JSON-safe.",
             "NumPy evaluation uses a manual AST interpreter, never eval().",
             "Non-finite evaluation outputs are represented as null values in JSON payloads.",
             "Torch evaluation uses a manual AST interpreter, never eval().",
             "Torch evaluation preserves gradients through tensor variables and parameters.",
+            "Torch evaluation rejects non-finite outputs before model fitting.",
             "PI-GPR mean conversion is handled by build_safe_equation_mean_function(...).",
         ],
     }
@@ -1648,6 +1667,18 @@ def _validate_expression(
     issues: list[SafeEquationValidationIssue] = []
     expression_symbols: set[str] = set()
     expression_functions: set[str] = set()
+    if len(spec.expression) > _MAX_SAFE_EQUATION_EXPRESSION_LENGTH:
+        issues.append(
+            _expression_issue(
+                code="expression_too_long",
+                message=(
+                    f"expression length {len(spec.expression)} exceeds the maximum of "
+                    f"{_MAX_SAFE_EQUATION_EXPRESSION_LENGTH} characters"
+                ),
+            )
+        )
+        return issues, expression_symbols, expression_functions
+
     try:
         tree = ast.parse(spec.expression, mode="eval")
     except SyntaxError as exc:
@@ -1658,6 +1689,27 @@ def _validate_expression(
             )
         )
         return issues, expression_symbols, expression_functions
+    except (UnicodeError, ValueError) as exc:
+        issues.append(
+            _expression_issue(
+                code="syntax_error",
+                message=f"expression syntax error: {exc}",
+            )
+        )
+        return issues, expression_symbols, expression_functions
+    except RecursionError:
+        issues.append(
+            _expression_issue(
+                code="expression_too_complex",
+                message="expression is too complex to parse safely",
+            )
+        )
+        return issues, expression_symbols, expression_functions
+
+    complexity_issue = _expression_complexity_issue(tree)
+    if complexity_issue is not None:
+        issues.append(complexity_issue)
+        return issues, expression_symbols, expression_functions
 
     _validate_expression_node(
         tree,
@@ -1667,6 +1719,30 @@ def _validate_expression(
         expression_functions=expression_functions,
     )
     return issues, expression_symbols, expression_functions
+
+
+def _expression_complexity_issue(
+    tree: ast.AST,
+) -> SafeEquationValidationIssue | None:
+    node_count = 0
+    stack = [(tree, 1)]
+    while stack:
+        node, depth = stack.pop()
+        node_count += 1
+        if node_count > _MAX_SAFE_EQUATION_AST_NODES:
+            return _expression_issue(
+                code="expression_too_complex",
+                message=(f"expression AST contains more than {_MAX_SAFE_EQUATION_AST_NODES} nodes"),
+            )
+        if depth > _MAX_SAFE_EQUATION_AST_DEPTH:
+            return _expression_issue(
+                code="expression_too_deep",
+                message=(
+                    f"expression AST depth exceeds the maximum of {_MAX_SAFE_EQUATION_AST_DEPTH}"
+                ),
+            )
+        stack.extend((child, depth + 1) for child in reversed(tuple(ast.iter_child_nodes(node))))
+    return None
 
 
 def _validate_expression_node(
@@ -1835,7 +1911,11 @@ def _validate_numeric_constant(
             )
         )
         return
-    if not math.isfinite(float(value)):
+    try:
+        finite = math.isfinite(float(value))
+    except (OverflowError, TypeError, ValueError):
+        finite = False
+    if not finite:
         issues.append(
             _expression_issue(
                 code="nonfinite_constant",
@@ -1927,7 +2007,10 @@ def _validate_symbol_name(value: Any, field_name: str) -> str:
 def _finite_float(value: Any, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, Real):
         raise ValueError(f"{field_name} must be a finite numeric value")
-    numeric_value = float(value)
+    try:
+        numeric_value = float(value)
+    except (OverflowError, TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be finite") from exc
     if not math.isfinite(numeric_value):
         raise ValueError(f"{field_name} must be finite")
     return numeric_value
@@ -1973,23 +2056,64 @@ def _string_tuple(values: Sequence[Any], field_name: str) -> tuple[str, ...]:
 def _json_safe_mapping(values: Mapping[str, Any], field_name: str) -> dict[str, object]:
     if not isinstance(values, Mapping):
         raise ValueError(f"{field_name} must be a mapping")
-    return {
-        str(key): _json_safe_value(value, f"{field_name}.{key}") for key, value in values.items()
-    }
+    resolved = _json_safe_value(values, field_name, _depth=0, _seen=set())
+    if not isinstance(resolved, dict):  # pragma: no cover - guarded by the mapping check
+        raise TypeError("JSON-safe mapping conversion must return a dictionary")
+    return resolved
 
 
-def _json_safe_value(value: Any, field_name: str) -> object:
+def _json_safe_value(
+    value: Any,
+    field_name: str,
+    *,
+    _depth: int = 0,
+    _seen: set[int] | None = None,
+) -> object:
+    if _depth > _MAX_SAFE_EQUATION_METADATA_DEPTH:
+        raise ValueError(
+            f"{field_name} exceeds the maximum JSON nesting depth of "
+            f"{_MAX_SAFE_EQUATION_METADATA_DEPTH}"
+        )
     if value is None or isinstance(value, str | bool):
         return value
     if isinstance(value, Real):
-        numeric_value = float(value)
+        try:
+            numeric_value = float(value)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError(f"{field_name} must be finite for strict JSON serialization") from exc
         if not math.isfinite(numeric_value):
             raise ValueError(f"{field_name} must be finite for strict JSON serialization")
         return int(value) if isinstance(value, int) else numeric_value
-    if isinstance(value, Mapping):
-        return _json_safe_mapping(value, field_name)
-    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
-        return [_json_safe_value(item, f"{field_name}[]") for item in value]
+    if isinstance(value, Mapping) or (
+        isinstance(value, Sequence) and not isinstance(value, str | bytes)
+    ):
+        seen = set() if _seen is None else _seen
+        marker = id(value)
+        if marker in seen:
+            raise ValueError(f"{field_name} contains a cyclic reference")
+        seen.add(marker)
+        try:
+            if isinstance(value, Mapping):
+                return {
+                    str(key): _json_safe_value(
+                        item,
+                        f"{field_name}.{key}",
+                        _depth=_depth + 1,
+                        _seen=seen,
+                    )
+                    for key, item in value.items()
+                }
+            return [
+                _json_safe_value(
+                    item,
+                    f"{field_name}[]",
+                    _depth=_depth + 1,
+                    _seen=seen,
+                )
+                for item in value
+            ]
+        finally:
+            seen.remove(marker)
     raise ValueError(f"{field_name} contains a non-JSON-safe value of type {type(value).__name__}")
 
 

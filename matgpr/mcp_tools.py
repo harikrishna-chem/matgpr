@@ -10,6 +10,11 @@ from importlib import import_module
 from types import ModuleType
 from typing import Any
 
+from ._validation import (
+    validate_nonnegative_int,
+    validate_nonstring_iterable,
+    validate_positive_int,
+)
 from ._version import __version__
 from .optional_dependencies import list_optional_dependencies
 
@@ -205,9 +210,16 @@ def recommend_featurizers(
     names, dtype hints, and up to a few user-provided sample rows; they do not
     parse files or run model training.
     """
-    columns = [str(column) for column in column_names]
+    columns = _normalize_unique_strings(
+        column_names,
+        name="column_names",
+        require_nonempty=True,
+    )
+    if dtype_summary is not None and not isinstance(dtype_summary, Mapping):
+        raise TypeError("dtype_summary must be a mapping")
     dtypes = {str(key): str(value) for key, value in (dtype_summary or {}).items()}
-    rows, sample_warnings = _normalize_sample_rows(sample_rows, max_rows=max_sample_rows)
+    row_limit, limit_warnings = _bounded_sample_limit(max_sample_rows)
+    rows, sample_warnings = _normalize_sample_rows(sample_rows, max_rows=row_limit)
 
     assessments = [
         _assess_column(column, dtypes.get(column), rows, target_column=target_column)
@@ -217,7 +229,11 @@ def recommend_featurizers(
     featurizers = _recommended_featurizers(role_to_columns)
     physics_maps = _physics_feature_map_candidates(assessments)
     target_candidates = _target_candidates(assessments, target_column=target_column)
-    warnings = [*sample_warnings, *_recommendation_warnings(assessments, target_candidates)]
+    warnings = [
+        *limit_warnings,
+        *sample_warnings,
+        *_recommendation_warnings(assessments, target_candidates),
+    ]
 
     return {
         "schema_version": MCP_HELPER_SCHEMA_VERSION,
@@ -245,13 +261,18 @@ def list_physics_equations(
 ) -> dict[str, object]:
     """Return public physics-equation templates matching optional filters."""
     physics_equations = _import_matgpr_module_quietly(".physics_equations")
+    resolved_features = (
+        None
+        if required_features is None
+        else _normalize_unique_strings(required_features, name="required_features")
+    )
 
-    if any(value is not None for value in (query, application, tag, required_features)):
+    if any(value is not None for value in (query, application, tag, resolved_features)):
         templates = physics_equations.search_physics_equation_templates(
             query=query,
             application=application,
             tag=tag,
-            required_features=required_features,
+            required_features=resolved_features,
         )
     else:
         templates = physics_equations.list_physics_equation_templates()
@@ -262,7 +283,7 @@ def list_physics_equations(
             "query": _clean_optional_string(query),
             "application": _clean_optional_string(application),
             "tag": _clean_optional_string(tag),
-            "required_features": list(required_features or ()),
+            "required_features": list(resolved_features or ()),
         },
         "count": len(records),
         "templates": records,
@@ -381,6 +402,7 @@ def preview_safe_equation(
                 target_values_used=False,
             ),
             "preview": None,
+            "physics_mean_values": [],
             "warnings": warnings,
             "hints": _safe_equation_preview_hints(preview_ready=False),
         }
@@ -412,6 +434,7 @@ def preview_safe_equation(
                 target_values_used=prepared["target_values"] is not None,
             ),
             "preview": None,
+            "physics_mean_values": [],
             "warnings": warnings,
             "hints": _safe_equation_preview_hints(preview_ready=False),
         }
@@ -455,9 +478,15 @@ def suggest_validation_workflow(
     show_train_results: bool = False,
 ) -> dict[str, object]:
     """Suggest a validation protocol for public `matgpr` modeling workflows."""
-    resolved_metrics = list(metrics or ("rmse", "mae", "r2", "pearson_r"))
-    rows = None if n_rows is None else max(int(n_rows), 0)
-    low_data = bool(low_data_focus or (rows is not None and rows < 200))
+    resolved_metrics = (
+        ["rmse", "mae", "r2", "pearson_r"]
+        if metrics is None
+        else _normalize_unique_strings(metrics, name="metrics", require_nonempty=True)
+    )
+    rows = None if n_rows is None else validate_nonnegative_int(n_rows, name="n_rows")
+    low_data_setting = _validate_bool(low_data_focus, name="low_data_focus")
+    report_train = _validate_bool(show_train_results, name="show_train_results")
+    low_data = low_data_setting or (rows is not None and rows < 200)
     train_percentages = list(range(10, 101, 10)) if low_data else [20, 40, 60, 80, 100]
     split_count = 20 if low_data else 10
     cv_folds = 5 if rows is not None and rows < 100 else 10
@@ -470,7 +499,7 @@ def suggest_validation_workflow(
             "learning_curve": {
                 "train_percentages": train_percentages,
                 "splits_per_point": split_count,
-                "report_train_results": bool(show_train_results),
+                "report_train_results": report_train,
                 "report_test_results": True,
                 "metrics": resolved_metrics,
             },
@@ -513,20 +542,35 @@ def suggest_bo_workflow(
     duplicate_key_columns: Sequence[str] | None = None,
 ) -> dict[str, object]:
     """Suggest a finite-pool Bayesian-optimization workflow."""
-    count = None if candidate_count is None else max(int(candidate_count), 0)
+    count = (
+        None
+        if candidate_count is None
+        else validate_nonnegative_int(candidate_count, name="candidate_count")
+    )
+    direction = str(objective_direction).strip().lower()
+    if direction not in {"maximize", "minimize"}:
+        raise ValueError("objective_direction must be 'maximize' or 'minimize'")
+    resolved_batch_size = validate_positive_int(batch_size, name="batch_size")
+    constraints_requested = _validate_bool(has_constraints, name="has_constraints")
+    duplicate_columns = (
+        []
+        if duplicate_key_columns is None
+        else _normalize_unique_strings(
+            duplicate_key_columns,
+            name="duplicate_key_columns",
+        )
+    )
     duplicate_policy = (
         "Use CandidateDuplicatePolicy with key columns and feature distance checks."
-        if duplicate_key_columns
+        if duplicate_columns
         else "Add duplicate key columns when material identity, formula, or SMILES are available."
     )
-    acquisition = (
-        "expected_improvement" if objective_direction == "maximize" else "lower_confidence_bound"
-    )
+    acquisition = "expected_improvement" if direction == "maximize" else "lower_confidence_bound"
 
     return {
         "schema_version": MCP_HELPER_SCHEMA_VERSION,
         "candidate_count": count,
-        "objective_direction": str(objective_direction),
+        "objective_direction": direction,
         "recommended_workflow": {
             "candidate_pool": [
                 "Use the same featurization pipeline as the measured training data.",
@@ -535,16 +579,16 @@ def suggest_bo_workflow(
             ],
             "surrogate": "Fit a GPR surrogate with predictive mean and standard deviation.",
             "acquisition": acquisition,
-            "batch_size": max(int(batch_size), 1),
+            "batch_size": resolved_batch_size,
             "constraints": (
                 "Apply CandidateConstraint before ranking."
-                if has_constraints
+                if constraints_requested
                 else "No feasibility constraints requested."
             ),
             "duplicates": duplicate_policy,
             "diversity": (
                 "Use select_diverse_batch for batches larger than one."
-                if int(batch_size) > 1
+                if resolved_batch_size > 1
                 else "Single-candidate recommendation does not need batch diversity."
             ),
             "audit": "Save recommendation tables, scores, duplicate flags, and exclusion reasons.",
@@ -621,14 +665,27 @@ def _normalize_sample_rows(
         total = len(sample_rows)  # type: ignore[arg-type]
     elif isinstance(sample_rows, Mapping):
         items = [(str(key), value) for key, value in sample_rows.items()]
-        lengths = [len(value) for value in sample_rows.values() if _has_length(value)]
-        total = min(lengths) if lengths else 0
+        if any(
+            isinstance(value, (str, bytes, bytearray)) or not _has_length(value)
+            for value in sample_rows.values()
+        ):
+            raise TypeError("column-oriented sample_rows values must be non-string sequences")
+        lengths = [len(value) for value in sample_rows.values()]
+        if len(set(lengths)) > 1:
+            raise ValueError("column-oriented sample_rows values must have the same length")
+        total = lengths[0] if lengths else 0
         records = [
             {key: _sequence_value(value, index) for key, value in items}
             for index in range(min(total, max_rows))
         ]
     else:
-        records = [dict(row) for row in sample_rows[:max_rows]]
+        rows = validate_nonstring_iterable(sample_rows, name="sample_rows")
+        if not isinstance(rows, Sequence):
+            raise TypeError("sample_rows must be a sequence of mappings")
+        selected_rows = rows[:max_rows]
+        if any(not isinstance(row, Mapping) for row in selected_rows):
+            raise TypeError("sample_rows must contain only mappings")
+        records = [dict(row) for row in selected_rows]
         total = len(sample_rows)
 
     if total > max_rows:
@@ -639,18 +696,42 @@ def _normalize_sample_rows(
 def _bounded_sample_limit(value: int) -> tuple[int, list[str]]:
     warnings: list[str] = []
     try:
-        row_limit = int(value)
+        row_limit = validate_positive_int(value, name="max_sample_rows")
     except (TypeError, ValueError):
         row_limit = _MAX_SAMPLE_ROWS
         warnings.append(f"max_sample_rows was invalid; using {_MAX_SAMPLE_ROWS}")
 
-    if row_limit < 1:
-        warnings.append(f"max_sample_rows must be at least 1; using {_MAX_SAMPLE_ROWS}")
-        row_limit = _MAX_SAMPLE_ROWS
     if row_limit > _MAX_SAMPLE_ROWS:
         warnings.append(f"max_sample_rows clipped to {_MAX_SAMPLE_ROWS} for MCP safety")
         row_limit = _MAX_SAMPLE_ROWS
     return row_limit, warnings
+
+
+def _normalize_unique_strings(
+    values: object,
+    *,
+    name: str,
+    require_nonempty: bool = False,
+) -> list[str]:
+    iterable = validate_nonstring_iterable(values, name=name)
+    normalized: list[str] = []
+    for value in iterable:
+        if not isinstance(value, str):
+            raise TypeError(f"{name} must contain only strings")
+        if not value.strip():
+            raise ValueError(f"{name} must not contain empty strings")
+        normalized.append(value)
+    if require_nonempty and not normalized:
+        raise ValueError(f"{name} must contain at least one value")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError(f"{name} must not contain duplicates")
+    return normalized
+
+
+def _validate_bool(value: object, *, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"{name} must be a boolean")
+    return value
 
 
 def _prepare_safe_equation_preview_inputs(

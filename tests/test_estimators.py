@@ -10,6 +10,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 from sklearn.base import clone
 from sklearn.compose import ColumnTransformer
@@ -28,6 +29,8 @@ from matgpr import (
 )
 from matgpr.gpytorch_gpr import GPyTorchPrediction
 from matgpr.multitask_gpr import MultitaskGPyTorchPrediction
+
+pytestmark = pytest.mark.component
 
 
 def linear_physics_equation(features, parameters):

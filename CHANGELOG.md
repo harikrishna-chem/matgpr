@@ -21,6 +21,15 @@ phase.
 
 ### Changed
 
+- Read-only MCP advisory tools now validate collection, count, direction, and
+  Boolean inputs instead of silently splitting strings or coercing fractional
+  and Boolean values. Featurizer recommendation previews enforce the documented
+  five-row safety limit, and column-oriented sample data must have aligned
+  lengths.
+- Dataframe preprocessing and target separation now reject duplicate column
+  names with explicit errors. `identify_feature_types` also requires string
+  column names, and `build_preprocessor` rejects duplicate or overlapping
+  numeric/categorical feature groups instead of silently duplicating inputs.
 - BoTorch is now a required dependency rather than the optional `bo` extra.
   Bayesian optimization is a core `matgpr` workflow, so `pip install matgpr`
   installs everything needed for featurization, physics-informed GPR, active
@@ -53,6 +62,46 @@ phase.
 
 ### Fixed
 
+- BoTorch surrogate construction now copies read-only NumPy inputs at the
+  Torch boundary, preventing undefined-behavior warnings while preserving
+  zero-copy conversion for writable arrays.
+- Bounded target transforms now compute logistic-normal variance from centered
+  quadrature samples, improving numerical stability for very small predictive
+  uncertainties.
+- `preview_safe_equation` now returns `physics_mean_values` for every outcome,
+  using an empty list for invalid or incomplete previews. MCP clients can
+  therefore rely on one stable top-level response shape instead of branching
+  on whether evaluation succeeded.
+- Materials featurizers now reject scalar strings passed to plural batch APIs,
+  disconnected polymer repeat units, invalid fingerprint sizes/radii/repeat
+  counts, and empty or duplicate descriptor definitions. Composition and
+  structure descriptor selections are validated before fitting, and
+  `CompositionFeaturizer` now accepts NumPy integer column indices while
+  continuing to reject Boolean indices.
+- Finite-pool `CandidateConstraint` numeric bounds now reject `NaN` and
+  infinities before candidate evaluation. Bayesian-optimization `top_k`
+  arguments now consistently require positive non-Boolean integers, preventing
+  fractional batch sizes from silently selecting an unexpected number of
+  candidates.
+- Physics-informed mean functions now reject non-finite learnable/fixed
+  parameters, feature scaling metadata, target scaling, and equation outputs.
+  Feature scaling keys must match declared physics features, preventing unit
+  restoration from being silently skipped because of a typo. NumPy integer
+  feature indices are accepted, while Boolean indices are rejected.
+- Exact GPyTorch GPR now validates optimizer settings, one-dimensional targets,
+  non-empty feature matrices, prediction feature width, finite prediction
+  inputs, and persisted target-scaling buffers before entering GPyTorch.
+  Invalid inputs now fail with direct `TypeError` or `ValueError` messages
+  instead of producing non-finite optimization state or lower-level tensor
+  errors. Gaussian NLPD also rejects non-finite `min_std` values.
+- ARD and grid-search kernel builders now reject Boolean `n_features` values
+  with the documented positive-integer error instead of leaking a NumPy shape
+  error. Target transforms now reject non-finite log offsets and mismatched
+  transformed-mean/standard-deviation arrays before uncertainty inversion.
+- `build_preprocessor` now accepts scalar feature names, generators, and pandas
+  indexes without ambiguous-truth-value errors. Invalid scaler and dataframe
+  inputs now raise direct `TypeError` or `ValueError` messages instead of
+  leaking incidental attribute errors from pandas or scikit-learn.
 - The MCP server can be constructed on MCP SDK 1.x again. `create_server`
   passed `title`, `description`, and `version` unconditionally; MCP 2.x
   `MCPServer` accepts them but MCP 1.x `FastMCP` raises `TypeError`, so the 1.x

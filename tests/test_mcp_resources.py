@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import pytest
+
 from matgpr.mcp_resources import (
     MCP_RESOURCE_REGISTRATIONS,
     bayesian_optimization_guide,
@@ -10,6 +12,8 @@ from matgpr.mcp_resources import (
     physics_informed_gpr_guide,
     validation_guide,
 )
+
+pytestmark = pytest.mark.contract
 
 
 class MCPResourcesTests(unittest.TestCase):

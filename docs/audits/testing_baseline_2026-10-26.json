@@ -1,0 +1,935 @@
+{
+  "branch": "agent/matgpr/tdd-baseline",
+  "captured_on": "2026-10-26",
+  "commit": "5743e871f86c03967c08c6e9b1dd9c8d49cbd1f6",
+  "coverage": {
+    "branch_coverage": true,
+    "coverage_py_version": "7.14.3",
+    "modules": {
+      "matgpr/__init__.py": {
+        "branches": 0,
+        "coverage_percent": 82.353,
+        "missing_branches": 0,
+        "missing_lines": 3,
+        "statements": 17
+      },
+      "matgpr/_validation.py": {
+        "branches": 58,
+        "coverage_percent": 76.506,
+        "missing_branches": 19,
+        "missing_lines": 20,
+        "statements": 108
+      },
+      "matgpr/_version.py": {
+        "branches": 0,
+        "coverage_percent": 100.0,
+        "missing_branches": 0,
+        "missing_lines": 0,
+        "statements": 2
+      },
+      "matgpr/bayesian_optimization.py": {
+        "branches": 758,
+        "coverage_percent": 73.017,
+        "missing_branches": 299,
+        "missing_lines": 361,
+        "statements": 1688
+      },
+      "matgpr/bayesian_optimization_specs.py": {
+        "branches": 126,
+        "coverage_percent": 82.869,
+        "missing_branches": 34,
+        "missing_lines": 46,
+        "statements": 341
+      },
+      "matgpr/bo_benchmarking.py": {
+        "branches": 96,
+        "coverage_percent": 81.232,
+        "missing_branches": 30,
+        "missing_lines": 34,
+        "statements": 245
+      },
+      "matgpr/bo_explanations.py": {
+        "branches": 148,
+        "coverage_percent": 83.4,
+        "missing_branches": 39,
+        "missing_lines": 44,
+        "statements": 352
+      },
+      "matgpr/candidate_generation.py": {
+        "branches": 230,
+        "coverage_percent": 81.818,
+        "missing_branches": 65,
+        "missing_lines": 77,
+        "statements": 551
+      },
+      "matgpr/data_cleaning.py": {
+        "branches": 28,
+        "coverage_percent": 73.585,
+        "missing_branches": 10,
+        "missing_lines": 18,
+        "statements": 78
+      },
+      "matgpr/data_splitting.py": {
+        "branches": 2,
+        "coverage_percent": 50.0,
+        "missing_branches": 2,
+        "missing_lines": 4,
+        "statements": 10
+      },
+      "matgpr/derivative_gpr.py": {
+        "branches": 80,
+        "coverage_percent": 83.969,
+        "missing_branches": 28,
+        "missing_lines": 35,
+        "statements": 313
+      },
+      "matgpr/estimators.py": {
+        "branches": 112,
+        "coverage_percent": 83.815,
+        "missing_branches": 41,
+        "missing_lines": 43,
+        "statements": 407
+      },
+      "matgpr/experiment_logging.py": {
+        "branches": 114,
+        "coverage_percent": 87.097,
+        "missing_branches": 25,
+        "missing_lines": 27,
+        "statements": 289
+      },
+      "matgpr/featurizers.py": {
+        "branches": 100,
+        "coverage_percent": 77.049,
+        "missing_branches": 48,
+        "missing_lines": 50,
+        "statements": 327
+      },
+      "matgpr/fingerprint_cache.py": {
+        "branches": 28,
+        "coverage_percent": 81.053,
+        "missing_branches": 8,
+        "missing_lines": 10,
+        "statements": 67
+      },
+      "matgpr/gpytorch_gpr.py": {
+        "branches": 120,
+        "coverage_percent": 80.227,
+        "missing_branches": 39,
+        "missing_lines": 48,
+        "statements": 320
+      },
+      "matgpr/heteroscedastic_gpr.py": {
+        "branches": 20,
+        "coverage_percent": 88.991,
+        "missing_branches": 5,
+        "missing_lines": 7,
+        "statements": 89
+      },
+      "matgpr/inorganic_fingerprints.py": {
+        "branches": 84,
+        "coverage_percent": 81.731,
+        "missing_branches": 23,
+        "missing_lines": 34,
+        "statements": 228
+      },
+      "matgpr/io_utils.py": {
+        "branches": 12,
+        "coverage_percent": 86.441,
+        "missing_branches": 1,
+        "missing_lines": 7,
+        "statements": 47
+      },
+      "matgpr/kernels.py": {
+        "branches": 82,
+        "coverage_percent": 77.287,
+        "missing_branches": 31,
+        "missing_lines": 41,
+        "statements": 235
+      },
+      "matgpr/mcp_prompts.py": {
+        "branches": 4,
+        "coverage_percent": 100.0,
+        "missing_branches": 0,
+        "missing_lines": 0,
+        "statements": 33
+      },
+      "matgpr/mcp_resources.py": {
+        "branches": 0,
+        "coverage_percent": 100.0,
+        "missing_branches": 0,
+        "missing_lines": 0,
+        "statements": 22
+      },
+      "matgpr/mcp_server.py": {
+        "branches": 8,
+        "coverage_percent": 96.0,
+        "missing_branches": 1,
+        "missing_lines": 1,
+        "statements": 42
+      },
+      "matgpr/mcp_smoke.py": {
+        "branches": 46,
+        "coverage_percent": 43.684,
+        "missing_branches": 30,
+        "missing_lines": 77,
+        "statements": 144
+      },
+      "matgpr/mcp_tools.py": {
+        "branches": 156,
+        "coverage_percent": 77.425,
+        "missing_branches": 56,
+        "missing_lines": 72,
+        "statements": 411
+      },
+      "matgpr/metrics.py": {
+        "branches": 40,
+        "coverage_percent": 89.928,
+        "missing_branches": 6,
+        "missing_lines": 8,
+        "statements": 99
+      },
+      "matgpr/multi_objective.py": {
+        "branches": 64,
+        "coverage_percent": 86.9,
+        "missing_branches": 14,
+        "missing_lines": 16,
+        "statements": 165
+      },
+      "matgpr/multifidelity_gpr.py": {
+        "branches": 176,
+        "coverage_percent": 85.0,
+        "missing_branches": 58,
+        "missing_lines": 68,
+        "statements": 664
+      },
+      "matgpr/multitask_gpr.py": {
+        "branches": 60,
+        "coverage_percent": 78.862,
+        "missing_branches": 22,
+        "missing_lines": 30,
+        "statements": 186
+      },
+      "matgpr/noise_models.py": {
+        "branches": 56,
+        "coverage_percent": 88.018,
+        "missing_branches": 13,
+        "missing_lines": 13,
+        "statements": 161
+      },
+      "matgpr/optional_dependencies.py": {
+        "branches": 8,
+        "coverage_percent": 100.0,
+        "missing_branches": 0,
+        "missing_lines": 0,
+        "statements": 42
+      },
+      "matgpr/organic_fingerprints.py": {
+        "branches": 84,
+        "coverage_percent": 86.585,
+        "missing_branches": 19,
+        "missing_lines": 25,
+        "statements": 244
+      },
+      "matgpr/pca.py": {
+        "branches": 18,
+        "coverage_percent": 95.522,
+        "missing_branches": 2,
+        "missing_lines": 1,
+        "statements": 49
+      },
+      "matgpr/physics_constraints.py": {
+        "branches": 58,
+        "coverage_percent": 80.408,
+        "missing_branches": 24,
+        "missing_lines": 24,
+        "statements": 187
+      },
+      "matgpr/physics_equations.py": {
+        "branches": 62,
+        "coverage_percent": 90.402,
+        "missing_branches": 16,
+        "missing_lines": 15,
+        "statements": 261
+      },
+      "matgpr/preprocessing.py": {
+        "branches": 14,
+        "coverage_percent": 22.0,
+        "missing_branches": 14,
+        "missing_lines": 25,
+        "statements": 36
+      },
+      "matgpr/reporting.py": {
+        "branches": 94,
+        "coverage_percent": 89.085,
+        "missing_branches": 16,
+        "missing_lines": 15,
+        "statements": 190
+      },
+      "matgpr/safe_equations.py": {
+        "branches": 346,
+        "coverage_percent": 82.405,
+        "missing_branches": 98,
+        "missing_lines": 120,
+        "statements": 893
+      },
+      "matgpr/sklearn_gpr.py": {
+        "branches": 18,
+        "coverage_percent": 75.0,
+        "missing_branches": 5,
+        "missing_lines": 11,
+        "statements": 46
+      },
+      "matgpr/sparse_multitask_gpr.py": {
+        "branches": 172,
+        "coverage_percent": 77.157,
+        "missing_branches": 64,
+        "missing_lines": 71,
+        "statements": 419
+      },
+      "matgpr/structure_fingerprints.py": {
+        "branches": 46,
+        "coverage_percent": 78.495,
+        "missing_branches": 16,
+        "missing_lines": 24,
+        "statements": 140
+      },
+      "matgpr/target_transforms.py": {
+        "branches": 74,
+        "coverage_percent": 87.755,
+        "missing_branches": 22,
+        "missing_lines": 26,
+        "statements": 318
+      },
+      "matgpr/uncertainty.py": {
+        "branches": 22,
+        "coverage_percent": 92.593,
+        "missing_branches": 4,
+        "missing_lines": 4,
+        "statements": 86
+      },
+      "matgpr/validation.py": {
+        "branches": 418,
+        "coverage_percent": 73.688,
+        "missing_branches": 175,
+        "missing_lines": 221,
+        "statements": 1087
+      },
+      "matgpr/visualization.py": {
+        "branches": 136,
+        "coverage_percent": 66.893,
+        "missing_branches": 67,
+        "missing_lines": 128,
+        "statements": 453
+      }
+    },
+    "totals": {
+      "covered_branches": 2889,
+      "covered_lines": 10188,
+      "excluded_lines": 4,
+      "missing_branches": 1489,
+      "missing_lines": 1904,
+      "num_branches": 4378,
+      "num_partial_branches": 1147,
+      "num_statements": 12092,
+      "percent_branches_covered": 65.9890360895386,
+      "percent_branches_covered_display": "66",
+      "percent_covered": 79.39890710382514,
+      "percent_covered_display": "79",
+      "percent_statements_covered": 84.25405226596096,
+      "percent_statements_covered_display": "84"
+    }
+  },
+  "duplicate_analysis": {
+    "classification": {
+      "contract_sensitive": {
+        "functions": 8,
+        "groups": 3
+      },
+      "extraction_candidate": {
+        "functions": 9,
+        "groups": 4
+      },
+      "intentionally_local": {
+        "functions": 9,
+        "groups": 4
+      }
+    },
+    "function_count": 26,
+    "group_count": 11,
+    "groups": [
+      {
+        "group_id": "6c7cf20f38c8",
+        "occurrence_count": 3,
+        "occurrences": [
+          {
+            "line": 79,
+            "path": "matgpr/derivative_gpr.py",
+            "qualified_name": "DerivativeObservationSet.n_features"
+          },
+          {
+            "line": 87,
+            "path": "matgpr/multifidelity_gpr.py",
+            "qualified_name": "MultiFidelityObservationData.n_features"
+          },
+          {
+            "line": 72,
+            "path": "matgpr/physics_constraints.py",
+            "qualified_name": "VirtualObservationSet.n_features"
+          }
+        ]
+      },
+      {
+        "group_id": "c40aa9b6065d",
+        "occurrence_count": 3,
+        "occurrences": [
+          {
+            "line": 362,
+            "path": "matgpr/reporting.py",
+            "qualified_name": "_to_1d_numeric"
+          },
+          {
+            "line": 2989,
+            "path": "matgpr/validation.py",
+            "qualified_name": "_to_1d_float"
+          },
+          {
+            "line": 1155,
+            "path": "matgpr/visualization.py",
+            "qualified_name": "_to_1d_float_array"
+          }
+        ]
+      },
+      {
+        "group_id": "01c2181ccccd",
+        "occurrence_count": 3,
+        "occurrences": [
+          {
+            "line": 68,
+            "path": "matgpr/validation.py",
+            "qualified_name": "TrainTestValidationResult.train_predictions"
+          },
+          {
+            "line": 216,
+            "path": "matgpr/validation.py",
+            "qualified_name": "MultitaskTrainTestValidationResult.train_predictions"
+          },
+          {
+            "line": 260,
+            "path": "matgpr/validation.py",
+            "qualified_name": "SparseMultitaskTrainTestValidationResult.train_predictions"
+          }
+        ]
+      },
+      {
+        "group_id": "a6f944aba7f8",
+        "occurrence_count": 3,
+        "occurrences": [
+          {
+            "line": 73,
+            "path": "matgpr/validation.py",
+            "qualified_name": "TrainTestValidationResult.test_predictions"
+          },
+          {
+            "line": 221,
+            "path": "matgpr/validation.py",
+            "qualified_name": "MultitaskTrainTestValidationResult.test_predictions"
+          },
+          {
+            "line": 265,
+            "path": "matgpr/validation.py",
+            "qualified_name": "SparseMultitaskTrainTestValidationResult.test_predictions"
+          }
+        ]
+      },
+      {
+        "group_id": "fc430db31da8",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 1979,
+            "path": "matgpr/bayesian_optimization.py",
+            "qualified_name": "_validate_audit_frame"
+          },
+          {
+            "line": 531,
+            "path": "matgpr/candidate_generation.py",
+            "qualified_name": "_validate_candidate_frame"
+          }
+        ]
+      },
+      {
+        "group_id": "dbb827a1f530",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 4408,
+            "path": "matgpr/bayesian_optimization.py",
+            "qualified_name": "_slugify_objective_name"
+          },
+          {
+            "line": 308,
+            "path": "matgpr/multi_objective.py",
+            "qualified_name": "_slugify"
+          }
+        ]
+      },
+      {
+        "group_id": "ac59bed5d2d1",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 560,
+            "path": "matgpr/derivative_gpr.py",
+            "qualified_name": "_as_numeric_matrix"
+          },
+          {
+            "line": 284,
+            "path": "matgpr/physics_constraints.py",
+            "qualified_name": "_as_numeric_matrix"
+          }
+        ]
+      },
+      {
+        "group_id": "3554adcc2fb3",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 137,
+            "path": "matgpr/featurizers.py",
+            "qualified_name": "CompositionFeaturizer.get_feature_names_out"
+          },
+          {
+            "line": 266,
+            "path": "matgpr/featurizers.py",
+            "qualified_name": "StructureFeaturizer.get_feature_names_out"
+          }
+        ]
+      },
+      {
+        "group_id": "435633e3fdf5",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 60,
+            "path": "matgpr/kernels.py",
+            "qualified_name": "ElementFractionKernel.hyperparameter_length_scale"
+          },
+          {
+            "line": 132,
+            "path": "matgpr/kernels.py",
+            "qualified_name": "StructureFeatureKernel.hyperparameter_length_scale"
+          }
+        ]
+      },
+      {
+        "group_id": "2cc20786a4f0",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 94,
+            "path": "matgpr/kernels.py",
+            "qualified_name": "ElementFractionKernel.is_stationary"
+          },
+          {
+            "line": 210,
+            "path": "matgpr/kernels.py",
+            "qualified_name": "TanimotoKernel.is_stationary"
+          }
+        ]
+      },
+      {
+        "group_id": "93b79da49189",
+        "occurrence_count": 2,
+        "occurrences": [
+          {
+            "line": 56,
+            "path": "matgpr/target_transforms.py",
+            "qualified_name": "IdentityTargetTransform.inverse_prediction"
+          },
+          {
+            "line": 101,
+            "path": "matgpr/target_transforms.py",
+            "qualified_name": "StandardizedTargetTransform.inverse_prediction"
+          }
+        ]
+      }
+    ],
+    "method": "identical function signature AST plus body AST"
+  },
+  "environment": {
+    "implementation": "CPython",
+    "packages": {
+      "botorch": "0.18.1",
+      "build": "1.5.0",
+      "coverage": "7.14.3",
+      "gpytorch": "1.15.2",
+      "joblib": "1.5.3",
+      "matplotlib": "3.11.0",
+      "nbconvert": "7.17.1",
+      "numpy": "2.4.6",
+      "pandas": "2.3.3",
+      "pymatgen": "2026.5.4",
+      "pytest": "9.1.1",
+      "pytest-cov": "7.1.0",
+      "rdkit": "2026.3.3",
+      "ruff": "0.15.20",
+      "scikit-learn": "1.9.0",
+      "scipy": "1.17.1",
+      "shap": "0.51.0",
+      "torch": "2.10.0"
+    },
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "python": "3.11.15"
+  },
+  "public_api": {
+    "export_count": 293,
+    "exports": [
+      "__version__",
+      "ALLOWED_SAFE_EQUATION_FUNCTIONS",
+      "ALLOWED_SAFE_EQUATION_OPERATORS",
+      "EquationMeanFunction",
+      "ExactGPRModel",
+      "ExactMultitaskGPRModel",
+      "ExactSparseMultitaskGPRModel",
+      "FeatureSubsetKernel",
+      "GPyTorchGPRResult",
+      "GPyTorchPrediction",
+      "HeteroscedasticGPRPrediction",
+      "HeteroscedasticGPRResult",
+      "AugmentedTrainingData",
+      "BayesianOptimizationResult",
+      "BOAcquisitionIntent",
+      "BOCampaignState",
+      "BOFeatureSpec",
+      "BOFeatureType",
+      "BOBenchmarkComparison",
+      "BOBenchmarkResult",
+      "BOBenchmarkStrategy",
+      "BOExplanationTables",
+      "BOWhatIfSlice",
+      "BOObjectiveMode",
+      "BOObjectivePreference",
+      "BOOptimizationMode",
+      "BOOptimizationSpec",
+      "BOOutputConstraintSpec",
+      "BORecommendationAudit",
+      "BoTorchSurrogate",
+      "CandidateConstraint",
+      "CandidateDuplicatePolicy",
+      "CandidatePoolDiagnostics",
+      "CandidateTrustRegion",
+      "CoKrigingGPRPrediction",
+      "CoKrigingGPRRegressor",
+      "CoKrigingGPRResult",
+      "CoKrigingTrainTestValidationResult",
+      "DerivativeConstrainedGPRPrediction",
+      "DerivativeConstrainedGPRResult",
+      "DerivativeObservationSet",
+      "IdentityTargetTransform",
+      "KnownLimitConstraint",
+      "LogTargetTransform",
+      "MatGPRRegressor",
+      "MissingValueReport",
+      "MonotonicDerivativeConstraint",
+      "MonotonicTrendConstraint",
+      "MultiFidelityGPRPrediction",
+      "MultiFidelityGPRRegressor",
+      "MultiFidelityObservationData",
+      "MultiObjectiveBayesianOptimizationResult",
+      "MultiObjectiveBoTorchSurrogate",
+      "MultitaskGPRRegressor",
+      "MultitaskGPyTorchPrediction",
+      "MultitaskGPyTorchResult",
+      "MultitaskTrainTestValidationResult",
+      "PhysicsInformedMean",
+      "PhysicsInformedGPRRegressor",
+      "PhysicsResidualTransform",
+      "PhysicsEquationTemplate",
+      "PhysicsFeatureSpec",
+      "PhysicsParameterSpec",
+      "CompositionFingerprintResult",
+      "CompositionFeaturizer",
+      "CrossValidationResult",
+      "DEFAULT_RDKIT_DESCRIPTORS",
+      "DEFAULT_MAGPIE_PROPERTIES",
+      "DEFAULT_MAGPIE_STATISTICS",
+      "DEFAULT_STRUCTURE_FEATURES",
+      "DeltaMultiFidelityGPRResult",
+      "ElementFractionKernel",
+      "ExactTwoLevelCoKrigingGPRModel",
+      "FINGERPRINT_CACHE_SCHEMA_VERSION",
+      "FeatureNoiseModel",
+      "LearningCurveResult",
+      "MagpieCompositionFeaturizer",
+      "R_GAS_CONSTANT_J_MOL_K",
+      "SAFE_EQUATION_SCHEMA_VERSION",
+      "PolymerSmilesFeaturizer",
+      "ObservationNoiseProfile",
+      "OPTIONAL_DEPENDENCIES",
+      "OptionalDependency",
+      "ObjectiveSpec",
+      "ReplicateNoiseModel",
+      "SmilesFingerprintResult",
+      "SmilesFeaturizer",
+      "SourceNoiseModel",
+      "SparseMultitaskGPRRegressor",
+      "SparseMultitaskGPyTorchResult",
+      "SparseMultitaskObservationData",
+      "SparseMultitaskTrainTestValidationResult",
+      "StandardizedTargetTransform",
+      "StructureFeatureKernel",
+      "StructureFeaturizer",
+      "StructureFingerprintResult",
+      "SafeEquationConstant",
+      "SafeEquationEvaluationResult",
+      "SafeEquationMeanFunction",
+      "SafeEquationMeanPreview",
+      "SafeEquationParameter",
+      "SafeEquationSpec",
+      "SafeEquationValidationIssue",
+      "SafeEquationValidationResult",
+      "SafeEquationVariable",
+      "TanimotoKernel",
+      "TargetTransformSpec",
+      "TrainTestValidationResult",
+      "VirtualObservationSet",
+      "append_composition_fingerprints",
+      "append_element_fractions",
+      "append_magpie_composition_features",
+      "append_smiles_features",
+      "append_structure_fingerprints",
+      "append_closed_loop_records",
+      "append_virtual_observations",
+      "arrhenius_linear_growth_equation",
+      "arrhenius_rate_equation",
+      "arrhenius_sqrt_time_equation",
+      "available_physics_equation_templates",
+      "available_target_transform_specs",
+      "apply_candidate_constraints",
+      "apply_candidate_duplicate_policy",
+      "apply_candidate_trust_region",
+      "BoundedTargetTransform",
+      "build_additive_kernel",
+      "build_bo_candidate_pool",
+      "build_bo_explanation_tables",
+      "build_bo_what_if_slice",
+      "build_cartesian_candidate_grid",
+      "build_composition_candidate_grid",
+      "build_element_fraction_gpr_kernel",
+      "build_product_kernel",
+      "build_preprocessor",
+      "build_safe_equation_mean_function",
+      "build_scaler",
+      "build_sklearn_gpr_grid_search",
+      "build_sklearn_gpr_kernel",
+      "build_sklearn_gpr_model",
+      "build_structure_gpr_kernel",
+      "build_tanimoto_gpr_kernel",
+      "canonicalize_molecule_smiles",
+      "canonicalize_polymer_smiles",
+      "calibration_curve",
+      "clean_formula",
+      "combine_virtual_observations",
+      "combine_derivative_observations",
+      "combine_noise_profiles",
+      "compare_bo_strategies",
+      "composition_fingerprint",
+      "constant_noise_profile",
+      "cokriging_learning_curve",
+      "cross_validate_regressor",
+      "default_element_symbols",
+      "describe_physics_equation_template",
+      "describe_target_transform_spec",
+      "decompose_multifidelity_prediction",
+      "drop_columns_by_missing_fraction",
+      "drop_duplicate_rows",
+      "element_fraction_fingerprint",
+      "evaluate_cokriging_train_test_split",
+      "evaluate_multitask_train_test_split",
+      "evaluate_sparse_multitask_train_test_split",
+      "evaluate_train_test_split",
+      "evaluate_safe_equation_numpy",
+      "evaluate_safe_equation_torch",
+      "exclude_existing_candidates",
+      "featurize_compositions",
+      "featurize_element_fractions",
+      "featurize_magpie_compositions",
+      "featurize_smiles",
+      "featurize_structures",
+      "filter_iqr_outliers",
+      "fit_botorch_surrogate",
+      "fit_cokriging_gpr",
+      "fit_multi_objective_botorch_surrogate",
+      "fingerprint_smiles",
+      "fingerprint_cache_key",
+      "fit_derivative_constrained_gpr",
+      "fit_delta_multifidelity_gpr",
+      "fit_gpytorch_gpr",
+      "fit_heteroscedastic_gpr",
+      "fit_multitask_gpytorch_gpr",
+      "fit_pca",
+      "fit_sparse_multitask_gpytorch_gpr",
+      "free_volume_exponential_equation",
+      "gaussian_nlpd",
+      "get_physics_equation_template",
+      "get_target_transform_spec",
+      "hall_petch_equation",
+      "linear_parabolic_growth_equation",
+      "linear_growth_equation",
+      "identify_feature_types",
+      "impute_missing_values",
+      "interval_coverage",
+      "infer_next_bo_iteration",
+      "initialize_safe_equation_torch_parameters",
+      "is_optional_dependency_available",
+      "json_safe_diagnostics",
+      "json_safe_metrics",
+      "json_safe_regression_metrics",
+      "json_safe_train_test_regression_metrics",
+      "json_safe_uncertainty_diagnostics",
+      "load_artifact",
+      "load_closed_loop_log",
+      "list_optional_dependencies",
+      "list_target_transform_specs",
+      "log_bo_recommendations",
+      "log_experiment_result",
+      "log_observations",
+      "log_selected_experiments",
+      "list_physics_equation_templates",
+      "learning_curve",
+      "multifidelity_learning_curve",
+      "make_materials_target_transform",
+      "make_target_transform",
+      "normalize_column_names",
+      "observation_noise_variance",
+      "pairwise_composition_distance",
+      "pairwise_structure_distance",
+      "pairwise_tanimoto_similarity",
+      "pareto_front_mask",
+      "plot_bo_benchmark_trace",
+      "plot_bo_campaign_progress",
+      "plot_bo_regret_trace",
+      "plot_correlation_matrix",
+      "plot_distribution",
+      "plot_learning_curve",
+      "plot_parity",
+      "plot_pca_scores",
+      "plot_pca_scree",
+      "plot_uncertainty_calibration",
+      "plot_uncertainty_vs_error",
+      "prediction_interval_bounds",
+      "preview_safe_equation_mean",
+      "predict_gpytorch_gpr",
+      "predict_multitask_gpytorch_gpr",
+      "predict_sparse_multitask_gpytorch_gpr",
+      "prepare_sparse_multitask_observations",
+      "prepare_multifidelity_observations",
+      "power_law_equation",
+      "rank_bo_candidate_predictions",
+      "rank_bo_candidate_pool",
+      "rank_discrete_candidates",
+      "rank_multi_objective_discrete_candidates",
+      "rank_multi_objective_candidates",
+      "recommend_bo_acquisition_intents",
+      "recommend_saved_prediction_acquisition_intents",
+      "regression_metrics",
+      "replace_missing_placeholders",
+      "resume_bo_campaign",
+      "require_optional_dependency",
+      "rule_of_mixtures_equation",
+      "safe_equation_schema_snapshot",
+      "search_physics_equation_templates",
+      "search_target_transform_specs",
+      "save_artifact",
+      "scalarize_objectives",
+      "separate_features_target",
+      "select_diverse_batch",
+      "select_sequential_multi_objective_batch",
+      "select_pareto_front",
+      "simulate_bo_strategy",
+      "split_train_test",
+      "split_candidate_features",
+      "standardized_residuals",
+      "structure_feature_names",
+      "structure_fingerprint",
+      "summarize_bo_benchmark",
+      "summarize_closed_loop_log",
+      "summarize_missingness",
+      "summarize_multifidelity_components",
+      "summarize_multitask_predictions",
+      "summarize_numeric_columns",
+      "summarize_physics_equation_templates",
+      "summarize_sparse_multitask_predictions",
+      "summarize_target_transform_specs",
+      "suggest_multi_objective_next_experiments",
+      "suggest_next_experiments",
+      "summarize_bo_recommendation_audit",
+      "summarize_candidate_category_coverage",
+      "summarize_candidate_duplicates",
+      "summarize_candidate_feature_coverage",
+      "summarize_candidate_pool",
+      "summarize_pca",
+      "train_gpytorch_gpr",
+      "train_multitask_gpytorch_gpr",
+      "train_sparse_multitask_gpytorch_gpr",
+      "train_test_regression_metrics",
+      "transform_pca",
+      "uncertainty_diagnostics",
+      "uncertainty_error_correlation",
+      "validate_safe_equation_spec"
+    ],
+    "ordered_export_names_sha256": "b64f5af236df40169a73e93bb6031e3f7afb85ea866c8531746edd7c8eb46204",
+    "version": "0.2.0"
+  },
+  "quality_gates": {
+    "build_sdist_wheel": "passed",
+    "notebook_smokes": {
+      "failed": 0,
+      "passed": 5
+    },
+    "ruff_check": "passed",
+    "ruff_format_check": "passed"
+  },
+  "repository": "matgpr",
+  "schema_version": "genmatics.testing-baseline.v1",
+  "tests": {
+    "collected": 414,
+    "duration_seconds": 20.58,
+    "failed": 0,
+    "junit_output": {
+      "format": "junitxml",
+      "retained": false
+    },
+    "passed": 414,
+    "skipped": 0,
+    "slowest_tests": [
+      {
+        "nodeid": "tests/test_visualization.py::CallerSuppliedAxesTests::test_supplying_an_axes_creates_no_pyplot_managed_figures",
+        "seconds": 0.62
+      },
+      {
+        "nodeid": "tests/test_featurizers.py::SmilesFeaturizerTests::test_molecule_smiles_featurizer_can_include_canonical_smiles",
+        "seconds": 0.49
+      },
+      {
+        "nodeid": "tests/test_estimators.py::MatGPRRegressorTests::test_missing_drop_removes_incomplete_training_rows",
+        "seconds": 0.38
+      },
+      {
+        "nodeid": "tests/test_bayesian_optimization.py::BayesianOptimizationApiTests::test_fit_botorch_surrogate_stores_known_noise_variance",
+        "seconds": 0.33
+      },
+      {
+        "nodeid": "tests/test_estimators.py::MatGPRRegressorTests::test_standard_estimator_passes_sklearn_estimator_checks",
+        "seconds": 0.3
+      }
+    ],
+    "warnings": 9
+  },
+  "warnings": {
+    "botorch_fused_extension_fallback": 1,
+    "gpytorch_training_input_prediction": 5,
+    "linear_operator_numerical_jitter": 1,
+    "torch_jit_deprecation": 2
+  }
+}

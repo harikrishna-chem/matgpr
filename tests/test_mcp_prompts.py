@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import pytest
+
 from matgpr.mcp_prompts import (
     MCP_PROMPT_REGISTRATIONS,
     plan_bayesian_optimization_workflow,
@@ -9,6 +11,8 @@ from matgpr.mcp_prompts import (
     plan_physics_informed_gpr_workflow,
     plan_validation_workflow,
 )
+
+pytestmark = pytest.mark.contract
 
 
 class MCPPromptsTests(unittest.TestCase):

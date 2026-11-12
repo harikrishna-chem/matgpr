@@ -5,6 +5,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     BayesianOptimizationResult,
@@ -30,6 +31,8 @@ from matgpr import (
     suggest_next_experiments,
     summarize_bo_recommendation_audit,
 )
+
+pytestmark = pytest.mark.component
 
 
 class BayesianOptimizationApiTests(unittest.TestCase):
@@ -978,6 +981,24 @@ class BayesianOptimizationApiTests(unittest.TestCase):
         np.testing.assert_allclose(
             surrogate.noise_variance.detach().cpu().numpy().reshape(-1),
             [0.01, 0.04, 0.09],
+        )
+
+    def test_fit_botorch_surrogate_accepts_read_only_numpy_arrays(self):
+        X_train = np.array([[0.0], [0.5], [1.0]])
+        y_train = np.array([0.0, 0.4, 1.0])
+        X_train.flags.writeable = False
+        y_train.flags.writeable = False
+
+        surrogate = fit_botorch_surrogate(
+            X_train,
+            y_train,
+            fit_model=False,
+        )
+
+        np.testing.assert_allclose(surrogate.train_X.detach().cpu().numpy(), X_train)
+        np.testing.assert_allclose(
+            surrogate.train_y.detach().cpu().numpy().reshape(-1),
+            y_train,
         )
 
     def test_suggest_next_experiments_supports_noisy_expected_improvement(self):

@@ -6,8 +6,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import log_experiment_result
+
+pytestmark = pytest.mark.contract
 
 
 class ExperimentLoggingTests(unittest.TestCase):

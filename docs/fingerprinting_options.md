@@ -227,10 +227,16 @@ Best default:
 - Use `descriptors` when interpretability matters more than raw performance.
 - Add Mordred only when feature selection or SHAP analysis can control the
   larger descriptor space.
+- Equivalent molecule SMILES are canonicalized before fingerprinting, so
+  different valid atom orderings produce the same built-in fingerprint.
+- Pass a collection of SMILES to `featurize_smiles`; use `fingerprint_smiles`
+  for one value. Fingerprint bit counts and radii must be positive and
+  non-negative integers, respectively.
 
 ### 4. Polymer Repeat Units
 
-Use this when polymer repeat-unit SMILES contain exactly two `[*]` dummy atoms.
+Use this when polymer repeat-unit SMILES contain exactly two `[*]` dummy atoms
+and form one connected repeat-unit fragment.
 
 Current `matgpr` polymer handling:
 
@@ -241,6 +247,10 @@ Current `matgpr` polymer handling:
 5. Remove all `[*]` atoms.
 6. RDKit-canonicalize the cyclic trimer surrogate.
 7. Fingerprint the canonicalized surrogate.
+
+Reversing the two polymer end labels does not change the cyclic-trimer
+surrogate. Disconnected repeat units are rejected because there is no
+unambiguous single-chain topology to close.
 
 Example:
 
@@ -358,13 +368,16 @@ dscribe = require_optional_dependency("dscribe")
 2. If SMILES are available, use RDKit Morgan fingerprints plus descriptors.
 3. If polymer repeat units are available, use the cyclic-trimer polymer
    canonicalization before fingerprinting.
-4. If structures are available, start with `pymatgen` structure descriptors
+4. Use collections with plural batch helpers such as `featurize_smiles`,
+   `featurize_compositions`, `featurize_element_fractions`, and
+   `featurize_structures`; use the corresponding singular helper for one item.
+5. If structures are available, start with `pymatgen` structure descriptors
    before moving to optional `matminer` or SOAP/MBTR descriptors.
-5. If the dataset is small, prefer interpretable descriptors and simple physics
+6. If the dataset is small, prefer interpretable descriptors and simple physics
    features over very large fingerprint spaces.
-6. If the dataset is large and diverse, consider optional deep/graph
+7. If the dataset is large and diverse, consider optional deep/graph
    featurizers, but keep them out of the default dependency path.
-7. Always report which fingerprint backend, fingerprint length, descriptor set,
+8. Always report which fingerprint backend, fingerprint length, descriptor set,
    and preprocessing choices were used.
 
 ## Reporting Checklist

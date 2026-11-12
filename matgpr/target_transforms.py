@@ -50,8 +50,10 @@ class IdentityTargetTransform:
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return predictive standard deviations unchanged."""
-        to_1d_finite(mean_transformed, "mean_transformed")
-        return _to_nonnegative_std(std_transformed)
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
+        std = _to_nonnegative_std(std_transformed)
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        return std
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
         """Return a prediction object in the original target scale."""
@@ -95,8 +97,10 @@ class StandardizedTargetTransform:
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return predictive standard deviations in the original target scale."""
         self._require_fitted()
-        to_1d_finite(mean_transformed, "mean_transformed")
-        return _to_nonnegative_std(std_transformed) * self.scale_
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
+        std = _to_nonnegative_std(std_transformed)
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        return std * self.scale_
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, **kwargs) -> GPyTorchPrediction:
         """Return a prediction object in the original target scale."""
@@ -117,6 +121,11 @@ class LogTargetTransform:
     """
 
     offset: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.offset = float(self.offset)
+        if not np.isfinite(self.offset):
+            raise ValueError("offset must be finite")
 
     def fit(self, y, **kwargs):
         """Validate that all shifted target values are positive."""
@@ -278,8 +287,8 @@ class BoundedTargetTransform:
         original_samples = self.lower_bound + self._width * _sigmoid(samples)
         normalized_weights = weights / np.sqrt(np.pi)
         original_mean = original_samples @ normalized_weights
-        second_moment = (original_samples * original_samples) @ normalized_weights
-        variance = np.maximum(second_moment - original_mean * original_mean, 0.0)
+        centered_samples = original_samples - original_mean[:, None]
+        variance = (centered_samples * centered_samples) @ normalized_weights
         return original_mean, np.sqrt(variance)
 
 
@@ -322,8 +331,10 @@ class PhysicsResidualTransform:
 
     def inverse_std(self, mean_transformed, std_transformed, **kwargs) -> np.ndarray:
         """Return residual predictive standard deviations unchanged."""
-        to_1d_finite(mean_transformed, "mean_transformed")
-        return _to_nonnegative_std(std_transformed)
+        mean = to_1d_finite(mean_transformed, "mean_transformed")
+        std = _to_nonnegative_std(std_transformed)
+        validate_same_length(mean, std, "mean_transformed", "std_transformed")
+        return std
 
     def inverse_prediction(self, prediction: GPyTorchPrediction, *, baseline) -> GPyTorchPrediction:
         """Add a physics baseline back to a residual prediction object."""

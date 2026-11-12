@@ -9,6 +9,7 @@ os.environ.setdefault("XDG_CACHE_HOME", "/tmp/matgpr-cache")
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     CoKrigingGPRPrediction,
@@ -25,6 +26,8 @@ from matgpr.multifidelity_gpr import (
     ExactTwoLevelCoKrigingGPRModel,
     MultiFidelityGPRPrediction,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 def low_fidelity_function(x: np.ndarray) -> np.ndarray:

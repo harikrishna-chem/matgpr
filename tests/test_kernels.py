@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 import numpy as np
+import pytest
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
 
@@ -22,6 +23,8 @@ from matgpr import (
     pairwise_structure_distance,
     pairwise_tanimoto_similarity,
 )
+
+pytestmark = pytest.mark.scientific
 
 
 class TanimotoKernelTests(unittest.TestCase):

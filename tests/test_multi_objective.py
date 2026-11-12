@@ -4,6 +4,7 @@ import unittest
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from matgpr import (
     ObjectiveSpec,
@@ -12,6 +13,8 @@ from matgpr import (
     scalarize_objectives,
     select_pareto_front,
 )
+
+pytestmark = pytest.mark.component
 
 
 class MultiObjectiveTests(unittest.TestCase):

@@ -7,6 +7,10 @@ import unittest
 from importlib.metadata import version
 from pathlib import Path
 
+import pytest
+
+pytestmark = pytest.mark.contract
+
 
 class PublicApiTests(unittest.TestCase):
     def test_package_version_matches_installed_metadata(self):

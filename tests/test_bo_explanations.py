@@ -10,6 +10,8 @@ from matgpr import (
     build_bo_what_if_slice,
 )
 
+pytestmark = pytest.mark.component
+
 
 def test_build_bo_explanation_tables_returns_plot_ready_rows() -> None:
     ranked = _ranked_candidates()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from numbers import Integral
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from .inorganic_fingerprints import (
     DEFAULT_COMPOSITION_STATISTICS,
     DEFAULT_ELEMENTAL_PROPERTIES,
     CompositionFingerprintResult,
+    _validate_composition_features,
     clean_formula,
     featurize_compositions,
 )
@@ -477,6 +479,7 @@ def _composition_feature_names(
     statistics: Sequence[str],
     column_prefix: str | None,
 ) -> list[str]:
+    properties, statistics = _validate_composition_features(properties, statistics)
     names = [
         f"{property_name}_{statistic}" for property_name in properties for statistic in statistics
     ]
@@ -592,6 +595,7 @@ def _snake_case(value: object) -> str:
 
 
 def _resolve_column(X, column: str | int | None, *, kind: str) -> str | int | None:
+    column = _normalize_column_index(column, kind=kind)
     if isinstance(X, pd.DataFrame):
         if column is None:
             if X.shape[1] != 1:
@@ -628,6 +632,7 @@ def _resolve_column(X, column: str | int | None, *, kind: str) -> str | int | No
 
 
 def _extract_values(X, column: str | int | None, *, kind: str) -> tuple[Sequence[object], pd.Index]:
+    column = _normalize_column_index(column, kind=kind)
     if isinstance(X, pd.DataFrame):
         _validate_dataframe_column(X, column, kind=kind)
         values = X.iloc[:, column] if isinstance(column, int) else X[column]
@@ -655,6 +660,7 @@ def _extract_values(X, column: str | int | None, *, kind: str) -> tuple[Sequence
 
 
 def _validate_dataframe_column(X: pd.DataFrame, column: str | int | None, *, kind: str) -> None:
+    column = _normalize_column_index(column, kind=kind)
     if column is None:
         raise ValueError(f"{kind} dataframe input requires a fitted column")
     if isinstance(column, int):
@@ -663,6 +669,14 @@ def _validate_dataframe_column(X: pd.DataFrame, column: str | int | None, *, kin
         return
     if column not in X.columns:
         raise KeyError(f"{kind} column '{column}' not found")
+
+
+def _normalize_column_index(column: str | int | None, *, kind: str) -> str | int | None:
+    if isinstance(column, bool):
+        raise TypeError(f"{kind} column index must be an integer, not a Boolean")
+    if isinstance(column, Integral):
+        return int(column)
+    return column
 
 
 def _format_transform_output(features: pd.DataFrame, return_dataframe: bool):

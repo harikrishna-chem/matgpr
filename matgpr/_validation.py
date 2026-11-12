@@ -8,9 +8,11 @@ in the per-module copies, because those messages are part of what users see.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from numbers import Integral
 
 import numpy as np
+import pandas as pd
 
 __all__ = [
     "cached_float",
@@ -24,7 +26,10 @@ __all__ = [
     "response_sign",
     "to_1d_finite",
     "to_2d_finite",
+    "validate_dataframe",
     "validate_confidence_level",
+    "validate_nonnegative_int",
+    "validate_nonstring_iterable",
     "validate_positive_int",
     "validate_same_length",
     "validate_same_row_count",
@@ -75,6 +80,15 @@ def to_2d_finite(values, name: str) -> np.ndarray:
     if not np.all(np.isfinite(array)):
         raise ValueError(f"{name} must contain only finite values")
     return array
+
+
+def validate_dataframe(value: object, name: str) -> pd.DataFrame:
+    """Return a dataframe with unique column names or raise a clear error."""
+    if not isinstance(value, pd.DataFrame):
+        raise TypeError(f"{name} must be a pandas DataFrame")
+    if not value.columns.is_unique:
+        raise ValueError(f"{name} columns must be unique")
+    return value
 
 
 def label_array(labels, n_observations: int, *, default: str) -> np.ndarray:
@@ -178,6 +192,23 @@ def validate_positive_int(value: int, *, name: str) -> int:
     value = int(value)
     if value < 1:
         raise ValueError(f"{name} must be at least 1")
+    return value
+
+
+def validate_nonnegative_int(value: int, *, name: str) -> int:
+    """Return ``value`` as a non-Boolean integer of at least zero."""
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise TypeError(f"{name} must be an integer")
+    value = int(value)
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return value
+
+
+def validate_nonstring_iterable(value, *, name: str) -> Iterable:
+    """Return a batch iterable, rejecting scalar text and non-iterables."""
+    if isinstance(value, (str, bytes, bytearray)) or not isinstance(value, Iterable):
+        raise TypeError(f"{name} must be a non-string iterable")
     return value
 
 
