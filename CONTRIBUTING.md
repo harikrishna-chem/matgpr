@@ -70,6 +70,49 @@ optional dependency graph, and runs the packaged MCP client against the
 packaged stdio server. Keep MCP-specific dependencies out of core and ordinary
 test jobs.
 
+### Property-Based Tests
+
+Hypothesis is included in the `dev` extra. The shared `matgpr` test profile
+uses 50 deterministic examples per property, disables timing deadlines, and
+keeps generated inputs bounded for reliable pull-request execution. Run the
+current property-test pilot with:
+
+```bash
+python -m pytest tests/test_target_transform_properties.py
+```
+
+Mutation testing is a manual diagnostic, not a pull-request CI gate. Install
+the dedicated extra and run the current module-scoped pilot with:
+
+```bash
+python -m pip install -e ".[mutation]"
+python -m mutmut run
+python -m mutmut results
+```
+
+The checked-in configuration mutates only `matgpr/target_transforms.py` and
+selects its example, scientific, and property tests. Review meaningful
+survivors before adding tests; raw mutation-score increases are not a reason to
+encode implementation details as behavior.
+
+### Scientific Convergence
+
+Longer numerical checks remain outside ordinary pull-request testing. The
+`Scientific convergence` workflow runs the current physics-informed GPR pilot
+every Monday at 17:23 UTC and supports manual dispatch. Run the same check
+locally with:
+
+```bash
+python scripts/check_pi_gpr_convergence.py
+```
+
+The pilot learns a thermal-expansion slope while holding the reference lattice
+parameter fixed, then reports loss, parameter error, extrapolation error,
+latent uncertainty, interval coverage, and runtime across optimizer budgets up
+to 1,600 iterations. Its assertions protect scientifically meaningful endpoint
+behavior; intermediate RMSE values are allowed to vary. Runtime is diagnostic
+evidence, not a pass/fail threshold.
+
 CI also installs the built wheel without dependencies in a fresh virtual
 environment and runs `scripts/smoke_wheel_install.py` from outside the source
 tree. This ensures editable installs cannot hide missing package files or

@@ -80,6 +80,9 @@ dev = [
     "ruff",
     "twine",
 ]
+mutation = [
+    "mutmut>=3.8,<4",
+]
 examples = [
     "shap",
 ]
@@ -153,6 +156,16 @@ source = ["matgpr"]
 fail_under = 79
 precision = 1
 show_missing = true
+
+[tool.mutmut]
+source_paths = ["matgpr/"]
+only_mutate = ["matgpr/target_transforms.py"]
+pytest_add_cli_args_test_selection = [
+    "tests/test_target_transforms.py",
+    "tests/test_target_transform_scientific.py",
+    "tests/test_target_transform_properties.py",
+]
+mutate_only_covered_lines = true
 
 [tool.ruff]
 line-length = 100
